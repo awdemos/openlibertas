@@ -220,7 +220,10 @@ impl App {
 
     pub fn execute_slash_command(&mut self, cmd: SlashCommand) -> Option<String> {
         match cmd {
-            SlashCommand::Help => Some(openlibertas_core::commands::build_help_message()),
+            SlashCommand::Help => {
+                self.panels.show_help = !self.panels.show_help;
+                None
+            }
             SlashCommand::Tools => {
                 self.panels.show_tools = !self.panels.show_tools;
                 self.panels.show_mcp = false;
