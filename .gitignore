@@ -1,0 +1,31 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and runtime data
+*.log
+.playwright-mcp/
+
+# Local config (contains API keys)
+/config.toml
+/config.json
+*.local.toml
+
+# Temporary files
+*.tmp
+*.temp
+/tmp
+
+# Test artifacts
+/test-output

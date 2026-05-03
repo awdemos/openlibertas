@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/openlibertas-core", "crates/openlibertas-tui", "crates/openlibertas-server"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenLibertas Contributors"]
+description = "A terminal-based AI chat client with multi-provider support, MCP tools, and session management"
+license = "MIT"
+repository = "https://github.com/openlibertas/openlibertas"
+
+[profile.release]
+opt-level = 3
+lto = true

@@ -1,0 +1,30 @@
+[package]
+name = "openlibertas-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "openlibertas"
+path = "src/main.rs"
+
+[dependencies]
+openlibertas-core = { path = "../openlibertas-core" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tokio-util = "0.7"
+crossterm = { version = "0.28", features = ["event-stream"] }
+ratatui = "0.29"
+pulldown-cmark = "0.13"
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+unicode-width = "0.1"
+anyhow = "1"
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

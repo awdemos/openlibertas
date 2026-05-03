@@ -1,0 +1,387 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpServerConfig {
+    #[serde(rename = "type")]
+    pub server_type: String,
+    pub command: Option<Vec<String>>,
+    pub url: Option<String>,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct McpTool {
+    pub name: String,
+    pub description: String,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolResult {
+    pub content: Vec<ToolContent>,
+    #[allow(dead_code)]
+    pub is_error: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ToolContentRaw {
+    #[serde(rename = "type")]
+    #[allow(dead_code)]
+    pub content_type: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolContent {
+    #[allow(dead_code)]
+    pub content_type: String,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonRpcRequest<T> {
+    jsonrpc: String,
+    id: u64,
+    method: String,
+    params: T,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct JsonRpcResponse<T> {
+    jsonrpc: String,
+    id: u64,
+    #[serde(default)]
+    result: Option<T>,
+    #[serde(default)]
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct JsonRpcError {
+    code: i32,
+    message: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ToolsListResult {
+    #[serde(default)]
+    tools: Vec<McpTool>,
+}
+
+#[derive(Debug, Serialize)]
+struct ToolCallParams {
+    name: String,
+    arguments: Value,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ToolCallResult {
+    #[serde(default)]
+    content: Vec<ToolContentRaw>,
+    #[serde(default, rename = "isError")]
+    is_error: bool,
+}
+
+pub struct McpClient {
+    servers: HashMap<String, McpServerConfig>,
+    tools: Mutex<HashMap<String, (String, McpTool)>>,
+    processes: Mutex<HashMap<String, Child>>,
+}
+
+impl McpClient {
+    pub fn from_opencode_config() -> Result<Self> {
+        let config_path = dirs::home_dir()
+            .map(|h| h.join(".config/opencode/opencode.json"))
+            .context("Could not determine home directory")?;
+        Self::from_config_file(&config_path)
+    }
+
+    pub fn from_config_file(path: &Path) -> Result<Self> {
+        let contents = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read config from {:?}", path))?;
+        let config: Value = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse config from {:?}", path))?;
+
+        let mcp_section = config
+            .get("mcp")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+
+        let servers: HashMap<String, McpServerConfig> =
+            serde_json::from_value(mcp_section).unwrap_or_default();
+
+        Ok(Self {
+            servers,
+            tools: Mutex::new(HashMap::new()),
+            processes: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub async fn discover_tools(&self) -> Result<Vec<McpTool>> {
+        let mut all_tools = Vec::new();
+        let mut tool_map = HashMap::new();
+
+        for (name, config) in &self.servers {
+            if !config.enabled {
+                continue;
+            }
+
+            match config.server_type.as_str() {
+                "local" => {
+                    if let Ok(tools) = self.discover_local_tools(name, config).await {
+                        for tool in tools {
+                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                            all_tools.push(tool);
+                        }
+                    }
+                }
+                "remote" => {
+                    if let Ok(tools) = self.discover_remote_tools(name, config).await {
+                        for tool in tools {
+                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                            all_tools.push(tool);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut tools = self.tools.lock().await;
+        *tools = tool_map;
+
+        Ok(all_tools)
+    }
+
+    async fn discover_local_tools(
+        &self,
+        name: &str,
+        config: &McpServerConfig,
+    ) -> Result<Vec<McpTool>> {
+        let cmd = config
+            .command
+            .as_ref()
+            .context("Local MCP server missing command")?;
+        if cmd.is_empty() {
+            return Err(anyhow::anyhow!("Empty command for MCP server {}", name));
+        }
+
+        let mut child = Command::new(&cmd[0])
+            .args(&cmd[1..])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .with_context(|| format!("Failed to spawn MCP server {}", name))?;
+
+        let stdin = child
+            .stdin
+            .take()
+            .context("Failed to get stdin")?;
+        let stdout = child
+            .stdout
+            .take()
+            .context("Failed to get stdout")?;
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 1,
+            method: "tools/list".to_string(),
+            params: serde_json::json!({}),
+        };
+
+        let request_json = serde_json::to_string(&request)? + "\n";
+        let mut stdin = stdin;
+        stdin.write_all(request_json.as_bytes()).await?;
+        stdin.flush().await?;
+
+        let reader = BufReader::new(stdout);
+        let mut lines = AsyncBufReadExt::lines(reader);
+
+        let line_opt: Option<String> = lines.next_line().await?;
+        if let Some(line) = line_opt {
+            let response: JsonRpcResponse<ToolsListResult> = serde_json::from_str(&line)?;
+            if let Some(result) = response.result {
+                let mut processes = self.processes.lock().await;
+                processes.insert(name.to_string(), child);
+                return Ok(result.tools);
+            } else if let Some(error) = response.error {
+                return Err(anyhow::anyhow!("MCP error: {}", error.message));
+            }
+        }
+
+        Err(anyhow::anyhow!("No response from MCP server {}", name))
+    }
+
+    async fn discover_remote_tools(
+        &self,
+        _name: &str,
+        config: &McpServerConfig,
+    ) -> Result<Vec<McpTool>> {
+        let url = config
+            .url
+            .as_ref()
+            .context("Remote MCP server missing URL")?;
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(format!("{}/tools", url.trim_end_matches("/mcp")))
+            .send()
+            .await;
+
+        match resp {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let tools: Vec<McpTool> = resp.json().await?;
+                    Ok(tools)
+                } else {
+                    Err(anyhow::anyhow!("HTTP {}", resp.status()))
+                }
+            }
+            Err(_) => Ok(Vec::new()),
+        }
+    }
+
+    pub async fn call_tool(&self, tool_name: &str, arguments: Value) -> Result<ToolResult> {
+        let tools = self.tools.lock().await;
+        let (server_name, _) = tools
+            .get(tool_name)
+            .context(format!("Tool {} not found", tool_name))?;
+        let server_name = server_name.clone();
+        drop(tools);
+
+        let servers = &self.servers;
+        let config = servers
+            .get(&server_name)
+            .context(format!("Server {} not found", server_name))?;
+
+        match config.server_type.as_str() {
+            "local" => self.call_local_tool(&server_name, tool_name, arguments).await,
+            "remote" => self.call_remote_tool(&server_name, config, tool_name, arguments).await,
+            _ => Err(anyhow::anyhow!("Unknown server type")),
+        }
+    }
+
+    async fn call_local_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<ToolResult> {
+        let mut processes = self.processes.lock().await;
+        let child = processes
+            .get_mut(server_name)
+            .context(format!("MCP server {} not running", server_name))?;
+
+        let stdin = child
+            .stdin
+            .as_mut()
+            .context("Failed to get stdin")?;
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: 2,
+            method: "tools/call".to_string(),
+            params: ToolCallParams {
+                name: tool_name.to_string(),
+                arguments,
+            },
+        };
+
+        let request_json = serde_json::to_string(&request)? + "\n";
+        stdin.write_all(request_json.as_bytes()).await?;
+        stdin.flush().await?;
+
+        let stdout = child
+            .stdout
+            .as_mut()
+            .context("Failed to get stdout")?;
+        let reader = BufReader::new(stdout);
+        let mut lines = AsyncBufReadExt::lines(reader);
+
+        let line_opt: Option<String> = lines.next_line().await?;
+        if let Some(line) = line_opt {
+            let response: JsonRpcResponse<ToolCallResult> = serde_json::from_str(&line)?;
+            if let Some(result) = response.result {
+                return Ok(ToolResult {
+                    content: result
+                        .content
+                        .into_iter()
+                        .map(|c| ToolContent {
+                            content_type: c.content_type,
+                            text: c.text,
+                        })
+                        .collect(),
+                    is_error: result.is_error,
+                });
+            } else if let Some(error) = response.error {
+                return Err(anyhow::anyhow!("MCP error: {}", error.message));
+            }
+        }
+
+        Err(anyhow::anyhow!("No response from MCP server"))
+    }
+
+    async fn call_remote_tool(
+        &self,
+        _server_name: &str,
+        config: &McpServerConfig,
+        tool_name: &str,
+        arguments: Value,
+    ) -> Result<ToolResult> {
+        let url = config
+            .url
+            .as_ref()
+            .context("Remote MCP server missing URL")?;
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/call", url.trim_end_matches("/mcp")))
+            .json(&serde_json::json!({
+                "name": tool_name,
+                "arguments": arguments,
+            }))
+            .send()
+            .await?;
+
+        if resp.status().is_success() {
+            let result: ToolCallResult = resp.json().await?;
+            Ok(ToolResult {
+                content: result
+                    .content
+                    .into_iter()
+                    .map(|c| ToolContent {
+                        content_type: c.content_type,
+                        text: c.text,
+                    })
+                    .collect(),
+                is_error: result.is_error,
+            })
+        } else {
+            Err(anyhow::anyhow!("HTTP {}", resp.status()))
+        }
+    }
+
+    pub fn get_server_names(&self) -> Vec<String> {
+        self.servers
+            .iter()
+            .filter(|(_, c)| c.enabled)
+            .map(|(n, _)| n.clone())
+            .collect()
+    }
+}
