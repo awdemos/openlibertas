@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11435/v1";
+const LLAMACPP_BASE_URL: &str = "http://localhost:8080/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
 
@@ -14,6 +15,12 @@ pub struct Provider {
     pub api_key: String,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_supports_tools")]
+    pub supports_tools: bool,
+}
+
+fn default_supports_tools() -> bool {
+    true
 }
 
 impl Provider {
@@ -23,6 +30,17 @@ impl Provider {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: DEFAULT_API_KEY.to_string(),
             enabled: true,
+            supports_tools: true,
+        }
+    }
+
+    pub fn llamacpp_default() -> Self {
+        Self {
+            name: "llamacpp".to_string(),
+            base_url: LLAMACPP_BASE_URL.to_string(),
+            api_key: DEFAULT_API_KEY.to_string(),
+            enabled: true,
+            supports_tools: true,
         }
     }
 }
@@ -128,5 +146,16 @@ mod tests {
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
         assert_eq!(p.api_key, DEFAULT_API_KEY);
         assert!(p.enabled);
+        assert!(p.supports_tools);
+    }
+
+    #[test]
+    fn provider_llamacpp_default() {
+        let p = Provider::llamacpp_default();
+        assert_eq!(p.name, "llamacpp");
+        assert_eq!(p.base_url, LLAMACPP_BASE_URL);
+        assert_eq!(p.api_key, DEFAULT_API_KEY);
+        assert!(p.enabled);
+        assert!(p.supports_tools);
     }
 }

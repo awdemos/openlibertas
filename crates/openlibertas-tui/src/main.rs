@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+use crossterm::event::{Event as CEvent, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::{
@@ -126,11 +126,9 @@ async fn main() -> Result<()> {
                             {
                                 let _ = crossterm::terminal::disable_raw_mode();
                                 let _ = std::io::stdout().execute(LeaveAlternateScreen);
-                                let _ = std::io::stdout().execute(DisableMouseCapture);
                                 unsafe { libc::raise(libc::SIGTSTP); }
                                 let _ = crossterm::terminal::enable_raw_mode();
                                 let _ = std::io::stdout().execute(EnterAlternateScreen);
-                                let _ = std::io::stdout().execute(EnableMouseCapture);
                             }
                             continue;
                         }
@@ -172,6 +170,8 @@ async fn main() -> Result<()> {
                                 app.chat.cancel_token.cancel();
                                 app.finish_stream();
                                 app.add_system_message("[Request cancelled]".to_string());
+                            } else if app.panels.show_agents {
+                                app.panels.show_agents = false;
                             } else if app.panels.show_help {
                                 app.panels.show_help = false;
                             } else if app.panels.show_themes {
@@ -186,19 +186,26 @@ async fn main() -> Result<()> {
                                 app.go_to_models();
                             }
                         }
-                        KeyCode::F(1) | KeyCode::Char('?') => {
-                            app.panels.show_help = !app.panels.show_help;
+                        KeyCode::F(1) | KeyCode::Char('?') if app.input.buffer.is_empty() => {
+                            app.panels.show_help = true;
                         }
                         KeyCode::Tab if app.input.buffer.starts_with('/') => {
-                            if app.panels.show_palette {
-                                app.palette_next();
-                            } else {
+                            if !app.panels.show_palette {
                                 app.panels.show_palette = true;
                                 app.update_command_palette();
                             }
+                            if let Some(cmd) = app.select_palette_command() {
+                                app.input.buffer = cmd;
+                                app.input.cursor_pos = app.input.buffer.len();
+                                app.palette_next();
+                            } else {
+                                app.panels.show_palette = false;
+                            }
                         }
                         KeyCode::Enter => {
-                            if app.panels.show_themes {
+                            if app.panels.show_agents {
+                                app.select_agent_option();
+                            } else if app.panels.show_themes {
                                 app.select_theme();
                             } else if app.panels.show_palette {
                                 if let Some(cmd) = app.select_palette_command() {
@@ -251,8 +258,8 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
-                        KeyCode::Char('n') => app.search_next(),
-                        KeyCode::Char('N') => app.search_prev(),
+                        KeyCode::Char('n') if app.search.active => app.search_next(),
+                        KeyCode::Char('N') if app.search.active => app.search_prev(),
                         KeyCode::Char(c) => {
                             let pos = app.input.cursor_pos.min(app.input.buffer.len());
                             app.input.cursor_pos = if app.input.buffer.is_char_boundary(pos) {
@@ -308,7 +315,9 @@ async fn main() -> Result<()> {
                         KeyCode::Left => app.move_cursor_left(),
                         KeyCode::Right => app.move_cursor_right(),
                         KeyCode::Up => {
-                            if app.panels.show_themes {
+                            if app.panels.show_agents {
+                                app.agent_prev();
+                            } else if app.panels.show_themes {
                                 app.theme_prev();
                             } else if app.panels.show_palette {
                                 app.palette_prev();
@@ -317,7 +326,9 @@ async fn main() -> Result<()> {
                             }
                         }
                         KeyCode::Down => {
-                            if app.panels.show_themes {
+                            if app.panels.show_agents {
+                                app.agent_next();
+                            } else if app.panels.show_themes {
                                 app.theme_next();
                             } else if app.panels.show_palette {
                                 app.palette_next();
@@ -329,41 +340,6 @@ async fn main() -> Result<()> {
                         KeyCode::PageDown => app.scroll_page_down(),
                         _ => {}
                     },
-                }
-            }
-            Event::Input(CEvent::Mouse(mouse))
-                if app.screen == Screen::Chat =>
-            {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        if app.panels.show_themes {
-                            app.theme_prev();
-                        } else if app.panels.show_palette {
-                            app.palette_prev();
-                        } else {
-                            app.scroll_up();
-                        }
-                    }
-                    MouseEventKind::ScrollDown => {
-                        if app.panels.show_themes {
-                            app.theme_next();
-                        } else if app.panels.show_palette {
-                            app.palette_next();
-                        } else {
-                            app.scroll_down();
-                        }
-                    }
-                    MouseEventKind::Down(_) | MouseEventKind::Up(_)
-                        if app.poking =>
-                    {
-                        app.chat.messages.push(Message {
-                            role: Role::System,
-                            content: "[POKE]".to_string(),
-                            tool_calls: None,
-                            tool_call_id: None,
-                        });
-                    }
-                    _ => {}
                 }
             }
             Event::ModelsLoaded(Ok(models)) => {

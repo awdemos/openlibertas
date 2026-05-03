@@ -48,10 +48,15 @@ pub struct OpenAiBackend {
     client: Client,
     base_url: String,
     api_key: String,
+    supports_tools: bool,
 }
 
 impl OpenAiBackend {
     pub fn new(base_url: String, api_key: String) -> Self {
+        Self::with_tools(base_url, api_key, true)
+    }
+
+    pub fn with_tools(base_url: String, api_key: String, supports_tools: bool) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
@@ -60,6 +65,7 @@ impl OpenAiBackend {
             client,
             base_url,
             api_key,
+            supports_tools,
         }
     }
 
@@ -92,7 +98,7 @@ impl OpenAiBackend {
             messages,
             stream: true,
             max_tokens: Some(max_tokens),
-            tools,
+            tools: if self.supports_tools { tools } else { None },
         };
 
         let (tx, rx) = mpsc::unbounded_channel();

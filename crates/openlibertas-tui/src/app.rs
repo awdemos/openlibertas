@@ -64,6 +64,7 @@ pub struct PanelState {
     pub show_palette: bool,
     pub show_themes: bool,
     pub show_help: bool,
+    pub show_agents: bool,
 }
 
 pub struct McpState {
@@ -91,6 +92,7 @@ pub struct AgentState {
     pub status: AgentStatus,
     pub max_iterations: usize,
     pub current_iteration: usize,
+    pub persona: String,
 }
 
 pub struct App {
@@ -115,6 +117,7 @@ pub struct App {
     pub theme: Theme,
     pub theme_selected: usize,
     pub poking: bool,
+    pub agent_selected: usize,
 }
 
 impl App {
@@ -158,6 +161,7 @@ impl App {
                 show_palette: false,
                 show_themes: false,
                 show_help: false,
+                show_agents: false,
             },
             mcp: McpState {
                 client: None,
@@ -174,6 +178,7 @@ impl App {
                 status: AgentStatus::Disabled,
                 max_iterations: 10,
                 current_iteration: 0,
+                persona: "General".to_string(),
             },
             store,
             prompt_manager: PromptManager::new(),
@@ -184,6 +189,7 @@ impl App {
             theme: Theme::Default,
             theme_selected: 0,
             poking: false,
+            agent_selected: 0,
         }
     }
 
@@ -221,7 +227,7 @@ impl App {
     pub fn execute_slash_command(&mut self, cmd: SlashCommand) -> Option<String> {
         match cmd {
             SlashCommand::Help => {
-                self.panels.show_help = !self.panels.show_help;
+                self.panels.show_help = true;
                 None
             }
             SlashCommand::Tools => {
@@ -289,16 +295,16 @@ impl App {
             }
             SlashCommand::Quit => None,
             SlashCommand::Agents => {
-                self.agents.status = match self.agents.status {
-                    AgentStatus::Disabled => AgentStatus::Idle,
-                    _ => AgentStatus::Disabled,
-                };
-                let status = match self.agents.status {
-                    AgentStatus::Disabled => "disabled",
-                    AgentStatus::Idle => "idle",
-                    AgentStatus::Active => "active",
-                };
-                Some(format!("Agents mode: {}", status))
+                if self.agents.status == AgentStatus::Disabled {
+                    self.agents.status = AgentStatus::Idle;
+                    return Some(format!(
+                        "Agents enabled (Persona: {})",
+                        self.agents.persona
+                    ));
+                }
+                self.panels.show_agents = true;
+                self.agent_selected = 0;
+                None
             }
             SlashCommand::Poke => {
                 self.poking = !self.poking;
@@ -520,7 +526,7 @@ impl App {
         if self.agents.status == AgentStatus::Active && self.agents.current_iteration == 0 {
             messages.push(Message {
                 role: Role::System,
-                content: self.agent_system_prompt().to_string(),
+                content: self.agent_system_prompt(),
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -582,6 +588,7 @@ impl App {
         if let Some(last) = self.chat.messages.last_mut() {
             last.content.push_str(chunk);
         }
+        self.chat.auto_scroll = true;
     }
 
     pub fn add_tool_call(&mut self, tool_call: ToolCall) {
@@ -590,6 +597,15 @@ impl App {
 
     pub fn finish_stream(&mut self) {
         self.chat.streaming = false;
+        // Attach pending tool calls to the last assistant message so the
+        // conversation history is valid for the API.
+        if !self.mcp.pending_tool_calls.is_empty() {
+            if let Some(last) = self.chat.messages.last_mut() {
+                if last.role == Role::Assistant {
+                    last.tool_calls = Some(self.mcp.pending_tool_calls.clone());
+                }
+            }
+        }
     }
 
     pub fn advance_spinner(&mut self) {
@@ -626,11 +642,61 @@ impl App {
         self.agents.current_iteration += 1;
     }
 
-    pub fn agent_system_prompt(&self) -> &'static str {
-        "You are an autonomous agent. You have access to tools that can help you complete tasks. \
+    pub fn agent_personas(&self) -> Vec<(String, String)> {
+        let mut personas = Vec::new();
+        
+        // Try to load from personas directory
+        if let Ok(entries) = std::fs::read_dir("personas") {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "md") {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        let mut lines = content.lines();
+                        let name = lines.next()
+                            .and_then(|line| line.strip_prefix('#'))
+                            .map(|s| s.trim().to_string())
+                            .unwrap_or_else(|| {
+                                path.file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("Unknown")
+                                    .to_string()
+                            });
+                        let prompt = lines.collect::<Vec<_>>().join("\n").trim().to_string();
+                        if !prompt.is_empty() {
+                            personas.push((name, prompt));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fall back to built-in personas if no files found
+        if personas.is_empty() {
+            personas.push(("General".to_string(), "You are an autonomous agent. You have access to tools that can help you complete tasks. \
 When you need to use a tool, call it. After receiving tool results, analyze them and decide \
 whether you need to call more tools or provide a final answer. Keep iterating with tools until \
-the task is fully complete. Be thorough and precise in your reasoning."
+the task is fully complete. Be thorough and precise in your reasoning.".to_string()));
+            personas.push(("Coding".to_string(), "You are a senior software engineer with access to development tools. \
+You write clean, well-tested code. When using tools, prefer file operations and code analysis. \
+Think step by step and verify your changes compile and pass tests.".to_string()));
+            personas.push(("Research".to_string(), "You are a research assistant with access to search and analysis tools. \
+You gather information thoroughly, verify facts, and synthesize comprehensive answers. \
+Cite sources when possible and note uncertainty.".to_string()));
+            personas.push(("Creative".to_string(), "You are a creative assistant with access to media and design tools. \
+You think outside the box and provide novel, inspiring solutions. Iterate on ideas using \
+available tools to refine and polish your work.".to_string()));
+        }
+        
+        personas
+    }
+
+    pub fn agent_system_prompt(&self) -> String {
+        let personas = self.agent_personas();
+        personas
+            .iter()
+            .find(|(name, _)| name == &self.agents.persona)
+            .map(|(_, prompt)| prompt.clone())
+            .unwrap_or_else(|| personas[0].1.clone())
     }
 
     pub fn add_error_message(&mut self, error: String) {
@@ -653,15 +719,6 @@ the task is fully complete. Be thorough and precise in your reasoning."
             tool_calls: None,
             tool_call_id: None,
         });
-    }
-
-    pub fn scroll_up(&mut self) {
-        self.chat.scroll = self.chat.scroll.saturating_sub(1);
-        self.chat.auto_scroll = false;
-    }
-
-    pub fn scroll_down(&mut self) {
-        self.chat.scroll += 1;
     }
 
     pub fn scroll_page_up(&mut self) {
@@ -854,6 +911,40 @@ the task is fully complete. Be thorough and precise in your reasoning."
         self.panels.show_themes = true;
     }
 
+    pub fn agent_prev(&mut self) {
+        self.agent_selected = self.agent_selected.saturating_sub(1);
+    }
+
+    pub fn agent_next(&mut self) {
+        self.agent_selected = (self.agent_selected + 1).min(2);
+    }
+
+    pub fn select_agent_option(&mut self) {
+        match self.agent_selected {
+            0 => {
+                self.agents.status = if self.agents.status == AgentStatus::Disabled {
+                    AgentStatus::Idle
+                } else {
+                    AgentStatus::Disabled
+                };
+            }
+            1 => {
+                let personas = self.agent_personas();
+                let current = personas.iter().position(|(n, _)| *n == self.agents.persona).unwrap_or(0);
+                let next = (current + 1) % personas.len();
+                self.agents.persona = personas[next].0.to_string();
+            }
+            2 => {
+                self.agents.max_iterations = if self.agents.max_iterations >= 50 {
+                    5
+                } else {
+                    (self.agents.max_iterations + 5).min(50)
+                };
+            }
+            _ => {}
+        }
+    }
+
     pub fn update_command_palette(&mut self) {
         let prefix = self.input.buffer.to_lowercase();
         self.palette_commands = SLASH_COMMANDS
@@ -990,14 +1081,14 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "claude-3".to_string(), provider: ProviderId::new("anthropic") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "llama3-8b".to_string(), provider: ProviderId::new("local") },
         ];
 
-        let result = app.execute_slash_command(SlashCommand::Model("gpt-4".to_string()));
-        assert_eq!(app.models.current, Some("gpt-4".to_string()));
-        assert_eq!(app.models.provider, ProviderId::new("openai"));
-        assert!(result.unwrap().contains("Switched to model: gpt-4"));
+        let result = app.execute_slash_command(SlashCommand::Model("qwen3-8b".to_string()));
+        assert_eq!(app.models.current, Some("qwen3-8b".to_string()));
+        assert_eq!(app.models.provider, ProviderId::new("local"));
+        assert!(result.unwrap().contains("Switched to model: qwen3-8b"));
     }
 
     #[test]
@@ -1005,12 +1096,12 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "qwen3-8b-instruct".to_string(), provider: ProviderId::new("local") },
         ];
 
-        let result = app.execute_slash_command(SlashCommand::Model("turbo".to_string()));
-        assert_eq!(app.models.current, Some("gpt-4-turbo".to_string()));
-        assert!(result.unwrap().contains("Switched to model: gpt-4-turbo"));
+        let result = app.execute_slash_command(SlashCommand::Model("instruct".to_string()));
+        assert_eq!(app.models.current, Some("qwen3-8b-instruct".to_string()));
+        assert!(result.unwrap().contains("Switched to model: qwen3-8b-instruct"));
     }
 
     #[test]
@@ -1018,8 +1109,8 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "gpt-3.5".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local") },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model("nonexistent".to_string()));
@@ -1033,14 +1124,14 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "gpt-3.5".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local") },
         ];
 
-        let result = app.execute_slash_command(SlashCommand::Model("gpt".to_string()));
+        let result = app.execute_slash_command(SlashCommand::Model("qwen".to_string()));
         let msg = result.unwrap();
         assert!(msg.contains("not found"));
-        assert!(msg.contains("gpt-4") || msg.contains("gpt-3.5"));
+        assert!(msg.contains("qwen3-8b") || msg.contains("qwen3-4b"));
     }
 
     #[test]
@@ -1048,7 +1139,7 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model(String::new()));

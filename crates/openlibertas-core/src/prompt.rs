@@ -35,7 +35,7 @@ impl PromptManager {
             "kimi".to_string()
         } else if lower.contains("openai") || lower.contains("gpt") {
             "gpt".to_string()
-        } else if lower.contains("local") || lower.contains("ollama") || lower.contains("lmstudio") {
+        } else if lower.contains("local") || lower.contains("ollama") || lower.contains("lmstudio") || lower.contains("llamacpp") {
             "local".to_string()
         } else {
             "default".to_string()

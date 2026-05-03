@@ -4,12 +4,12 @@ A terminal-based AI chat client with multi-provider support, MCP tools, session 
 
 ## Features
 
-- **Multi-Provider Support** - Connect to local (Ollama, lm-studio) and remote (OpenAI, Anthropic, Kimi, GLM) LLM providers simultaneously
+- **Multi-Provider Support** - Connect to any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, Kimi, GLM) for local or remote inference
 - **MCP Tool Integration** - Discover and use tools from Model Context Protocol servers (web search, browser automation, docker, etc.)
-- **Autonomous Agents** - Enable agent mode and the LLM will use tools repeatedly to complete multi-step tasks automatically (up to 10 iterations)
+- **Autonomous Agents** - 15 agent personas for different tasks: coding, research, orchestration, code review, and more. Agents use tools autonomously to complete multi-step workflows.
 - **Session Management** - Save, load, and manage chat sessions with auto-generated names (model + timestamp)
 - **File Context** - Attach files inline with `@path/to/file` syntax
-- **Provider-Aware Prompts** - Automatic system prompt selection based on provider (Kimi, Anthropic, GPT, local)
+- **Agent Personas** - 15 specialized agent personalities loaded from `personas/*.md` files
 - **Input History** - Navigate previous inputs with Up/Down arrows
 - **Mouse Support** - Scroll chat output with mouse wheel
 - **Slash Commands** - Tab-autocompleted commands for all operations
@@ -72,18 +72,14 @@ name = "local"
 base_url = "http://127.0.0.1:11435/v1"
 api_key = "sk-local"
 enabled = true
+supports_tools = true
 
 [[providers]]
-name = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
-api_key = "your-api-key"
+name = "llamacpp"
+base_url = "http://localhost:8080/v1"
+api_key = "sk-local"
 enabled = true
-
-[[providers]]
-name = "openai"
-base_url = "https://api.openai.com/v1"
-api_key = "your-api-key"
-enabled = true
+supports_tools = true
 
 max_tokens = 4096
 ```
@@ -94,18 +90,87 @@ Environment variables override config values:
 - `OPENLIBERTAS_MODEL` - Default model
 - `OPENLIBERTAS_MAX_TOKENS` - Max tokens per request
 
+## Local Models with llama.cpp
+
+OpenLibertas works with any OpenAI-compatible API, including [llama.cpp server](https://github.com/ggml-org/llama.cpp/blob/master/examples/server/README.md).
+
+### Setup
+
+1. **Download a GGUF model** (Qwen3, Llama3, etc.)
+2. **Start llama.cpp server with tool support:**
+
+```bash
+./llama-server \
+  -m Qwen3-8B-Instruct-Q6_K.gguf \
+  --host 0.0.0.0 --port 8080 \
+  --jinja \
+  --ctx-size 8192 \
+  --n-gpu-layers -1
+```
+
+- `--jinja` is **required** for tool-aware templating
+- For Qwen models, download the `chat_template.jinja` from HuggingFace if needed
+- See [llama.cpp function calling docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/function_calling.md)
+
+3. **Add to your config:**
+
+```toml
+[[providers]]
+name = "llamacpp"
+base_url = "http://localhost:8080/v1"
+api_key = "sk-local"
+enabled = true
+supports_tools = true
+```
+
+### `supports_tools`
+
+Set `supports_tools = false` for providers that don't support function calling (basic GGUFs without `--jinja`, older Ollama models, etc.). When false, OpenLibertas will **not** send the `tools` array, avoiding errors.
+
+```toml
+[[providers]]
+name = "basic-local"
+base_url = "http://localhost:11434/v1"
+enabled = true
+supports_tools = false
+```
+
 ## Agents
 
-Agent mode enables the LLM to use tools autonomously to complete multi-step tasks.
+OpenLibertas includes a multi-agent system with 15 specialized personas. Each persona has a distinct system prompt that shapes how the agent approaches tasks.
 
 ### How It Works
 
-1. Enable agent mode with `/agents` (toggle)
-2. Send your request normally
-3. The LLM will use tools as needed, analyze results, and continue until the task is complete
-4. Status shows in the header: `[Agents: ● 3/10]`
-5. Maximum 10 iterations per task (prevents infinite loops)
-6. Cancel anytime with `Esc`
+1. Open the agent panel with `/agents`
+2. Select a persona (General, Coding, Research, Captain, Artisan, etc.)
+3. Enable agent status
+4. Send your request normally
+5. The LLM will use tools as needed, analyze results, and continue until the task is complete
+6. Status shows in the header: `[Agents: ● 3/10 Persona]`
+7. Maximum 10 iterations per task (configurable, prevents infinite loops)
+8. Cancel anytime with `Esc`
+
+### Agent Personas
+
+| Persona | Role | Best For |
+|---------|------|----------|
+| **General** | Default assistant | Everyday questions, general tasks |
+| **Coding** | Software engineer | Code review, debugging, implementation |
+| **Research** | Research assistant | Deep investigation, analysis, summaries |
+| **Creative** | Creative writer | Brainstorming, writing, design |
+| **Captain** | Orchestrator | Complex multi-step projects, delegation |
+| **Artisan** | Deep worker | Focused implementation, detailed tasks |
+| **Sage** | Consultant | Code review, architecture advice, critique |
+| **Pathfinder** | External search | Documentation lookup, API research |
+| **Seeker** | Code explorer | Navigating large codebases, finding patterns |
+| **Witness** | Document analyst | PDF/image analysis, visual verification |
+| **Strategist** | Planner | Pre-implementation planning, risk analysis |
+| **Examiner** | Reviewer | Plan validation, quality assurance |
+| **Steward** | Task manager | Todo tracking, progress monitoring |
+| **Visionary** | Architect | Long-term planning, technical strategy |
+| **Operative** | Executor | Well-defined tasks, precise implementation |
+
+Personas are loaded from `personas/*.md` files at runtime. Each file's first line is the name (`# Name`), and the rest is the system prompt. Add your own by creating a new `.md` file in the `personas/` directory.
 
 ### Agent Use Cases
 
@@ -113,6 +178,8 @@ Agent mode enables the LLM to use tools autonomously to complete multi-step task
 - **File Operations**: "Read Cargo.toml, check the dependencies, then suggest updates"
 - **Multi-step Workflows**: "Find all TODO comments in the codebase, then create a summary document"
 - **Debugging**: "Check the last 50 lines of the application log, identify any errors, and suggest fixes"
+- **Code Review** (Sage): "Review this PR for security issues and performance bottlenecks"
+- **Planning** (Strategist): "Plan the migration from sync to async for this module"
 
 ## MCP Servers
 
@@ -159,21 +226,21 @@ Startup skips the model menu if you have a previous session. Goes straight to ch
 
 | Command | Description |
 |---------|-------------|
-| `/help`, `/h` | Show available commands |
-| `/tools`, `/t` | Toggle MCP tools panel |
-| `/model <name>`, `/m` | Switch to specific model |
+| `/help` | Show keyboard shortcuts panel |
+| `/tools` | Toggle MCP tools panel |
+| `/model <name>` | Switch to specific model |
 | `/models` | Open model selection menu |
-| `/clear`, `/c` | Clear current conversation |
-| `/new`, `/n` | Start new empty session |
-| `/save [name]`, `/s` | Save session (auto-names if no name given) |
-| `/load <name>`, `/l` | Load saved session |
+| `/clear` | Clear current conversation |
+| `/new` | Start new empty session |
+| `/save [name]` | Save session (auto-names if no name given) |
+| `/load <name>` | Load saved session |
 | `/sessions` | Open session manager popup |
-| `/delete <name>`, `/d` | Delete saved session |
-| `/export <file>`, `/e` | Export chat to markdown |
+| `/delete <name>` | Delete saved session |
+| `/export <file>` | Export chat to markdown |
 | `/mcp` | Toggle MCP servers panel |
-| `/agents` | Toggle autonomous agent mode |
-| `/poke`, `/p` | Toggle poke mode (send [POKE] on click) |
-| `/quit`, `/q` | Quit |
+| `/agents` | Open agent configuration panel |
+| `/poke` | Toggle poke mode (send [POKE] on click) |
+| `/quit` | Quit |
 
 ### Session Names
 
@@ -194,9 +261,8 @@ Models from all configured providers are grouped by provider:
 [LOCAL]
   qwen2.5-coder-14b
   llama3.1-8b
-[OPENAI]
-  gpt-4
-  gpt-3.5-turbo
+[LLAMACPP]
+  Qwen3-8B-Instruct-Q6_K
 ```
 
 ## Architecture
@@ -218,16 +284,10 @@ openlibertas/
 │   │   │   ├── export.rs         # Session export (Markdown, JSON, Plaintext)
 │   │   │   ├── lib.rs            # Library exports
 │   │   │   ├── mcp.rs            # MCP client, JSON-RPC, tool discovery
-│   │   │   ├── prompt.rs         # Provider-specific system prompt manager
+│   │   │   ├── prompt.rs         # Agent persona system prompt loader
 │   │   │   ├── search.rs         # In-conversation text search
 │   │   │   ├── state.rs          # Last model persistence
 │   │   │   └── store.rs          # Session save/load (JSON)
-│   │   └── prompts/              # Provider-specific system prompts
-│   │       ├── default.txt
-│   │       ├── anthropic.txt
-│   │       ├── kimi.txt
-│   │       ├── gpt.txt
-│   │       └── local.txt
 │   ├── openlibertas-tui/         # Terminal UI application
 │   │   └── src/
 │   │       ├── main.rs           # Event loop, runtime wiring, agent loop
@@ -240,6 +300,22 @@ openlibertas/
 │   └── openlibertas-server/      # HTTP server (WIP)
 │       └── src/
 │           └── main.rs           # Axum server for remote access
+├── personas/                     # Agent persona markdown files
+│   ├── general.md
+│   ├── coding.md
+│   ├── research.md
+│   ├── creative.md
+│   ├── captain.md
+│   ├── artisan.md
+│   ├── sage.md
+│   ├── pathfinder.md
+│   ├── seeker.md
+│   ├── witness.md
+│   ├── strategist.md
+│   ├── examiner.md
+│   ├── steward.md
+│   ├── visionary.md
+│   └── operative.md
 └── README.md
 ```
 

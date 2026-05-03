@@ -70,10 +70,11 @@ pub fn build_chat_request(
     (messages, content)
 }
 
-/// Read context files (SKILLS.md, SOUL.md, AGENTS.md) from disk
+/// Read context files (SKILLS.md, SOUL.md) from disk.
+/// These are injected as system messages at startup for developer context.
 pub fn read_context_files() -> Vec<(String, String)> {
     let mut loaded = Vec::new();
-    for filename in &["SKILLS.md", "SOUL.md", "AGENTS.md"] {
+    for filename in &["SKILLS.md", "SOUL.md"] {
         let path = std::path::Path::new(filename);
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(path) {
@@ -84,21 +85,15 @@ pub fn read_context_files() -> Vec<(String, String)> {
     loaded
 }
 
-/// Build tool result messages from pending tool calls and results
+/// Build tool result messages from pending tool calls and results.
+/// The assistant message with tool_calls must already be present in
+/// `messages`; this function only appends the `role: "tool"` results.
 pub fn build_tool_result_messages(
     messages: &[Message],
     pending_tool_calls: &[ToolCall],
     tool_results: &[String],
 ) -> Vec<Message> {
     let mut result = messages.to_vec();
-    for tool_call in pending_tool_calls {
-        result.push(Message {
-            role: Role::Assistant,
-            content: String::new(),
-            tool_calls: Some(vec![tool_call.clone()]),
-            tool_call_id: None,
-        });
-    }
     for (i, result_text) in tool_results.iter().enumerate() {
         if let Some(tool_call) = pending_tool_calls.get(i) {
             result.push(Message {
@@ -187,13 +182,28 @@ mod tests {
     }
 
     #[test]
-    fn build_tool_result_messages_assembles_correctly() {
-        let messages = vec![Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-        }];
+    fn build_tool_result_messages_appends_tool_messages_only() {
+        let messages = vec![
+            Message {
+                role: Role::User,
+                content: "hello".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "".to_string(),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: crate::backend::FunctionCall {
+                        name: "tool".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }]),
+                tool_call_id: None,
+            },
+        ];
         let tool_calls = vec![ToolCall {
             id: "call_1".to_string(),
             call_type: "function".to_string(),
@@ -205,7 +215,6 @@ mod tests {
         let results = vec!["result".to_string()];
         let result = build_tool_result_messages(&messages, &tool_calls, &results);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[1].role, Role::Assistant);
         assert_eq!(result[2].role, Role::Tool);
         assert_eq!(result[2].tool_call_id, Some("call_1".to_string()));
     }

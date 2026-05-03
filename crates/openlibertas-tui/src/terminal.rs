@@ -1,4 +1,3 @@
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use std::io::{self, stdout};
@@ -11,7 +10,6 @@ impl TerminalGuard {
     pub fn new() -> io::Result<Self> {
         enable_raw_mode()?;
         stdout().execute(EnterAlternateScreen)?;
-        stdout().execute(EnableMouseCapture)?;
         Ok(Self { _private: () })
     }
 
@@ -27,7 +25,6 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        let _ = stdout().execute(DisableMouseCapture);
         let _ = disable_raw_mode();
         let _ = stdout().execute(LeaveAlternateScreen);
     }

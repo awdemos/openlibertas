@@ -117,7 +117,7 @@ fn draw_models(frame: &mut Frame, app: &App) {
         Span::styled("Enter", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
         Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
         Span::styled("q", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
-        Span::styled(" Quit", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Quit (press twice)", Style::default().fg(app.theme.system_color())),
     ];
     let help = Paragraph::new(Line::from(footer_spans))
         .style(Style::default().fg(app.theme.system_color()))
@@ -144,6 +144,12 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         ConnectionStatus::Checking => ("◐", app.theme.secondary()),
     };
 
+    let display_model = if app.agents.status == crate::app::AgentStatus::Disabled {
+        model_name.to_string()
+    } else {
+        format!("{}@{}", app.agents.persona, model_name)
+    };
+
     let tool_indicator = if app.mcp.available_tools.is_empty() {
         ""
     } else {
@@ -158,7 +164,9 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 
     let agent_indicator = match app.agents.status {
         crate::app::AgentStatus::Disabled => String::new(),
-        crate::app::AgentStatus::Idle => " [Agents: ○]".to_string(),
+        crate::app::AgentStatus::Idle => {
+            format!(" [Agents: ○ Ready]")
+        }
         crate::app::AgentStatus::Active => {
             format!(" [Agents: ● {}/{}]", app.agents.current_iteration, app.agents.max_iterations)
         }
@@ -194,7 +202,7 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     let left_spans = vec![
         Span::styled("OpenLibertas ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
         Span::styled(format!("{} ", conn_symbol), Style::default().fg(conn_color)),
-        Span::styled(model_name, Style::default().fg(app.theme.foreground()).add_modifier(Modifier::BOLD)),
+        Span::styled(display_model, Style::default().fg(app.theme.foreground()).add_modifier(Modifier::BOLD)),
     ];
 
     let mut right_parts = vec![base_url];
@@ -241,6 +249,9 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 
     let current_match_msg = app.search.matches.get(app.search.index).map(|m| m.message_index);
 
+    let is_last_msg_streaming = app.chat.streaming && app.chat.messages.last().map(|m| m.role == Role::Assistant).unwrap_or(false);
+    let spinner_frame = app.chat.spinner_frame % crate::app::SPINNER_FRAMES.len();
+
     let messages_text: Vec<Line> = app.chat.messages
         .iter()
         .enumerate()
@@ -255,6 +266,7 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 
             let is_current_match = current_match_msg == Some(msg_idx);
             let has_match = app.search.matches.iter().any(|m| m.message_index == msg_idx);
+            let is_last = msg_idx == app.chat.messages.len().saturating_sub(1);
 
             let bg_style = if is_current_match {
                 Style::default().bg(app.theme.secondary()).fg(app.theme.panel_bg())
@@ -291,9 +303,15 @@ fn draw_chat(frame: &mut Frame, app: &App) {
                     format!("{}: ", label),
                     Style::default().fg(color).add_modifier(Modifier::BOLD),
                 )])];
-                    let rendered = app.markdown_renderer.render(&msg.content, app.theme);
+                let rendered = app.markdown_renderer.render(&msg.content, app.theme);
                 for line in rendered.lines {
                     lines.push(line);
+                }
+                if is_last && is_last_msg_streaming && msg.role == Role::Assistant {
+                    lines.push(Line::from(vec![
+                        Span::styled(crate::app::SPINNER_FRAMES[spinner_frame], Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                        Span::styled(" generating...", Style::default().fg(app.theme.secondary()).add_modifier(Modifier::ITALIC)),
+                    ]));
                 }
                 lines.push(Line::from(""));
                 if is_current_match || has_match {
@@ -307,9 +325,13 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         .collect();
 
     let total_lines = messages_text.len();
-    let viewport_height = main_chunks[1].height as usize;
+    let viewport_height = main_chunks[1].height.saturating_sub(2) as usize;
     let max_scroll = total_lines.saturating_sub(viewport_height);
-    let scroll = app.chat.scroll.min(max_scroll);
+    let scroll = if app.chat.auto_scroll {
+        max_scroll
+    } else {
+        app.chat.scroll.min(max_scroll)
+    };
 
     let messages_widget = if app.chat.messages.is_empty() && !app.chat.streaming {
         let model = app.models.current.as_deref().unwrap_or("AI");
@@ -323,6 +345,21 @@ fn draw_chat(frame: &mut Frame, app: &App) {
             Line::from(vec![
                 Span::styled("Model: ", Style::default().fg(app.theme.system_color())),
                 Span::styled(model, Style::default().fg(app.theme.assistant_color()).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("Agent: ", Style::default().fg(app.theme.system_color())),
+                Span::styled(
+                    if app.agents.status == crate::app::AgentStatus::Disabled {
+                        "Disabled".to_string()
+                    } else {
+                        format!("{} ({})", app.agents.persona, match app.agents.status {
+                            crate::app::AgentStatus::Idle => "Ready",
+                            crate::app::AgentStatus::Active => "Running",
+                            _ => "",
+                        })
+                    },
+                    Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)
+                ),
             ]),
             Line::from(""),
             Line::from(vec![
@@ -363,7 +400,6 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     } else {
         Paragraph::new(Text::from(messages_text))
             .block(Block::default().borders(Borders::ALL).title(" Chat ").title_style(Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)))
-            .wrap(Wrap { trim: true })
             .scroll((scroll as u16, 0))
     };
     frame.render_widget(messages_widget, main_chunks[1]);
@@ -385,7 +421,7 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     let input_title = if app.chat.streaming {
         let frame = app.chat.spinner_frame % crate::app::SPINNER_FRAMES.len();
         if app.agents.status == crate::app::AgentStatus::Active {
-            format!("{}  Agent step {}/{}...", crate::app::SPINNER_FRAMES[frame], app.agents.current_iteration, app.agents.max_iterations)
+            format!("{}  Agent step {}/{} ({})...", crate::app::SPINNER_FRAMES[frame], app.agents.current_iteration, app.agents.max_iterations, app.agents.persona)
         } else {
             format!("{}  Thinking...", crate::app::SPINNER_FRAMES[frame])
         }
@@ -450,6 +486,10 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 
     if app.panels.show_themes {
         draw_themes_panel(frame, app);
+    }
+
+    if app.panels.show_agents {
+        draw_agents_panel(frame, app);
     }
 
     if app.panels.show_help {
@@ -791,6 +831,77 @@ fn draw_themes_panel(frame: &mut Frame, app: &App) {
     frame.render_widget(footer, footer_area);
 }
 
+fn draw_agents_panel(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+    let popup_area = centered_rect(50, 50, area);
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Agent Configuration ")
+        .title_style(Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD))
+        .border_style(Style::default().fg(app.theme.border_color()));
+
+    let inner = popup_area.inner(Margin { horizontal: 2, vertical: 1 });
+    let content_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height.saturating_sub(1),
+    };
+
+    let options = vec![
+        ("Status", format!("{}", match app.agents.status {
+            crate::app::AgentStatus::Disabled => "Disabled",
+            crate::app::AgentStatus::Idle => "Enabled",
+            crate::app::AgentStatus::Active => "Active",
+        })),
+        ("Persona", app.agents.persona.clone()),
+        ("Max Iterations", format!("{}", app.agents.max_iterations)),
+    ];
+
+    let items: Vec<ListItem> = options
+        .iter()
+        .enumerate()
+        .map(|(i, (label, value))| {
+            let is_selected = i == app.agent_selected;
+            let style = if is_selected {
+                Style::default()
+                    .bg(app.theme.primary())
+                    .fg(app.theme.panel_bg())
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.foreground())
+            };
+            let marker = if is_selected { "▸ " } else { "  " };
+            ListItem::new(format!("{}{}: {}", marker, label, value)).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+    frame.render_widget(list, content_area);
+    frame.render_widget(block, popup_area);
+
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled("↑/↓", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled("Enter", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+        Span::styled(" Change  ", Style::default().fg(app.theme.system_color())),
+        Span::styled("Esc", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+        Span::styled(" Close", Style::default().fg(app.theme.system_color())),
+    ]))
+    .alignment(Alignment::Center);
+    let footer_area = Rect {
+        x: inner.x,
+        y: inner.y + inner.height.saturating_sub(1),
+        width: inner.width,
+        height: 1,
+    };
+    frame.render_widget(footer, footer_area);
+}
+
 fn draw_help_panel(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let popup_area = centered_rect(85, 85, area);
@@ -818,7 +929,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
             ("Ctrl+A/E", "Move cursor to start/end"),
         ]),
         ("Commands", vec![
-            ("/help, /h", "Show this help panel"),
+            ("/help", "Show this help panel"),
             ("/models", "Open model selection"),
             ("/clear, /c", "Clear conversation"),
             ("/new, /n", "Start new session"),
@@ -833,10 +944,11 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
             ("/quit, /q", "Quit"),
         ]),
         ("Agents", vec![
-            ("/agents", "Toggle autonomous agent mode"),
+            ("/agents", "Open agent configuration panel"),
             ("", "When enabled, the LLM can use tools repeatedly"),
             ("", "to complete multi-step tasks automatically."),
-            ("", "Max 10 iterations per task. Cancel with Esc."),
+            ("", "Choose a persona (General, Coding, Research, Creative)."),
+            ("", "Max iterations configurable. Cancel with Esc."),
         ]),
         ("Session", vec![
             ("/edit <n>", "Edit nth user message"),
@@ -877,10 +989,8 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
 
 fn provider_color(provider: &str, theme: Theme) -> ratatui::style::Color {
     match provider.to_lowercase().as_str() {
-        "openai" => theme.user_color(),
-        "anthropic" => theme.assistant_color(),
         "kimi" => theme.primary(),
-        "local" | "ollama" | "lm-studio" => theme.tool_color(),
+        "local" | "ollama" | "lm-studio" | "llamacpp" => theme.tool_color(),
         _ => theme.secondary(),
     }
 }

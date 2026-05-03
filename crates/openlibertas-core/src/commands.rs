@@ -2,51 +2,51 @@ use crate::backend::{Message, Model};
 use crate::domain::ProviderId;
 use crate::store::ConversationStore;
 
-/// All available slash commands with their aliases
+/// All available slash commands
 pub const SLASH_COMMANDS: &[&str] = &[
-    "/help", "/h",
-    "/tools", "/t",
-    "/model", "/m",
+    "/help",
+    "/tools",
+    "/model",
     "/models",
-    "/clear", "/c",
-    "/quit", "/q",
+    "/clear",
+    "/quit",
     "/mcp",
     "/agents",
-    "/poke", "/p",
-    "/save", "/s",
-    "/load", "/l",
+    "/poke",
+    "/save",
+    "/load",
     "/sessions",
     "/edit",
     "/delmsg",
-    "/delete", "/d",
-    "/export", "/e",
-    "/search", "/find", "/f",
-    "/themes", "/theme",
-    "/new", "/n",
+    "/delete",
+    "/export",
+    "/search",
+    "/themes",
+    "/new",
 ];
 
 /// Description for each slash command
 pub fn command_description(cmd: &str) -> &'static str {
     match cmd {
-        "/help" | "/h" => "Show help",
-        "/tools" | "/t" => "Toggle tools panel",
-        "/model" | "/m" => "Switch model",
+        "/help" => "Show help",
+        "/tools" => "Toggle tools panel",
+        "/model" => "Switch model",
         "/models" => "Open model selection",
-        "/clear" | "/c" => "Clear conversation",
-        "/save" | "/s" => "Save session",
-        "/load" | "/l" => "Load session",
+        "/clear" => "Clear conversation",
+        "/save" => "Save session",
+        "/load" => "Load session",
         "/sessions" => "Show saved sessions",
-        "/export" | "/e" => "Export to markdown/json/txt",
-        "/search" | "/find" | "/f" => "Search in conversation",
-        "/themes" | "/theme" => "Change color theme",
-        "/delete" | "/d" => "Delete session",
-        "/new" | "/n" => "Start new session",
-        "/agents" => "Toggle autonomous agents",
-        "/poke" | "/p" => "Toggle poke mode",
+        "/export" => "Export to markdown/json/txt",
+        "/search" => "Search in conversation",
+        "/themes" => "Change color theme",
+        "/delete" => "Delete session",
+        "/new" => "Start new session",
+        "/agents" => "Open agent configuration",
+        "/poke" => "Toggle poke mode",
         "/edit" => "Edit a message",
         "/delmsg" => "Delete a message",
         "/mcp" => "Toggle MCP panel",
-        "/quit" | "/q" => "Quit",
+        "/quit" => "Quit",
         _ => "",
     }
 }
@@ -89,9 +89,9 @@ impl SlashCommand {
         }
 
         match parts[0] {
-            "/help" | "/h" => Some(SlashCommand::Help),
-            "/tools" | "/t" => Some(SlashCommand::Tools),
-            "/model" | "/m" => {
+            "/help" => Some(SlashCommand::Help),
+            "/tools" => Some(SlashCommand::Tools),
+            "/model" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Model(parts[1..].join(" ")))
                 } else {
@@ -99,19 +99,19 @@ impl SlashCommand {
                 }
             }
             "/models" => Some(SlashCommand::Models),
-            "/clear" | "/c" => Some(SlashCommand::Clear),
-            "/quit" | "/q" => Some(SlashCommand::Quit),
+            "/clear" => Some(SlashCommand::Clear),
+            "/quit" => Some(SlashCommand::Quit),
             "/mcp" => Some(SlashCommand::Mcp),
             "/agents" => Some(SlashCommand::Agents),
-            "/poke" | "/p" => Some(SlashCommand::Poke),
-            "/save" | "/s" => {
+            "/poke" => Some(SlashCommand::Poke),
+            "/save" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Save(parts[1..].join(" ")))
                 } else {
                     Some(SlashCommand::Save(String::new()))
                 }
             }
-            "/load" | "/l" => {
+            "/load" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Load(parts[1..].join(" ")))
                 } else {
@@ -126,42 +126,42 @@ impl SlashCommand {
                     Some(SlashCommand::Edit(0))
                 }
             }
-            "/delmsg" | "/dm" => {
+            "/delmsg" => {
                 if parts.len() > 1 {
                     parts[1].parse::<usize>().ok().map(SlashCommand::DeleteMessage)
                 } else {
                     Some(SlashCommand::DeleteMessage(0))
                 }
             }
-            "/delete" | "/d" => {
+            "/delete" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Delete(parts[1..].join(" ")))
                 } else {
                     Some(SlashCommand::Delete(String::new()))
                 }
             }
-            "/export" | "/e" => {
+            "/export" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Export(parts[1..].join(" ")))
                 } else {
                     Some(SlashCommand::Export(String::new()))
                 }
             }
-            "/search" | "/find" | "/f" => {
+            "/search" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Search(parts[1..].join(" ")))
                 } else {
                     Some(SlashCommand::Search(String::new()))
                 }
             }
-            "/themes" | "/theme" => {
+            "/themes" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Themes(parts[1..].join(" ")))
                 } else {
                     Some(SlashCommand::Themes(String::new()))
                 }
             }
-            "/new" | "/n" => Some(SlashCommand::New),
+            "/new" => Some(SlashCommand::New),
             cmd => Some(SlashCommand::Unknown(cmd.to_string())),
         }
     }
@@ -240,23 +240,23 @@ pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
 /// Build the help message
 pub fn build_help_message() -> String {
     "Available commands:\n\
-     /help, /h       - Show this help\n\
-     /tools, /t      - Toggle tools panel\n\
-     /model, /m      - Switch model (e.g., /model gpt-4)\n\
+     /help           - Show this help\n\
+     /tools          - Toggle tools panel\n\
+     /model          - Switch model (e.g., /model gpt-4)\n\
      /models         - Open model selection menu\n\
-     /clear, /c      - Clear conversation\n\
-     /new, /n        - Start new session\n\
-     /save, /s       - Save session (/save [name])\n\
-     /load, /l       - Load session (/load [name])\n\
+     /clear          - Clear conversation\n\
+     /new            - Start new session\n\
+     /save           - Save session (/save [name])\n\
+     /load           - Load session (/load [name])\n\
      /sessions       - List saved sessions\n\
-     /export, /e     - Export to markdown/json/txt (/export [file])\n\
-     /search, /find, /f - Search in conversation (/search [query])\n\
-     /themes, /theme - Change color theme (/theme [name], or /themes for picker)\n\
-     /delete, /d     - Delete session (/delete [name])\n\
-     /quit, /q       - Quit openlibertas\n\
+     /export         - Export to markdown/json/txt (/export [file])\n\
+     /search         - Search in conversation (/search [query])\n\
+     /themes         - Change color theme (/theme [name], or /themes for picker)\n\
+     /delete         - Delete session (/delete [name])\n\
+     /quit           - Quit openlibertas\n\
      /mcp            - Toggle MCP servers panel\n\
-     /agents         - Toggle autonomous agents mode\n\
-     /poke, /p       - Toggle poke mode (click to send [POKE] to LLM)\n\
+     /agents         - Open agent configuration panel\n\
+     /poke           - Toggle poke mode (click to send [POKE] to LLM)\n\
      /edit <n>       - Edit the nth user message\n\
      /delmsg <n>     - Delete the nth message".to_string()
 }
@@ -332,6 +332,7 @@ mod tests {
     fn autocomplete_suggestions_for_prefix() {
         let suggestions = SlashCommand::autocomplete("/s");
         assert!(suggestions.contains(&"/save"));
+        assert!(suggestions.contains(&"/search"));
         assert!(suggestions.contains(&"/sessions"));
     }
 
