@@ -95,9 +95,11 @@ fn draw_models(frame: &mut Frame, app: &App) {
             };
 
             let marker = if is_selected { "▸ " } else { "  " };
+            let tool_indicator = if m.supports_tools { " ⚡" } else { "" };
             items.push(ListItem::new(Line::from(vec![
                 Span::styled(marker, Style::default().fg(app.theme.primary())),
                 Span::styled(m.id.clone(), style),
+                Span::styled(tool_indicator, Style::default().fg(app.theme.secondary()).add_modifier(Modifier::DIM)),
             ])));
         }
 
@@ -129,9 +131,10 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Min(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
         .margin(1)
         .split(frame.area());
@@ -202,10 +205,10 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     let left_spans = vec![
         Span::styled("OpenLibertas ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
         Span::styled(format!("{} ", conn_symbol), Style::default().fg(conn_color)),
-        Span::styled(display_model, Style::default().fg(app.theme.foreground()).add_modifier(Modifier::BOLD)),
+        Span::styled(display_model.clone(), Style::default().fg(app.theme.foreground()).add_modifier(Modifier::BOLD)),
     ];
 
-    let mut right_parts = vec![base_url];
+    let mut right_parts = vec![base_url.clone()];
     if !tool_indicator.is_empty() {
         right_parts.push(tool_indicator.trim_start().to_string());
     }
@@ -243,8 +246,7 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         ]
     };
 
-    let header = Paragraph::new(Text::from(header_lines))
-        .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(app.theme.border_color())));
+    let header = Paragraph::new(Text::from(header_lines));
     frame.render_widget(header, main_chunks[0]);
 
     let current_match_msg = app.search.matches.get(app.search.index).map(|m| m.message_index);
@@ -279,17 +281,25 @@ fn draw_chat(frame: &mut Frame, app: &App) {
             if let Some(ref tool_calls) = msg.tool_calls {
                 let mut lines = vec![];
                 for tc in tool_calls {
+                    let key_arg = App::extract_key_argument(&tc.function.name, &tc.function.arguments);
+                    let display = if key_arg.is_empty() {
+                        format!("Using tool: {}", tc.function.name)
+                    } else {
+                        format!("{}: {}", tc.function.name, key_arg)
+                    };
                     lines.push(Line::from(vec![
                         Span::styled("🔧 ", Style::default().fg(app.theme.tool_color())),
                         Span::styled(
-                            format!("Using tool: {}", tc.function.name),
+                            display,
                             Style::default().fg(app.theme.tool_color()).add_modifier(Modifier::BOLD),
                         ),
                     ]));
-                    lines.push(Line::from(vec![Span::styled(
-                        format!("   Args: {}", tc.function.arguments),
-                        Style::default().fg(app.theme.system_color()),
-                    )]));
+                    if key_arg.is_empty() {
+                        lines.push(Line::from(vec![Span::styled(
+                            format!("   Args: {}", tc.function.arguments),
+                            Style::default().fg(app.theme.system_color()),
+                        )]));
+                    }
                 }
                 lines.push(Line::from(""));
                 if is_current_match || has_match {
@@ -303,7 +313,13 @@ fn draw_chat(frame: &mut Frame, app: &App) {
                     format!("{}: ", label),
                     Style::default().fg(color).add_modifier(Modifier::BOLD),
                 )])];
-                let rendered = app.markdown_renderer.render(&msg.content, app.theme);
+                let viewport_width = main_chunks[1].width.saturating_sub(2) as usize;
+                let wrapped_content = if viewport_width > 10 {
+                    crate::markdown::wrap_markdown(&msg.content, viewport_width)
+                } else {
+                    msg.content.clone()
+                };
+                let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
                 for line in rendered.lines {
                     lines.push(line);
                 }
@@ -418,40 +434,25 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         &mut scrollbar_state,
     );
 
-    let input_title = if app.chat.streaming {
-        let frame = app.chat.spinner_frame % crate::app::SPINNER_FRAMES.len();
-        if app.agents.status == crate::app::AgentStatus::Active {
-            format!("{}  Agent step {}/{} ({})...", crate::app::SPINNER_FRAMES[frame], app.agents.current_iteration, app.agents.max_iterations, app.agents.persona)
-        } else {
-            format!("{}  Thinking...", crate::app::SPINNER_FRAMES[frame])
-        }
-    } else if app.input.show_autocomplete && !app.input.buffer.is_empty() {
-        let suggestions = app.get_autocomplete_suggestions();
-        if suggestions.is_empty() {
-            "Message".to_string()
-        } else {
-            format!("Tab to cycle: {}", suggestions.join("  "))
-        }
-    } else if app.input.buffer == "/" {
-        "Type a command or Tab to browse".to_string()
-    } else if app.input.buffer.starts_with('/') {
-        let suggestions = app.get_autocomplete_suggestions();
-        if suggestions.is_empty() {
-            "Unknown command".to_string()
-        } else {
-            format!("Tab to cycle: {}", suggestions.join("  "))
-        }
-    } else {
-        "Message".to_string()
-    };
+    let status_spans = vec![
+        Span::styled(format!("{} ", conn_symbol), Style::default().fg(conn_color)),
+        Span::styled(display_model.clone(), Style::default().fg(app.theme.foreground()).add_modifier(Modifier::BOLD)),
+        Span::styled(" | ", Style::default().fg(app.theme.border_color())),
+        Span::styled(base_url.clone(), Style::default().fg(app.theme.system_color())),
+    ];
+    let status_bar = Paragraph::new(Line::from(status_spans))
+        .style(Style::default().fg(app.theme.system_color()));
+    frame.render_widget(status_bar, main_chunks[2]);
 
-    let input_block = Block::default()
-        .borders(Borders::ALL)
-        .title(input_title)
-        .title_style(Style::default().fg(app.theme.system_color()))
-        .border_style(Style::default().fg(app.theme.border_color()));
-    let input = Paragraph::new(app.input.buffer.clone()).block(input_block);
-    frame.render_widget(input, main_chunks[2]);
+    let prompt_symbol = if app.agents.status == crate::app::AgentStatus::Disabled {
+        "> "
+    } else {
+        "✨ "
+    };
+    let input_text = format!("{}{}", prompt_symbol, app.input.buffer);
+    let input = Paragraph::new(input_text.clone())
+        .style(Style::default().fg(app.theme.foreground()));
+    frame.render_widget(input, main_chunks[3]);
 
     let safe_cursor_pos = {
         let pos = app.input.cursor_pos.min(app.input.buffer.len());
@@ -465,8 +466,9 @@ fn draw_chat(frame: &mut Frame, app: &App) {
                 .unwrap_or(0)
         }
     };
-    let cursor_x = main_chunks[2].x + app.input.buffer[..safe_cursor_pos].width() as u16 + 1;
-    frame.set_cursor_position((cursor_x, main_chunks[2].y + 1));
+    let prompt_width = prompt_symbol.width() as u16;
+    let cursor_x = main_chunks[3].x + prompt_width + app.input.buffer[..safe_cursor_pos].width() as u16;
+    frame.set_cursor_position((cursor_x, main_chunks[3].y));
 
     if app.panels.show_tools {
         draw_tools_panel(frame, app);
@@ -573,7 +575,7 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Clear, popup_area);
 
-    let servers: Vec<String> = app.mcp.client.as_ref().map_or(Vec::new(), |c| c.get_server_names());
+    let servers: Vec<String> = app.mcp.client.as_ref().map_or(Vec::new(), |c| c.server_names());
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" MCP Servers ({}) ", servers.len()))
@@ -596,9 +598,26 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         let lines: Vec<Line> = servers
             .into_iter()
             .map(|name| {
+                let status = app.mcp.server_statuses.get(&name);
+                let (indicator, color) = match status {
+                    Some(openlibertas_core::domain::McpServerStatus::Connected) => ("●", app.theme.user_color()),
+                    Some(openlibertas_core::domain::McpServerStatus::Connecting) => ("◐", app.theme.secondary()),
+                    Some(openlibertas_core::domain::McpServerStatus::Failed) => ("✗", app.theme.error_color()),
+                    Some(openlibertas_core::domain::McpServerStatus::Disabled) => ("○", app.theme.system_color()),
+                    Some(openlibertas_core::domain::McpServerStatus::Pending) => ("○", app.theme.system_color()),
+                    None => ("?", app.theme.system_color()),
+                };
+                let status_text = match status {
+                    Some(s) => format!("{:?}", s),
+                    None => "Unknown".to_string(),
+                };
                 Line::from(vec![
-                    Span::styled("● ", Style::default().fg(app.theme.user_color())),
-                    Span::styled(name, Style::default().fg(app.theme.foreground())),
+                    Span::styled(format!("{} ", indicator), Style::default().fg(color)),
+                    Span::styled(name.clone(), Style::default().fg(app.theme.foreground())),
+                    Span::styled(
+                        format!(" ({})", status_text.to_lowercase()),
+                        Style::default().fg(app.theme.system_color()),
+                    ),
                 ])
             })
             .collect();
@@ -923,38 +942,49 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
         ]),
         ("Chat", vec![
             ("Enter", "Send message or select command"),
-            ("Tab", "Cycle slash command autocomplete"),
+            ("Tab (on /cmd)", "Cycle slash command autocomplete"),
+            ("Tab (empty)", "Enable agents or cycle persona"),
             ("/", "Start slash command"),
             ("Ctrl+W", "Delete word backward"),
             ("Ctrl+A/E", "Move cursor to start/end"),
         ]),
-        ("Commands", vec![
+        ("Info", vec![
             ("/help", "Show this help panel"),
-            ("/models", "Open model selection"),
-            ("/clear, /c", "Clear conversation"),
-            ("/new, /n", "Start new session"),
-            ("/save, /s", "Save session"),
-            ("/load, /l", "Load session"),
-            ("/sessions", "Show saved sessions"),
-            ("/export, /e", "Export to file"),
-            ("/search, /f", "Search in conversation"),
-            ("/themes", "Change color theme"),
-            ("/tools, /t", "Toggle tools panel"),
-            ("/mcp", "Toggle MCP panel"),
-            ("/quit, /q", "Quit"),
+            ("/version", "Show version info"),
         ]),
-        ("Agents", vec![
-            ("/agents", "Open agent configuration panel"),
-            ("", "When enabled, the LLM can use tools repeatedly"),
-            ("", "to complete multi-step tasks automatically."),
-            ("", "Choose a persona (General, Coding, Research, Creative)."),
-            ("", "Max iterations configurable. Cancel with Esc."),
+        ("Config", vec![
+            ("/model [name]", "Switch model or open picker"),
+            ("/theme [name]", "Change color theme"),
         ]),
         ("Session", vec![
-            ("/edit <n>", "Edit nth user message"),
-            ("/delmsg <n>", "Delete nth message"),
-            ("/delete <name>", "Delete saved session"),
-            ("/poke, /p", "Toggle poke mode"),
+            ("/new", "Start new session"),
+            ("/clear", "Clear conversation"),
+            ("/save [name]", "Save session to disk"),
+            ("/load [name]", "Load session from disk"),
+            ("/sessions", "List saved sessions"),
+            ("/delete [name]", "Delete a saved session"),
+            ("/export [file]", "Export to markdown/json/txt"),
+            ("/undo", "Undo last turn"),
+            ("/title <name>", "Rename current session"),
+        ]),
+        ("Chat Commands", vec![
+            ("/search [query]", "Search in conversation"),
+            ("/edit <n>", "Edit a message by index"),
+            ("/remove <n>", "Remove a message by index"),
+        ]),
+        ("Agent", vec![
+            ("/agents", "Open agent configuration"),
+            ("/yolo", "Toggle auto-approval for tools"),
+            ("Tab (empty input)", "Enable agents or cycle persona"),
+            ("", "When enabled, LLM uses tools repeatedly"),
+            ("", "to complete multi-step tasks automatically."),
+        ]),
+        ("Tools", vec![
+            ("/mcp", "Show MCP server status"),
+            ("/tools", "Toggle tools panel"),
+        ]),
+        ("System", vec![
+            ("/quit", "Quit application"),
         ]),
     ];
 

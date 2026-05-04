@@ -37,6 +37,7 @@ pub struct ChatState {
     pub auto_scroll: bool,
     pub cancel_token: tokio_util::sync::CancellationToken,
     pub spinner_frame: usize,
+    pub compactor: openlibertas_core::conversation::ContextCompactor,
 }
 
 #[derive(Debug, PartialEq)]
@@ -72,6 +73,7 @@ pub struct McpState {
     pub available_tools: Vec<McpTool>,
     pub pending_tool_calls: Vec<ToolCall>,
     pub tool_results: Vec<String>,
+    pub server_statuses: std::collections::HashMap<String, openlibertas_core::domain::McpServerStatus>,
 }
 
 pub struct SearchState {
@@ -84,7 +86,6 @@ pub struct SearchState {
 pub enum AgentStatus {
     Disabled,
     Idle,
-    #[allow(dead_code)]
     Active,
 }
 
@@ -93,6 +94,7 @@ pub struct AgentState {
     pub max_iterations: usize,
     pub current_iteration: usize,
     pub persona: String,
+    pub yolo_mode: bool,
 }
 
 pub struct App {
@@ -116,7 +118,6 @@ pub struct App {
     pub markdown_renderer: MarkdownRenderer,
     pub theme: Theme,
     pub theme_selected: usize,
-    pub poking: bool,
     pub agent_selected: usize,
 }
 
@@ -138,6 +139,7 @@ impl App {
                 auto_scroll: true,
                 cancel_token: tokio_util::sync::CancellationToken::new(),
                 spinner_frame: 0,
+                compactor: openlibertas_core::conversation::ContextCompactor::default(),
             },
             input: InputState {
                 buffer: String::new(),
@@ -168,6 +170,7 @@ impl App {
                 available_tools: Vec::new(),
                 pending_tool_calls: Vec::new(),
                 tool_results: Vec::new(),
+                server_statuses: std::collections::HashMap::new(),
             },
             search: SearchState {
                 matches: Vec::new(),
@@ -179,6 +182,7 @@ impl App {
                 max_iterations: 10,
                 current_iteration: 0,
                 persona: "General".to_string(),
+                yolo_mode: false,
             },
             store,
             prompt_manager: PromptManager::new(),
@@ -188,7 +192,6 @@ impl App {
             markdown_renderer: MarkdownRenderer::new(),
             theme: Theme::Default,
             theme_selected: 0,
-            poking: false,
             agent_selected: 0,
         }
     }
@@ -200,24 +203,9 @@ impl App {
         self.models.provider = provider;
     }
 
-    pub fn get_autocomplete_suggestions(&self) -> Vec<&'static str> {
+    #[cfg(test)]
+    fn get_autocomplete_suggestions(&self) -> Vec<&'static str> {
         SlashCommand::autocomplete(&self.input.buffer)
-    }
-
-    #[allow(dead_code)]
-    pub fn apply_autocomplete(&mut self) -> bool {
-        let suggestions: Vec<String> = self
-            .get_autocomplete_suggestions()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
-        if suggestions.is_empty() {
-            return false;
-        }
-        let idx = self.input.autocomplete_index % suggestions.len();
-        self.input.buffer = suggestions[idx].clone();
-        self.input.autocomplete_index = (self.input.autocomplete_index + 1) % suggestions.len();
-        true
     }
 
     pub fn parse_slash_command(input: &str) -> Option<SlashCommand> {
@@ -229,6 +217,9 @@ impl App {
             SlashCommand::Help => {
                 self.panels.show_help = true;
                 None
+            }
+            SlashCommand::Version => {
+                Some(format!("OpenLibertas v{}", env!("CARGO_PKG_VERSION")))
             }
             SlashCommand::Tools => {
                 self.panels.show_tools = !self.panels.show_tools;
@@ -243,7 +234,7 @@ impl App {
                             .collect::<Vec<_>>()
                             .join("\n")
                     };
-                    Some(format!("Available Tools ({}):\n{}", self.mcp.available_tools.len(), tool_list))
+                    Some(format!("Available Tools ({})\n{}", self.mcp.available_tools.len(), tool_list))
                 } else {
                     Some("Tools panel hidden".to_string())
                 }
@@ -270,7 +261,7 @@ impl App {
                         None => {
                             let suggestions = get_model_suggestions(&self.models.models, &model_name);
                             if suggestions.is_empty() {
-                                Some(format!("Model '{}' not found. Use /models to see available models.", model_name))
+                                Some(format!("Model '{}' not found. Use /model to see available models.", model_name))
                             } else {
                                 Some(format!(
                                     "Model '{}' not found. Did you mean: {}?",
@@ -281,12 +272,6 @@ impl App {
                         }
                     }
                 }
-            }
-            SlashCommand::Models => {
-                self.screen = Screen::Models;
-                self.panels.show_tools = false;
-                self.panels.show_mcp = false;
-                Some("Select a model".to_string())
             }
             SlashCommand::Clear => {
                 self.chat.messages.clear();
@@ -306,18 +291,24 @@ impl App {
                 self.agent_selected = 0;
                 None
             }
-            SlashCommand::Poke => {
-                self.poking = !self.poking;
-                let status = if self.poking { "enabled" } else { "disabled" };
-                Some(format!(
-                    "Poke mode {}. {}",
-                    status,
-                    if self.poking {
-                        "Click anywhere in chat to send [POKE] to the LLM context."
-                    } else {
-                        "Mouse clicks return to normal behavior."
-                    }
-                ))
+            SlashCommand::Yolo => {
+                self.agents.yolo_mode = !self.agents.yolo_mode;
+                if self.agents.yolo_mode {
+                    Some("YOLO mode enabled. Destructive tools will execute without confirmation.".to_string())
+                } else {
+                    Some("YOLO mode disabled. Destructive tools will require confirmation.".to_string())
+                }
+            }
+            SlashCommand::Compact => {
+                let before = self.chat.messages.len();
+                let compacted = self.chat.compactor.compact(&self.chat.messages);
+                let after = compacted.len();
+                if after < before {
+                    self.chat.messages = compacted;
+                    Some(format!("Context compacted: {} → {} messages", before, after))
+                } else {
+                    Some(format!("No compaction needed ({} messages)", before))
+                }
             }
             SlashCommand::Edit(n) => {
                 let user_msgs: Vec<(usize, &Message)> = self.chat.messages.iter().enumerate()
@@ -333,9 +324,9 @@ impl App {
                     Some(format!("Editing message {}. Press Enter to resend.", n))
                 }
             }
-            SlashCommand::DeleteMessage(n) => {
+            SlashCommand::Remove(n) => {
                 if n == 0 || n > self.chat.messages.len() {
-                    Some(format!("Invalid message number. There are {} messages. Use /delmsg 1..{}", self.chat.messages.len(), self.chat.messages.len()))
+                    Some(format!("Invalid message number. There are {} messages. Use /remove 1..{}", self.chat.messages.len(), self.chat.messages.len()))
                 } else {
                     let removed = self.chat.messages.remove(n - 1);
                     let preview = if removed.content.len() > 40 {
@@ -343,7 +334,7 @@ impl App {
                     } else {
                         removed.content.clone()
                     };
-                    Some(format!("Deleted message {}: [{}] {}", n, removed.role, preview))
+                    Some(format!("Removed message {}: [{}] {}", n, removed.role, preview))
                 }
             }
             SlashCommand::Mcp => {
@@ -351,7 +342,7 @@ impl App {
                 self.panels.show_tools = false;
                 if self.panels.show_mcp {
                     if let Some(client) = &self.mcp.client {
-                        let servers = client.get_server_names();
+                        let servers = client.server_names();
                         if servers.is_empty() {
                             Some("No MCP servers configured".to_string())
                         } else {
@@ -465,7 +456,7 @@ impl App {
                     }
                 }
             }
-            SlashCommand::Themes(name) => {
+            SlashCommand::Theme(name) => {
                 if name.is_empty() {
                     self.open_themes_panel();
                     None
@@ -493,6 +484,22 @@ impl App {
                     Some("New session started".to_string())
                 } else {
                     Some(format!("New session started. Loaded: {}", loaded.join(", ")))
+                }
+            }
+            SlashCommand::Undo => {
+                if self.chat.messages.len() >= 2 {
+                    self.chat.messages.pop();
+                    self.chat.messages.pop();
+                    Some("Undid last turn".to_string())
+                } else {
+                    Some("Nothing to undo".to_string())
+                }
+            }
+            SlashCommand::Title(name) => {
+                if name.is_empty() {
+                    Some("Usage: /title <name>".to_string())
+                } else {
+                    Some(format!("Session title set to: '{}' (Note: titles are not yet persisted)", name))
                 }
             }
             SlashCommand::Unknown(cmd) => Some(format!("Unknown command: {}", cmd)),
@@ -523,8 +530,10 @@ impl App {
     pub fn push_user_message(&mut self) -> Vec<Message> {
         let mut messages = self.chat.messages.clone();
 
-        if self.agents.status == AgentStatus::Active && self.agents.current_iteration == 0 {
-            messages.push(Message {
+        let content = openlibertas_core::conversation::parse_file_context(&self.input.buffer);
+
+        if self.agents.status == AgentStatus::Active {
+            messages.insert(0, Message {
                 role: Role::System,
                 content: self.agent_system_prompt(),
                 tool_calls: None,
@@ -532,11 +541,9 @@ impl App {
             });
         }
 
-        let content = openlibertas_core::conversation::parse_file_context(&self.input.buffer);
-
         if let Some(prompt) = self.system_prompt.as_deref() {
             if !messages.iter().any(|m| m.role == Role::System && m.content == prompt) {
-                messages.push(Message {
+                messages.insert(0, Message {
                     role: Role::System,
                     content: prompt.to_string(),
                     tool_calls: None,
@@ -606,6 +613,15 @@ impl App {
                 }
             }
         }
+        self.autosave();
+    }
+
+    pub fn autosave(&self) {
+        if let Some(ref store) = self.store {
+            let model = self.models.current.as_deref().unwrap_or("unknown");
+            let id = format!("autosave-{}.md", model.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-").replace("--", "-"));
+            let _ = store.save_markdown(&id, self.models.current.as_deref(), &self.chat.messages);
+        }
     }
 
     pub fn advance_spinner(&mut self) {
@@ -626,11 +642,6 @@ impl App {
             self.agents.status = AgentStatus::Idle;
             self.agents.current_iteration = 0;
         }
-    }
-
-    pub fn should_continue_agent(&self) -> bool {
-        self.agents.status == AgentStatus::Active
-            && self.agents.current_iteration < self.agents.max_iterations
     }
 
     pub fn agent_iteration_exceeded(&self) -> bool {
@@ -699,6 +710,14 @@ available tools to refine and polish your work.".to_string()));
             .unwrap_or_else(|| personas[0].1.clone())
     }
 
+    pub fn cycle_agent_persona(&mut self) -> String {
+        let personas = self.agent_personas();
+        let current = personas.iter().position(|(n, _)| *n == self.agents.persona).unwrap_or(0);
+        let next = (current + 1) % personas.len();
+        self.agents.persona = personas[next].0.to_string();
+        self.agents.persona.clone()
+    }
+
     pub fn add_error_message(&mut self, error: String) {
         self.chat.messages.push(Message {
             role: Role::System,
@@ -719,6 +738,39 @@ available tools to refine and polish your work.".to_string()));
             tool_calls: None,
             tool_call_id: None,
         });
+    }
+
+    pub fn tool_needs_approval(tool_name: &str) -> bool {
+        let destructive = [
+            "write_file", "writefile", "writeFile",
+            "edit_file", "editfile", "editFile",
+            "shell", "execute", "exec",
+            "bash", "sh", "run_command",
+            "delete_file", "deletefile", "deleteFile", "remove_file",
+            "create_file", "createfile", "createFile",
+            "patch", "apply_patch", "applyPatch",
+        ];
+        destructive.iter().any(|&d| tool_name.eq_ignore_ascii_case(d))
+    }
+
+    pub fn extract_key_argument(tool_name: &str, arguments: &str) -> String {
+        let parsed: serde_json::Value = serde_json::from_str(arguments).unwrap_or(serde_json::Value::Null);
+        let key_fields = match tool_name.to_lowercase().as_str() {
+            n if n.contains("read") => vec!["path", "file", "uri", "url"],
+            n if n.contains("write") || n.contains("edit") => vec!["path", "file", "uri"],
+            n if n.contains("shell") || n.contains("exec") || n.contains("run") || n.contains("bash") => vec!["command", "cmd", "script"],
+            n if n.contains("search") => vec!["query", "q", "pattern", "term"],
+            n if n.contains("fetch") || n.contains("get") || n.contains("download") => vec!["url", "uri", "path"],
+            _ => vec!["path", "file", "name", "query", "command", "input"],
+        };
+        for field in key_fields {
+            if let Some(val) = parsed.get(field) {
+                if let Some(s) = val.as_str() {
+                    return s.to_string();
+                }
+            }
+        }
+        String::new()
     }
 
     pub fn scroll_page_up(&mut self) {
@@ -929,10 +981,7 @@ available tools to refine and polish your work.".to_string()));
                 };
             }
             1 => {
-                let personas = self.agent_personas();
-                let current = personas.iter().position(|(n, _)| *n == self.agents.persona).unwrap_or(0);
-                let next = (current + 1) % personas.len();
-                self.agents.persona = personas[next].0.to_string();
+                self.cycle_agent_persona();
             }
             2 => {
                 self.agents.max_iterations = if self.agents.max_iterations >= 50 {
@@ -987,8 +1036,19 @@ available tools to refine and polish your work.".to_string()));
     }
 
     pub fn build_tool_result_messages(&self) -> Vec<Message> {
+        let mut messages = self.chat.messages.clone();
+
+        if self.agents.status == AgentStatus::Active {
+            messages.insert(0, Message {
+                role: Role::System,
+                content: self.agent_system_prompt(),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+
         openlibertas_core::conversation::build_tool_result_messages(
-            &self.chat.messages,
+            &messages,
             &self.mcp.pending_tool_calls,
             &self.mcp.tool_results,
         )
@@ -1081,8 +1141,8 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
-            Model { id: "llama3-8b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
+            Model { id: "llama3-8b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model("qwen3-8b".to_string()));
@@ -1096,7 +1156,7 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "qwen3-8b-instruct".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-8b-instruct".to_string(), provider: ProviderId::new("local"), supports_tools: true },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model("instruct".to_string()));
@@ -1109,14 +1169,14 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
-            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
+            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model("nonexistent".to_string()));
         let msg = result.unwrap();
         assert!(msg.contains("not found"));
-        assert!(msg.contains("/models"));
+        assert!(msg.contains("/model"));
     }
 
     #[test]
@@ -1124,8 +1184,8 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
-            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
+            Model { id: "qwen3-4b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model("qwen".to_string()));
@@ -1139,11 +1199,68 @@ mod tests {
         let config = Config::default();
         let mut app = App::new(config);
         app.models.models = vec![
-            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local") },
+            Model { id: "qwen3-8b".to_string(), provider: ProviderId::new("local"), supports_tools: true },
         ];
 
         let result = app.execute_slash_command(SlashCommand::Model(String::new()));
         assert_eq!(app.screen, Screen::Models);
         assert!(result.unwrap().contains("Select a model"));
+    }
+
+    #[test]
+    fn agent_starts_disabled() {
+        let config = Config::default();
+        let app = App::new(config);
+        assert_eq!(app.agents.status, AgentStatus::Disabled);
+        assert_eq!(app.agents.max_iterations, 10);
+        assert_eq!(app.agents.current_iteration, 0);
+    }
+
+    #[test]
+    fn agent_status_transitions() {
+        let config = Config::default();
+        let mut app = App::new(config);
+        app.agents.status = AgentStatus::Idle;
+        app.start_agent_loop();
+        assert_eq!(app.agents.status, AgentStatus::Active);
+        assert_eq!(app.agents.current_iteration, 0);
+
+        app.finish_agent_loop();
+        assert_eq!(app.agents.status, AgentStatus::Idle);
+        assert_eq!(app.agents.current_iteration, 0);
+    }
+
+    #[test]
+    fn agent_iteration_tracking() {
+        let config = Config::default();
+        let mut app = App::new(config);
+        app.agents.status = AgentStatus::Idle;
+        app.start_agent_loop();
+        assert_eq!(app.agents.current_iteration, 0);
+
+        app.increment_agent_iteration();
+        assert_eq!(app.agents.current_iteration, 1);
+        assert!(!app.agent_iteration_exceeded());
+
+        app.agents.current_iteration = 10;
+        assert!(app.agent_iteration_exceeded());
+    }
+
+    #[test]
+    fn agent_persona_cycles() {
+        let config = Config::default();
+        let mut app = App::new(config);
+        let initial = app.agents.persona.clone();
+
+        app.cycle_agent_persona();
+        assert_ne!(app.agents.persona, initial);
+    }
+
+    #[test]
+    fn agent_system_prompt_returns_content() {
+        let config = Config::default();
+        let app = App::new(config);
+        let prompt = app.agent_system_prompt();
+        assert!(!prompt.is_empty());
     }
 }

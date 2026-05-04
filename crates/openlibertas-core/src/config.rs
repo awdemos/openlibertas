@@ -8,6 +8,7 @@ const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Provider {
     pub name: String,
     pub base_url: String,
@@ -17,6 +18,8 @@ pub struct Provider {
     pub enabled: bool,
     #[serde(default = "default_supports_tools")]
     pub supports_tools: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 fn default_supports_tools() -> bool {
@@ -31,6 +34,7 @@ impl Provider {
             api_key: DEFAULT_API_KEY.to_string(),
             enabled: true,
             supports_tools: true,
+            extra_params: None,
         }
     }
 
@@ -41,11 +45,13 @@ impl Provider {
             api_key: DEFAULT_API_KEY.to_string(),
             enabled: true,
             supports_tools: true,
+            extra_params: None,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Config {
     #[serde(default)]
     pub providers: Vec<Provider>,
@@ -113,7 +119,6 @@ impl Config {
             .map(|dirs| dirs.config_dir().join("config.toml"))
     }
 
-    #[allow(dead_code)]
     pub fn data_dir() -> Option<PathBuf> {
         directories::ProjectDirs::from("com", "openlibertas", "openlibertas")
             .map(|dirs| dirs.data_dir().to_path_buf())
@@ -147,6 +152,7 @@ mod tests {
         assert_eq!(p.api_key, DEFAULT_API_KEY);
         assert!(p.enabled);
         assert!(p.supports_tools);
+        assert!(p.extra_params.is_none());
     }
 
     #[test]
@@ -157,5 +163,84 @@ mod tests {
         assert_eq!(p.api_key, DEFAULT_API_KEY);
         assert!(p.enabled);
         assert!(p.supports_tools);
+        assert!(p.extra_params.is_none());
+    }
+
+    #[test]
+    fn provider_serialization_roundtrip() {
+        let p = Provider {
+            name: "test".to_string(),
+            base_url: "http://test:8080/v1".to_string(),
+            api_key: "sk-test".to_string(),
+            enabled: false,
+            supports_tools: false,
+            extra_params: None,
+        };
+        let toml_str = toml::to_string(&p).unwrap();
+        let deserialized: Provider = toml::from_str(&toml_str).unwrap();
+        assert_eq!(deserialized.name, p.name);
+        assert_eq!(deserialized.base_url, p.base_url);
+        assert_eq!(deserialized.api_key, p.api_key);
+        assert!(!deserialized.enabled);
+        assert!(!deserialized.supports_tools);
+    }
+
+    #[test]
+    fn provider_supports_tools_defaults_to_true() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert!(p.supports_tools);
+    }
+
+    #[test]
+    fn provider_with_extra_params_serializes() {
+        let mut extra = serde_json::Map::new();
+        extra.insert("temperature".to_string(), serde_json::json!(0.7));
+        let p = Provider {
+            name: "test".to_string(),
+            base_url: "http://test:8080/v1".to_string(),
+            api_key: DEFAULT_API_KEY.to_string(),
+            enabled: true,
+            supports_tools: true,
+            extra_params: Some(extra),
+        };
+        let json = serde_json::to_value(&p).unwrap();
+        assert!(json.get("extra_params").is_some());
+    }
+
+    #[test]
+    fn config_serialization_roundtrip() {
+        let config = Config {
+            providers: vec![Provider::local_default()],
+            model: Some("test-model".to_string()),
+            max_tokens: 4096,
+        };
+        let toml_str = toml::to_string(&config).unwrap();
+        let deserialized: Config = toml::from_str(&toml_str).unwrap();
+        assert_eq!(deserialized.model, Some("test-model".to_string()));
+        assert_eq!(deserialized.max_tokens, 4096);
+        assert_eq!(deserialized.providers.len(), 1);
+    }
+
+    #[test]
+    fn config_empty_providers_gets_default() {
+        let toml_str = r#"
+            model = "test-model"
+        "#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.providers.is_empty());
+    }
+
+    #[test]
+    fn config_path_returns_some() {
+        assert!(Config::config_path().is_some());
+    }
+
+    #[test]
+    fn config_data_dir_returns_some() {
+        assert!(Config::data_dir().is_some());
     }
 }

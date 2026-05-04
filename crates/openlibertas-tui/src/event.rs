@@ -3,14 +3,16 @@ use tokio::sync::mpsc;
 
 use openlibertas_core::backend::ChatEvent;
 use openlibertas_core::backend::Model;
+use openlibertas_core::domain::McpServerStatus;
 use openlibertas_core::mcp::McpTool;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Event {
     Input(CEvent),
     ChatEvent(ChatEvent),
     ModelsLoaded(Result<Vec<Model>, String>),
-    McpToolsLoaded(Result<Vec<McpTool>, String>),
+    McpToolsLoaded(Result<(Vec<McpTool>, HashMap<String, McpServerStatus>), String>),
 }
 
 pub struct EventStream {

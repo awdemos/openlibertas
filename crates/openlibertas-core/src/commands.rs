@@ -1,52 +1,78 @@
-use crate::backend::{Message, Model};
-use crate::domain::ProviderId;
+use crate::domain::{Message, Model, ProviderId};
 use crate::store::ConversationStore;
 
-/// All available slash commands
+/// All available slash commands organized by category
 pub const SLASH_COMMANDS: &[&str] = &[
+    // Info
     "/help",
-    "/tools",
+    "/version",
+    // Config
     "/model",
-    "/models",
+    "/theme",
+    // Session
+    "/new",
     "/clear",
-    "/quit",
-    "/mcp",
-    "/agents",
-    "/poke",
     "/save",
     "/load",
     "/sessions",
-    "/edit",
-    "/delmsg",
     "/delete",
     "/export",
+    "/undo",
+    "/title",
+    // Chat
     "/search",
-    "/themes",
-    "/new",
+    "/edit",
+    "/remove",
+    // Agent
+    "/agents",
+    "/yolo",
+    "/compact",
+    // Tools
+    "/mcp",
+    "/tools",
+    // System
+    "/quit",
 ];
+
+/// Category for each slash command
+pub fn command_category(cmd: &str) -> &'static str {
+    match cmd {
+        "/help" | "/version" => "Info",
+        "/model" | "/theme" => "Config",
+        "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo" | "/title" => "Session",
+        "/search" | "/edit" | "/remove" => "Chat",
+        "/agents" | "/yolo" | "/compact" => "Agent",
+        "/mcp" | "/tools" => "Tools",
+        "/quit" => "System",
+        _ => "Other",
+    }
+}
 
 /// Description for each slash command
 pub fn command_description(cmd: &str) -> &'static str {
     match cmd {
-        "/help" => "Show help",
-        "/tools" => "Toggle tools panel",
-        "/model" => "Switch model",
-        "/models" => "Open model selection",
-        "/clear" => "Clear conversation",
-        "/save" => "Save session",
-        "/load" => "Load session",
-        "/sessions" => "Show saved sessions",
-        "/export" => "Export to markdown/json/txt",
-        "/search" => "Search in conversation",
-        "/themes" => "Change color theme",
-        "/delete" => "Delete session",
+        "/help" => "Show help panel",
+        "/version" => "Show version info",
+        "/model" => "Switch model (or open picker)",
+        "/theme" => "Change color theme",
         "/new" => "Start new session",
-        "/agents" => "Open agent configuration",
-        "/poke" => "Toggle poke mode",
-        "/edit" => "Edit a message",
-        "/delmsg" => "Delete a message",
-        "/mcp" => "Toggle MCP panel",
-        "/quit" => "Quit",
+        "/clear" => "Clear conversation history",
+        "/save" => "Save session to disk",
+        "/load" => "Load session from disk",
+        "/sessions" => "List saved sessions",
+        "/delete" => "Delete a saved session",
+        "/export" => "Export to markdown/json/txt",
+        "/undo" => "Undo last turn",
+        "/title" => "Rename current session",
+        "/search" => "Search in conversation",
+        "/edit" => "Edit a message by index",
+        "/remove" => "Remove a message by index",
+    "/agents" => "Open agent configuration",
+    "/yolo" => "Toggle auto-approval for tools",
+    "/compact" => "Compact conversation context",
+        "/mcp" => "Show MCP server status",
+        "/tools" => "Toggle tools panel",
+        "/quit" => "Quit application",
         _ => "",
     }
 }
@@ -55,24 +81,27 @@ pub fn command_description(cmd: &str) -> &'static str {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlashCommand {
     Help,
-    Tools,
+    Version,
     Model(String),
-    Models,
+    Theme(String),
+    New,
     Clear,
-    Quit,
-    Mcp,
-    Agents,
-    Poke,
     Save(String),
     Load(String),
     Sessions,
-    Edit(usize),
-    DeleteMessage(usize),
     Delete(String),
     Export(String),
+    Undo,
+    Title(String),
     Search(String),
-    Themes(String),
-    New,
+    Edit(usize),
+    Remove(usize),
+    Agents,
+    Yolo,
+    Compact,
+    Mcp,
+    Tools,
+    Quit,
     Unknown(String),
 }
 
@@ -90,7 +119,7 @@ impl SlashCommand {
 
         match parts[0] {
             "/help" => Some(SlashCommand::Help),
-            "/tools" => Some(SlashCommand::Tools),
+            "/version" => Some(SlashCommand::Version),
             "/model" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Model(parts[1..].join(" ")))
@@ -98,12 +127,21 @@ impl SlashCommand {
                     Some(SlashCommand::Model(String::new()))
                 }
             }
-            "/models" => Some(SlashCommand::Models),
+            "/theme" => {
+                if parts.len() > 1 {
+                    Some(SlashCommand::Theme(parts[1..].join(" ")))
+                } else {
+                    Some(SlashCommand::Theme(String::new()))
+                }
+            }
+            "/new" => Some(SlashCommand::New),
             "/clear" => Some(SlashCommand::Clear),
             "/quit" => Some(SlashCommand::Quit),
             "/mcp" => Some(SlashCommand::Mcp),
             "/agents" => Some(SlashCommand::Agents),
-            "/poke" => Some(SlashCommand::Poke),
+            "/yolo" => Some(SlashCommand::Yolo),
+            "/compact" => Some(SlashCommand::Compact),
+            "/tools" => Some(SlashCommand::Tools),
             "/save" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Save(parts[1..].join(" ")))
@@ -126,11 +164,11 @@ impl SlashCommand {
                     Some(SlashCommand::Edit(0))
                 }
             }
-            "/delmsg" => {
+            "/remove" => {
                 if parts.len() > 1 {
-                    parts[1].parse::<usize>().ok().map(SlashCommand::DeleteMessage)
+                    parts[1].parse::<usize>().ok().map(SlashCommand::Remove)
                 } else {
-                    Some(SlashCommand::DeleteMessage(0))
+                    Some(SlashCommand::Remove(0))
                 }
             }
             "/delete" => {
@@ -154,14 +192,14 @@ impl SlashCommand {
                     Some(SlashCommand::Search(String::new()))
                 }
             }
-            "/themes" => {
+            "/undo" => Some(SlashCommand::Undo),
+            "/title" => {
                 if parts.len() > 1 {
-                    Some(SlashCommand::Themes(parts[1..].join(" ")))
+                    Some(SlashCommand::Title(parts[1..].join(" ")))
                 } else {
-                    Some(SlashCommand::Themes(String::new()))
+                    Some(SlashCommand::Title(String::new()))
                 }
             }
-            "/new" => Some(SlashCommand::New),
             cmd => Some(SlashCommand::Unknown(cmd.to_string())),
         }
     }
@@ -237,28 +275,31 @@ pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
         .collect()
 }
 
-/// Build the help message
+/// Build the help message with categorized commands
 pub fn build_help_message() -> String {
-    "Available commands:\n\
-     /help           - Show this help\n\
-     /tools          - Toggle tools panel\n\
-     /model          - Switch model (e.g., /model gpt-4)\n\
-     /models         - Open model selection menu\n\
-     /clear          - Clear conversation\n\
-     /new            - Start new session\n\
-     /save           - Save session (/save [name])\n\
-     /load           - Load session (/load [name])\n\
-     /sessions       - List saved sessions\n\
-     /export         - Export to markdown/json/txt (/export [file])\n\
-     /search         - Search in conversation (/search [query])\n\
-     /themes         - Change color theme (/theme [name], or /themes for picker)\n\
-     /delete         - Delete session (/delete [name])\n\
-     /quit           - Quit openlibertas\n\
-     /mcp            - Toggle MCP servers panel\n\
-     /agents         - Open agent configuration panel\n\
-     /poke           - Toggle poke mode (click to send [POKE] to LLM)\n\
-     /edit <n>       - Edit the nth user message\n\
-     /delmsg <n>     - Delete the nth message".to_string()
+    use std::fmt::Write;
+    let mut output = String::from("Slash Commands\n\n");
+
+    let categories = [
+        ("Info", &["/help", "/version"][..]),
+        ("Config", &["/model", "/theme"][..]),
+        ("Session", &["/new", "/clear", "/save", "/load", "/sessions", "/delete", "/export", "/undo", "/title"][..]),
+        ("Chat", &["/search", "/edit", "/remove"][..]),
+        ("Agent", &["/agents", "/yolo"][..]),
+        ("Tools", &["/mcp", "/tools"][..]),
+        ("System", &["/quit"][..]),
+    ];
+
+    for (category, commands) in &categories {
+        let _ = writeln!(output, "  [{}]", category);
+        for cmd in *commands {
+            let desc = command_description(cmd);
+            let _ = writeln!(output, "    {:14} - {}", cmd, desc);
+        }
+        let _ = writeln!(output);
+    }
+
+    output
 }
 
 /// Session data returned from load
@@ -293,6 +334,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_version_command() {
+        let cmd = SlashCommand::parse("/version");
+        assert_eq!(cmd, Some(SlashCommand::Version));
+    }
+
+    #[test]
     fn parse_model_command_with_arg() {
         let cmd = SlashCommand::parse("/model gpt-4");
         assert_eq!(cmd, Some(SlashCommand::Model("gpt-4".to_string())));
@@ -314,6 +361,12 @@ mod tests {
     fn parse_save_command_with_name() {
         let cmd = SlashCommand::parse("/save my-session");
         assert_eq!(cmd, Some(SlashCommand::Save("my-session".to_string())));
+    }
+
+    #[test]
+    fn parse_remove_command() {
+        let cmd = SlashCommand::parse("/remove 3");
+        assert_eq!(cmd, Some(SlashCommand::Remove(3)));
     }
 
     #[test]
@@ -345,8 +398,8 @@ mod tests {
     #[test]
     fn find_model_exact_match() {
         let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "gpt-3.5".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
+            Model { id: "gpt-3.5".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
         ];
         let result = find_model(&models, "gpt-4");
         assert_eq!(result, Some((0, "gpt-4".to_string())));
@@ -355,7 +408,7 @@ mod tests {
     #[test]
     fn find_model_case_insensitive() {
         let models = vec![
-            Model { id: "GPT-4".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "GPT-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
         ];
         let result = find_model(&models, "gpt-4");
         assert_eq!(result, Some((0, "GPT-4".to_string())));
@@ -364,7 +417,7 @@ mod tests {
     #[test]
     fn find_model_substring_match() {
         let models = vec![
-            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
         ];
         let result = find_model(&models, "turbo");
         assert_eq!(result, Some((0, "gpt-4-turbo".to_string())));
@@ -373,7 +426,7 @@ mod tests {
     #[test]
     fn find_model_no_match() {
         let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
+            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
         ];
         let result = find_model(&models, "nonexistent");
         assert!(result.is_none());
@@ -382,13 +435,22 @@ mod tests {
     #[test]
     fn model_suggestions_filter_by_query() {
         let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai") },
-            Model { id: "claude-3".to_string(), provider: ProviderId::new("anthropic") },
+            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
+            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
+            Model { id: "claude-3".to_string(), provider: ProviderId::new("anthropic"), supports_tools: true },
         ];
         let suggestions = get_model_suggestions(&models, "gpt");
         assert_eq!(suggestions.len(), 2);
         assert!(suggestions.contains(&"gpt-4".to_string()));
         assert!(suggestions.contains(&"gpt-4-turbo".to_string()));
+    }
+
+    #[test]
+    fn model_suggestions_empty_query_returns_all() {
+        let models = vec![
+            Model { id: "model-a".to_string(), provider: ProviderId::new("local"), supports_tools: true },
+        ];
+        let suggestions = get_model_suggestions(&models, "");
+        assert_eq!(suggestions.len(), 1);
     }
 }

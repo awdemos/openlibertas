@@ -29,3 +29,4 @@ Thumbs.db
 
 # Test artifacts
 /test-output
+.desloppify/

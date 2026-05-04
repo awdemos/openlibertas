@@ -229,6 +229,49 @@ fn syntect_style_to_ratatui(style: SyntectStyle) -> Style {
     ratatui_style
 }
 
+/// Wrap markdown text to a given width, preserving code blocks.
+/// Paragraphs outside code blocks are wrapped; code blocks are left as-is.
+pub fn wrap_markdown(content: &str, width: usize) -> String {
+    let mut result = String::new();
+    let mut in_code_block = false;
+    let mut paragraph = String::new();
+
+    for line in content.lines() {
+        if line.trim_start().starts_with("```") {
+            if !paragraph.is_empty() {
+                result.push_str(&textwrap::fill(&paragraph, width));
+                result.push('\n');
+                paragraph.clear();
+            }
+            in_code_block = !in_code_block;
+            result.push_str(line);
+            result.push('\n');
+        } else if in_code_block {
+            result.push_str(line);
+            result.push('\n');
+        } else if line.trim().is_empty() {
+            if !paragraph.is_empty() {
+                result.push_str(&textwrap::fill(&paragraph, width));
+                result.push('\n');
+                paragraph.clear();
+            }
+            result.push('\n');
+        } else {
+            if !paragraph.is_empty() {
+                paragraph.push(' ');
+            }
+            paragraph.push_str(line.trim());
+        }
+    }
+
+    if !paragraph.is_empty() {
+        result.push_str(&textwrap::fill(&paragraph, width));
+        result.push('\n');
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +311,24 @@ mod tests {
         assert!(!text.lines.is_empty());
         let first_line = &text.lines[0];
         assert!(first_line.spans.iter().any(|s| s.content == "Title"));
+    }
+
+    #[test]
+    fn wrap_markdown_preserves_code_blocks() {
+        let input = "Some text here\n\n```rust\nlet x = 1;\n```\n\nMore text";
+        let wrapped = wrap_markdown(input, 10);
+        assert!(wrapped.contains("```rust"));
+        assert!(wrapped.contains("let x = 1;"));
+        let lines: Vec<&str> = wrapped.lines().collect();
+        let code_start = lines.iter().position(|l| l.contains("```rust")).unwrap();
+        assert_eq!(lines[code_start + 1], "let x = 1;");
+    }
+
+    #[test]
+    fn wrap_markdown_wraps_paragraphs() {
+        let input = "This is a very long paragraph that should be wrapped to multiple lines when the width is small.";
+        let wrapped = wrap_markdown(input, 20);
+        let lines: Vec<&str> = wrapped.lines().collect();
+        assert!(lines.len() > 1, "Should wrap to multiple lines: {:?}", lines);
     }
 }

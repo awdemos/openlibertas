@@ -68,7 +68,6 @@ impl ConversationStore {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn save(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
         let now = chrono::Local::now().to_rfc3339();
         let title = messages.first().map(|m| {
@@ -132,7 +131,6 @@ impl ConversationStore {
         Ok(sessions)
     }
 
-    #[allow(dead_code)]
     pub fn list(&self) -> Result<Vec<String>> {
         self.list_with_meta().map(|v| v.into_iter().map(|(id, _, _)| id).collect())
     }

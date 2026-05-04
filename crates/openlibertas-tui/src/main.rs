@@ -93,7 +93,8 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             match client.discover_tools().await {
                 Ok(tools) => {
-                    let _ = sender.send(Event::McpToolsLoaded(Ok(tools)));
+                    let statuses = client.server_statuses().await;
+                    let _ = sender.send(Event::McpToolsLoaded(Ok((tools, statuses))));
                 }
                 Err(e) => {
                     let _ = sender.send(Event::McpToolsLoaded(Err(e.to_string())));
@@ -189,6 +190,21 @@ async fn main() -> Result<()> {
                         KeyCode::F(1) | KeyCode::Char('?') if app.input.buffer.is_empty() => {
                             app.panels.show_help = true;
                         }
+                        KeyCode::Tab if app.input.buffer.is_empty() => {
+                            if app.agents.status == app::AgentStatus::Disabled {
+                                let personas = app.agent_personas();
+                                if let Some((name, _)) = personas.first() {
+                                    app.agents.status = app::AgentStatus::Idle;
+                                    app.agents.persona = name.clone();
+                                    app.add_system_message(format!(
+                                        "Agents enabled with '{}' persona. Press Tab to cycle, Enter to chat with agent.",
+                                        name
+                                    ));
+                                }
+                            } else {
+                                app.cycle_agent_persona();
+                            }
+                        }
                         KeyCode::Tab if app.input.buffer.starts_with('/') => {
                             if !app.panels.show_palette {
                                 app.panels.show_palette = true;
@@ -244,6 +260,21 @@ async fn main() -> Result<()> {
                                         app.start_agent_loop();
                                     }
                                     let messages = app.push_user_message();
+
+                                    let messages = if app.agents.status == app::AgentStatus::Active {
+                                        let compacted = app.chat.compactor.compact(&messages);
+                                        if compacted.len() < messages.len() {
+                                            app.add_system_message(format!(
+                                                "[Context compacted: {} → {} messages]",
+                                                messages.len(),
+                                                compacted.len()
+                                            ));
+                                        }
+                                        compacted
+                                    } else {
+                                        messages
+                                    };
+
                                     let model = app.models.current.clone().unwrap_or_default();
                                     let max_tokens = app.config.max_tokens;
                                     let tools = app.get_tools_for_request();
@@ -368,8 +399,9 @@ async fn main() -> Result<()> {
                 app.loading = false;
                 app.connection_status = app::ConnectionStatus::Disconnected;
             }
-            Event::McpToolsLoaded(Ok(tools)) => {
+            Event::McpToolsLoaded(Ok((tools, statuses))) => {
                 app.mcp.available_tools = tools;
+                app.mcp.server_statuses = statuses;
             }
             Event::McpToolsLoaded(Err(e)) => {
                 app.error = Some(format!("MCP discovery failed: {}", e));
@@ -391,9 +423,19 @@ async fn main() -> Result<()> {
                         app.agents.max_iterations
                     ));
                     app.mcp.pending_tool_calls.clear();
-                } else if !app.mcp.pending_tool_calls.is_empty() && app.should_continue_agent() {
-                    let mut results = Vec::new();
+                } else if !app.mcp.pending_tool_calls.is_empty() {
+                    let mut results: Vec<openlibertas_core::domain::ToolExecutionResult> = Vec::new();
                     for tool_call in &app.mcp.pending_tool_calls {
+                        let key_arg = App::extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
+                        
+                        if !app.agents.yolo_mode && App::tool_needs_approval(&tool_call.function.name) {
+                            results.push(openlibertas_core::domain::ToolExecutionResult::Skipped {
+                                tool_name: tool_call.function.name.clone(),
+                                reason: format!("Approval required for '{}'. Enable YOLO mode (/yolo) to skip confirmations.", tool_call.function.name),
+                            });
+                            continue;
+                        }
+                        
                         let result = if let Some(ref client) = app.mcp.client {
                             match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
                                 Ok(args) => {
@@ -405,21 +447,64 @@ async fn main() -> Result<()> {
                                                 .map(|c| c.text)
                                                 .collect::<Vec<_>>()
                                                 .join("\n");
-                                            format!("Tool '{}' result:\n{}", tool_call.function.name, text)
+                                            openlibertas_core::domain::ToolExecutionResult::Success {
+                                                tool_name: tool_call.function.name.clone(),
+                                                key_arg: key_arg.clone(),
+                                                output: text,
+                                            }
                                         }
-                                        Err(e) => format!("Tool '{}' error: {}", tool_call.function.name, e),
+                                        Err(e) => openlibertas_core::domain::ToolExecutionResult::Error {
+                                            tool_name: tool_call.function.name.clone(),
+                                            key_arg: key_arg.clone(),
+                                            error: e.to_string(),
+                                        },
                                     }
                                 }
-                                Err(e) => format!("Tool '{}' parse error: {}", tool_call.function.name, e),
+                                Err(e) => openlibertas_core::domain::ToolExecutionResult::Error {
+                                    tool_name: tool_call.function.name.clone(),
+                                    key_arg: key_arg.clone(),
+                                    error: format!("Parse error: {}", e),
+                                },
                             }
                         } else {
-                            format!("Tool '{}' failed: MCP client not available", tool_call.function.name)
+                            openlibertas_core::domain::ToolExecutionResult::Error {
+                                tool_name: tool_call.function.name.clone(),
+                                key_arg: key_arg.clone(),
+                                error: "MCP client not available".to_string(),
+                            }
                         };
                         results.push(result);
                     }
 
-                    app.mcp.tool_results = results.clone();
+                    app.mcp.tool_results = results.iter().map(|r| r.content_for_message()).collect();
+
+                    for (i, result) in results.iter().enumerate() {
+                        if let Some(tool_call) = app.mcp.pending_tool_calls.get(i) {
+                            app.chat.messages.push(Message {
+                                role: Role::Tool,
+                                content: result.content_for_message(),
+                                tool_calls: None,
+                                tool_call_id: Some(tool_call.id.clone()),
+                            });
+                        }
+                    }
+
                     let tool_messages = app.build_tool_result_messages();
+
+                    let tool_messages = if app.agents.status == app::AgentStatus::Active {
+                        let compacted = app.chat.compactor.compact(&tool_messages);
+                        if compacted.len() < tool_messages.len() {
+                            app.add_system_message(format!(
+                                "[Context compacted: {} → {} messages]",
+                                tool_messages.len(),
+                                compacted.len()
+                            ));
+                        }
+                        compacted
+                    } else {
+                        tool_messages
+                    };
+
                     let model = app.models.current.clone().unwrap_or_default();
                     let max_tokens = app.config.max_tokens;
                     let tools = app.get_tools_for_request();

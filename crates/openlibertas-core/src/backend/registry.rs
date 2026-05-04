@@ -14,10 +14,11 @@ impl BackendRegistry {
         let mut backends = HashMap::new();
         for provider in providers {
             if provider.enabled {
-                let backend: Arc<dyn Backend> = Arc::new(OpenAiBackend::with_tools(
+                let backend: Arc<dyn Backend> = Arc::new(OpenAiBackend::with_tools_and_params(
                     provider.base_url.clone(),
                     provider.api_key.clone(),
                     provider.supports_tools,
+                    provider.extra_params.clone(),
                 ));
                 backends.insert(ProviderId::new(&provider.name), backend);
             }
@@ -33,7 +34,6 @@ impl BackendRegistry {
         self.backends.values().next()
     }
 
-    #[allow(dead_code)]
     pub fn has_backend(&self, provider: &ProviderId) -> bool {
         self.backends.contains_key(provider)
     }
@@ -51,6 +51,7 @@ mod tests {
                 api_key: "sk-test".to_string(),
                 enabled: true,
                 supports_tools: true,
+                extra_params: None,
             },
             Provider {
                 name: "kimi".to_string(),
@@ -58,6 +59,7 @@ mod tests {
                 api_key: "sk-kimi".to_string(),
                 enabled: true,
                 supports_tools: true,
+                extra_params: None,
             },
         ]
     }
@@ -86,6 +88,7 @@ mod tests {
             api_key: "sk-test".to_string(),
             enabled: false,
             supports_tools: false,
+            extra_params: None,
         }];
         let registry = BackendRegistry::new(&providers);
         assert!(!registry.has_backend(&ProviderId::new("disabled")));

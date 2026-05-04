@@ -34,6 +34,7 @@ impl std::str::FromStr for Role {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub struct ProviderId(pub String);
 
 impl ProviderId {
@@ -74,9 +75,12 @@ pub struct Model {
     pub id: String,
     #[serde(skip)]
     pub provider: ProviderId,
+    #[serde(skip)]
+    pub supports_tools: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[non_exhaustive]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
@@ -85,6 +89,8 @@ pub struct ChatRequest {
     pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -98,6 +104,7 @@ pub struct Message {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[non_exhaustive]
 pub struct ToolDefinition {
     #[serde(rename = "type")]
     pub tool_type: String,
@@ -105,6 +112,7 @@ pub struct ToolDefinition {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[non_exhaustive]
 pub struct FunctionDefinition {
     pub name: String,
     pub description: String,
@@ -132,6 +140,57 @@ pub enum ChatEvent {
     Done,
     Error(String),
     Cancelled,
+}
+
+/// Result of executing a tool call
+#[derive(Debug, Clone)]
+pub enum ToolExecutionResult {
+    Success {
+        tool_name: String,
+        key_arg: String,
+        output: String,
+    },
+    Error {
+        tool_name: String,
+        key_arg: String,
+        error: String,
+    },
+    Skipped {
+        tool_name: String,
+        reason: String,
+    },
+}
+
+impl ToolExecutionResult {
+    pub fn tool_name(&self) -> &str {
+        match self {
+            ToolExecutionResult::Success { tool_name, .. } => tool_name,
+            ToolExecutionResult::Error { tool_name, .. } => tool_name,
+            ToolExecutionResult::Skipped { tool_name, .. } => tool_name,
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        matches!(self, ToolExecutionResult::Success { .. })
+    }
+
+    pub fn content_for_message(&self) -> String {
+        match self {
+            ToolExecutionResult::Success { output, .. } => output.clone(),
+            ToolExecutionResult::Error { error, .. } => format!("Error: {}", error),
+            ToolExecutionResult::Skipped { reason, .. } => format!("Skipped: {}", reason),
+        }
+    }
+}
+
+/// Tracks the status of an MCP server connection
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum McpServerStatus {
+    Pending,
+    Connecting,
+    Connected,
+    Failed,
+    Disabled,
 }
 
 #[cfg(test)]

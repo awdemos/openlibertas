@@ -48,3 +48,64 @@ impl Default for PromptManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompt_manager_has_all_default_prompts() {
+        let manager = PromptManager::new();
+        assert!(!manager.get_prompt("default").is_empty());
+        assert!(!manager.get_prompt("anthropic").is_empty());
+        assert!(!manager.get_prompt("kimi").is_empty());
+        assert!(!manager.get_prompt("gpt").is_empty());
+        assert!(!manager.get_prompt("openai").is_empty());
+        assert!(!manager.get_prompt("local").is_empty());
+    }
+
+    #[test]
+    fn get_prompt_returns_default_for_unknown_provider() {
+        let manager = PromptManager::new();
+        let default = manager.get_prompt("default");
+        let unknown = manager.get_prompt("some_unknown_provider");
+        assert_eq!(default, unknown);
+    }
+
+    #[test]
+    fn normalize_provider_case_insensitive() {
+        assert_eq!(PromptManager::normalize_provider("ANTHROPIC"), "anthropic");
+        assert_eq!(PromptManager::normalize_provider("Kimi"), "kimi");
+        assert_eq!(PromptManager::normalize_provider("OpenAI"), "gpt");
+    }
+
+    #[test]
+    fn normalize_provider_partial_matches() {
+        assert_eq!(PromptManager::normalize_provider("claude-3-opus"), "anthropic");
+        assert_eq!(PromptManager::normalize_provider("gpt-4-turbo"), "gpt");
+        assert_eq!(PromptManager::normalize_provider("kimi-moonshot"), "kimi");
+    }
+
+    #[test]
+    fn normalize_provider_local_variants() {
+        assert_eq!(PromptManager::normalize_provider("ollama"), "local");
+        assert_eq!(PromptManager::normalize_provider("lmstudio"), "local");
+        assert_eq!(PromptManager::normalize_provider("llamacpp"), "local");
+        assert_eq!(PromptManager::normalize_provider("local"), "local");
+    }
+
+    #[test]
+    fn openai_maps_to_gpt_prompt() {
+        let manager = PromptManager::new();
+        let gpt = manager.get_prompt("gpt");
+        let openai = manager.get_prompt("openai");
+        assert_eq!(gpt, openai);
+    }
+
+    #[test]
+    fn default_returns_same_as_new() {
+        let manager1 = PromptManager::new();
+        let manager2 = PromptManager::default();
+        assert_eq!(manager1.get_prompt("default"), manager2.get_prompt("default"));
+    }
+}

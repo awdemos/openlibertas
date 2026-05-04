@@ -49,6 +49,7 @@ pub struct OpenAiBackend {
     base_url: String,
     api_key: String,
     supports_tools: bool,
+    extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl OpenAiBackend {
@@ -57,6 +58,15 @@ impl OpenAiBackend {
     }
 
     pub fn with_tools(base_url: String, api_key: String, supports_tools: bool) -> Self {
+        Self::with_tools_and_params(base_url, api_key, supports_tools, None)
+    }
+
+    pub fn with_tools_and_params(
+        base_url: String,
+        api_key: String,
+        supports_tools: bool,
+        extra_params: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
@@ -66,6 +76,7 @@ impl OpenAiBackend {
             base_url,
             api_key,
             supports_tools,
+            extra_params,
         }
     }
 
@@ -82,7 +93,11 @@ impl OpenAiBackend {
             return Err(anyhow::anyhow!("HTTP {}", resp.status()));
         }
         let data: ModelsResponse = resp.json().await.context("Failed to parse models response")?;
-        Ok(data.data)
+        let mut models = data.data;
+        for model in &mut models {
+            model.supports_tools = self.supports_tools;
+        }
+        Ok(models)
     }
 
     pub fn chat(
@@ -99,6 +114,7 @@ impl OpenAiBackend {
             stream: true,
             max_tokens: Some(max_tokens),
             tools: if self.supports_tools { tools } else { None },
+            extra_params: self.extra_params.clone(),
         };
 
         let (tx, rx) = mpsc::unbounded_channel();
@@ -121,6 +137,17 @@ impl OpenAiBackend {
                     return;
                 }
             };
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                let _ = tx.send(ChatEvent::Error(format!(
+                    "[HTTP {}: {}]",
+                    status,
+                    if body.is_empty() { "Unknown error".to_string() } else { body }
+                )));
+                return;
+            }
 
             let mut stream = resp.bytes_stream();
             let mut buf: Vec<u8> = Vec::new();
@@ -305,6 +332,7 @@ mod tests {
                     parameters: serde_json::json!({"type": "object"}),
                 },
             }]),
+            extra_params: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"model\":\"gpt-4\""));
@@ -318,5 +346,63 @@ mod tests {
         let resp: ModelsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.data.len(), 2);
         assert_eq!(resp.data[0].id, "gpt-4");
+    }
+
+    #[test]
+    fn sse_chunk_parses_text_delta() {
+        let json = r#"{"choices":[{"delta":{"content":"Hello"}}]}"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices[0].delta.content, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn sse_chunk_parses_tool_call_delta() {
+        let json = r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"search"}}]}}]}"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        let tc = &chunk.choices[0].delta.tool_calls.as_ref().unwrap()[0];
+        assert_eq!(tc.index, 0);
+        assert_eq!(tc.id, Some("call_1".to_string()));
+        assert_eq!(tc.function.as_ref().unwrap().name, Some("search".to_string()));
+    }
+
+    #[test]
+    fn chat_request_with_extra_params_serializes() {
+        let mut extra = serde_json::Map::new();
+        extra.insert("temperature".to_string(), serde_json::json!(0.7));
+        let req = ChatRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: "hi".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            stream: false,
+            max_tokens: None,
+            tools: None,
+            extra_params: Some(extra),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"temperature\":0.7"));
+    }
+
+    #[test]
+    fn chat_request_skips_null_fields() {
+        let req = ChatRequest {
+            model: "gpt-4".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: "hi".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            stream: true,
+            max_tokens: None,
+            tools: None,
+            extra_params: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(!json.contains("max_tokens"));
+        assert!(!json.contains("tools"));
     }
 }

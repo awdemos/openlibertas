@@ -10,10 +10,7 @@ pub mod search;
 pub mod state;
 pub mod store;
 
-pub use commands::{
-    CommandResult, ModelSwitchResult, SlashCommand, command_description,
-    find_model, get_model_suggestions, load_session, SLASH_COMMANDS,
-};
+pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
 pub use domain::{
     ChatEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
 };

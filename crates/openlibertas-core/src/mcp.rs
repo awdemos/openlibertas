@@ -1,3 +1,4 @@
+use crate::domain::McpServerStatus;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,21 +34,16 @@ pub struct McpTool {
 #[derive(Debug, Clone)]
 pub struct ToolResult {
     pub content: Vec<ToolContent>,
-    #[allow(dead_code)]
     pub is_error: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct ToolContentRaw {
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    pub content_type: String,
     pub text: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct ToolContent {
-    #[allow(dead_code)]
     pub content_type: String,
     pub text: String,
 }
@@ -61,10 +57,11 @@ struct JsonRpcRequest<T> {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct JsonRpcResponse<T> {
-    jsonrpc: String,
-    id: u64,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
+    #[serde(rename = "id")]
+    _id: u64,
     #[serde(default)]
     result: Option<T>,
     #[serde(default)]
@@ -72,9 +69,9 @@ struct JsonRpcResponse<T> {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct JsonRpcError {
-    code: i32,
+    #[serde(rename = "code")]
+    _code: i32,
     message: String,
 }
 
@@ -102,6 +99,7 @@ pub struct McpClient {
     servers: HashMap<String, McpServerConfig>,
     tools: Mutex<HashMap<String, (String, McpTool)>>,
     processes: Mutex<HashMap<String, Child>>,
+    server_statuses: Mutex<HashMap<String, McpServerStatus>>,
 }
 
 impl McpClient {
@@ -126,40 +124,70 @@ impl McpClient {
         let servers: HashMap<String, McpServerConfig> =
             serde_json::from_value(mcp_section).unwrap_or_default();
 
+        let mut statuses = HashMap::new();
+        for (name, config) in &servers {
+            statuses.insert(
+                name.clone(),
+                if config.enabled {
+                    McpServerStatus::Pending
+                } else {
+                    McpServerStatus::Disabled
+                },
+            );
+        }
         Ok(Self {
             servers,
             tools: Mutex::new(HashMap::new()),
             processes: Mutex::new(HashMap::new()),
+            server_statuses: Mutex::new(statuses),
         })
     }
 
     pub async fn discover_tools(&self) -> Result<Vec<McpTool>> {
         let mut all_tools = Vec::new();
         let mut tool_map = HashMap::new();
+        let mut statuses = self.server_statuses.lock().await;
 
         for (name, config) in &self.servers {
             if !config.enabled {
+                statuses.insert(name.clone(), McpServerStatus::Disabled);
                 continue;
             }
 
+            statuses.insert(name.clone(), McpServerStatus::Connecting);
+
             match config.server_type.as_str() {
                 "local" => {
-                    if let Ok(tools) = self.discover_local_tools(name, config).await {
-                        for tool in tools {
-                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
-                            all_tools.push(tool);
+                    match self.discover_local_tools(name, config).await {
+                        Ok(tools) => {
+                            statuses.insert(name.clone(), McpServerStatus::Connected);
+                            for tool in tools {
+                                tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                                all_tools.push(tool);
+                            }
+                        }
+                        Err(_) => {
+                            statuses.insert(name.clone(), McpServerStatus::Failed);
                         }
                     }
                 }
                 "remote" => {
-                    if let Ok(tools) = self.discover_remote_tools(name, config).await {
-                        for tool in tools {
-                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
-                            all_tools.push(tool);
+                    match self.discover_remote_tools(name, config).await {
+                        Ok(tools) => {
+                            statuses.insert(name.clone(), McpServerStatus::Connected);
+                            for tool in tools {
+                                tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                                all_tools.push(tool);
+                            }
+                        }
+                        Err(_) => {
+                            statuses.insert(name.clone(), McpServerStatus::Failed);
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    statuses.insert(name.clone(), McpServerStatus::Failed);
+                }
             }
         }
 
@@ -324,7 +352,7 @@ impl McpClient {
                         .content
                         .into_iter()
                         .map(|c| ToolContent {
-                            content_type: c.content_type,
+                            content_type: "text".to_string(),
                             text: c.text,
                         })
                         .collect(),
@@ -366,7 +394,7 @@ impl McpClient {
                     .content
                     .into_iter()
                     .map(|c| ToolContent {
-                        content_type: c.content_type,
+                        content_type: "text".to_string(),
                         text: c.text,
                     })
                     .collect(),
@@ -377,11 +405,157 @@ impl McpClient {
         }
     }
 
-    pub fn get_server_names(&self) -> Vec<String> {
+    pub fn server_names(&self) -> Vec<String> {
         self.servers
             .iter()
             .filter(|(_, c)| c.enabled)
             .map(|(n, _)| n.clone())
             .collect()
+    }
+
+    pub async fn server_statuses(&self) -> HashMap<String, McpServerStatus> {
+        self.server_statuses.lock().await.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_server_config_deserialization() {
+        let json = r#"{
+            "type": "local",
+            "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem"],
+            "enabled": true
+        }"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.server_type, "local");
+        assert_eq!(config.command, Some(vec!["npx".to_string(), "-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()]));
+        assert!(config.enabled);
+        assert!(config.url.is_none());
+    }
+
+    #[test]
+    fn mcp_server_config_remote_deserialization() {
+        let json = r#"{
+            "type": "remote",
+            "url": "http://localhost:3000/mcp",
+            "enabled": true
+        }"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.server_type, "remote");
+        assert_eq!(config.url, Some("http://localhost:3000/mcp".to_string()));
+        assert!(config.command.is_none());
+    }
+
+    #[test]
+    fn mcp_server_config_enabled_defaults_to_true() {
+        let json = r#"{"type": "local", "command": ["test"]}"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert!(config.enabled);
+    }
+
+    #[test]
+    fn mcp_tool_serialization_roundtrip() {
+        let tool = McpTool {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        let deserialized: McpTool = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "test_tool");
+        assert_eq!(deserialized.description, "A test tool");
+    }
+
+    #[test]
+    fn mcp_tool_deserialization_with_input_schema() {
+        let json = r#"{
+            "name": "read_file",
+            "description": "Read a file",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"}
+                }
+            }
+        }"#;
+        let tool: McpTool = serde_json::from_str(json).unwrap();
+        assert_eq!(tool.name, "read_file");
+        assert!(tool.input_schema.is_object());
+    }
+
+    #[test]
+    fn tool_result_creation() {
+        let result = ToolResult {
+            content: vec![ToolContent {
+                content_type: "text".to_string(),
+                text: "result text".to_string(),
+            }],
+            is_error: false,
+        };
+        assert_eq!(result.content.len(), 1);
+        assert_eq!(result.content[0].text, "result text");
+        assert!(!result.is_error);
+    }
+
+    #[test]
+    fn mcp_client_from_config_file() {
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("test_mcp_config.json");
+        let config_json = r#"{
+            "mcp": {
+                "filesystem": {
+                    "type": "local",
+                    "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem"],
+                    "enabled": true
+                },
+                "disabled_server": {
+                    "type": "local",
+                    "command": ["test"],
+                    "enabled": false
+                }
+            }
+        }"#;
+        std::fs::write(&config_path, config_json).unwrap();
+
+        let client = McpClient::from_config_file(&config_path).unwrap();
+        let names = client.server_names();
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0], "filesystem");
+
+        std::fs::remove_file(&config_path).unwrap();
+    }
+
+    #[test]
+    fn mcp_client_server_names_filters_disabled() {
+        let temp_dir = std::env::temp_dir();
+        let config_path = temp_dir.join("test_mcp_filter.json");
+        let config_json = r#"{
+            "mcp": {
+                "enabled_server": {
+                    "type": "local",
+                    "command": ["test"],
+                    "enabled": true
+                },
+                "disabled_server": {
+                    "type": "local",
+                    "command": ["test"],
+                    "enabled": false
+                }
+            }
+        }"#;
+        std::fs::write(&config_path, config_json).unwrap();
+
+        let client = McpClient::from_config_file(&config_path).unwrap();
+        let names = client.server_names();
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0], "enabled_server");
+
+        std::fs::remove_file(&config_path).unwrap();
     }
 }
