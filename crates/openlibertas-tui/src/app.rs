@@ -9,7 +9,7 @@
 
 use crate::markdown::MarkdownRenderer;
 use crate::theme::Theme;
-use openlibertas_core::domain::{Message, Model, ToolCall, ToolDefinition};
+use openlibertas_core::domain::{Message, Model};
 use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::commands::{find_model, get_model_suggestions};
 use openlibertas_core::config::Config;
@@ -886,24 +886,6 @@ available tools to refine and polish your work."
         self.overlay = Overlay::None;
     }
 
-    pub fn voice(&self) -> &VoiceManager {
-        &self.voice
-    }
-    pub fn voice_mut(&mut self) -> &mut VoiceManager {
-        &mut self.voice
-    }
-    pub fn search(&self) -> &SearchState {
-        &self.search
-    }
-    pub fn search_mut(&mut self) -> &mut SearchState {
-        &mut self.search
-    }
-    pub fn theme(&self) -> &Theme {
-        &self.theme
-    }
-    pub fn theme_mut(&mut self) -> &mut Theme {
-        &mut self.theme
-    }
 }
 
 #[cfg(test)]
