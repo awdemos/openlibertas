@@ -5,6 +5,22 @@ use std::process::Stdio;
 
 use crate::tools::BuiltinTool;
 
+const ALLOWED_TMUX_COMMANDS: &[&str] = &[
+    "list-sessions", "list-windows", "list-panes",
+    "capture-pane", "send-keys", "new-session", "kill-session",
+    "attach-session", "detach-client", "has-session", "display-message",
+];
+
+fn validate_tmux_command(subcommand: &str) -> Result<()> {
+    if !ALLOWED_TMUX_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
+        return Err(anyhow::anyhow!(
+            "Tmux subcommand '{}' is not in the allowlist",
+            subcommand
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 struct TmuxArgs {
     subcommand: String,
@@ -42,6 +58,7 @@ pub fn tmux_tool() -> BuiltinTool {
 
 pub fn tmux(args: Value) -> Result<String> {
     let args: TmuxArgs = serde_json::from_value(args)?;
+    validate_tmux_command(&args.subcommand)?;
 
     let mut cmd = std::process::Command::new("tmux");
     cmd.arg(&args.subcommand);
