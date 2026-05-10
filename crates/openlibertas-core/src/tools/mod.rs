@@ -49,7 +49,7 @@ macro_rules! define_tool {
 /// Execute a built-in tool by name with the given arguments.
 pub fn execute_builtin(name: &str, args: Value) -> Result<String> {
     match name {
-        "shell" => shell::run(args),
+        "shell" => shell::shell(args),
         "read_file" => filesystem::read_file(args),
         "write_file" => filesystem::write_file(args),
         "str_replace_file" => filesystem::str_replace_file(args),
@@ -58,8 +58,8 @@ pub fn execute_builtin(name: &str, args: Value) -> Result<String> {
         "web_search" => web::web_search(args),
         "fetch_url" => web::fetch_url(args),
         "think" => meta::think(args),
-        "git" => git::run(args),
-        "tmux" => tmux::run(args),
+        "git" => git::git(args),
+        "tmux" => tmux::tmux(args),
         "switch_persona" => agent::switch_persona(args),
         "spawn_subagent" => agent::spawn_subagent(args),
         _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", name)),
@@ -71,7 +71,7 @@ pub fn builtin_tools() -> Vec<BuiltinTool> {
     vec![
         agent::switch_persona_tool(),
         agent::spawn_subagent_tool(),
-        shell::tool_definition(),
+        shell::shell_tool(),
         filesystem::read_file_tool(),
         filesystem::write_file_tool(),
         filesystem::str_replace_file_tool(),
@@ -80,8 +80,8 @@ pub fn builtin_tools() -> Vec<BuiltinTool> {
         web::web_search_tool(),
         web::fetch_url_tool(),
         meta::think_tool(),
-        git::tool_definition(),
-        tmux::tool_definition(),
+        git::git_tool(),
+        tmux::tmux_tool(),
     ]
 }
 

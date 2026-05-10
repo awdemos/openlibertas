@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn tmux_list_sessions_runs() {
-        let result = run(serde_json::json!({"subcommand": "list-sessions"}));
+        let result = tmux(serde_json::json!({"subcommand": "list-sessions"}));
         assert!(result.is_ok());
     }
 }

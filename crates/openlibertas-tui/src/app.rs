@@ -72,17 +72,17 @@ pub struct App {
     pub connection_status: ConnectionStatus,
     pub models: ModelState,
     pub overlay: Overlay,
-    search: SearchState,
+    pub(crate) search: SearchState,
     pub store: Option<ConversationStore>,
-    engine: ChatEngine,
+    pub(crate) engine: ChatEngine,
     prompt_manager: PromptManager,
     pub palette_commands: Vec<(String, String)>,
     pub palette_selected: usize,
     pub markdown_renderer: MarkdownRenderer,
-    theme: Theme,
+    pub(crate) theme: Theme,
     pub theme_selected: usize,
     pub agent_selected: usize,
-    voice: VoiceManager,
+    pub(crate) voice: VoiceManager,
     pub voice_status: Option<String>,
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
@@ -611,18 +611,6 @@ impl App {
         loaded.into_iter().map(|(name, _)| name).collect()
     }
 
-    pub fn append_stream_chunk(&mut self, chunk: &str) {
-        self.engine.append_stream_chunk(chunk);
-    }
-
-    pub fn append_reasoning_chunk(&mut self, chunk: &str) {
-        self.engine.append_reasoning_chunk(chunk);
-    }
-
-    pub fn add_tool_call(&mut self, tool_call: ToolCall) {
-        self.engine.add_tool_call(tool_call);
-    }
-
     pub fn finish_stream(&mut self) {
         self.engine.finish_stream();
         let _ = self.autosave();
@@ -651,26 +639,6 @@ impl App {
         } else {
             Some("Auto-save failed: no conversation store".to_string())
         }
-    }
-
-    pub fn advance_spinner(&mut self) {
-        self.engine.advance_spinner();
-    }
-
-    pub fn start_agent_loop(&mut self) {
-        self.engine.start_agent_loop();
-    }
-
-    pub fn finish_agent_loop(&mut self) {
-        self.engine.finish_agent_loop();
-    }
-
-    pub fn agent_iteration_exceeded(&self) -> bool {
-        self.engine.agent_iteration_exceeded()
-    }
-
-    pub fn increment_agent_iteration(&mut self) {
-        self.engine.increment_agent_iteration();
     }
 
     pub fn switch_agent_persona(&mut self, persona: &str, prompt: &str) {
@@ -771,28 +739,12 @@ available tools to refine and polish your work."
         self.engine.agents.persona.clone()
     }
 
-    pub fn add_error_message(&mut self, error: String) {
-        self.engine.add_error_message(error);
-    }
-
     pub fn export_conversation(&self, format: ExportFormat) -> String {
         export::export_messages(
             &self.engine.chat.messages,
             self.models.current.as_deref(),
             format,
         )
-    }
-
-    pub fn add_system_message(&mut self, content: String) {
-        self.engine.add_system_message(content);
-    }
-
-    pub fn scroll_page_up(&mut self) {
-        self.engine.scroll_page_up();
-    }
-
-    pub fn scroll_page_down(&mut self) {
-        self.engine.scroll_page_down();
     }
 
     pub fn search_next(&mut self) {
@@ -833,62 +785,6 @@ available tools to refine and polish your work."
                 line_count += content_lines.max(1);
             }
         }
-    }
-
-    pub fn history_prev(&mut self) {
-        self.engine.history_prev();
-    }
-
-    pub fn history_next(&mut self) {
-        self.engine.history_next();
-    }
-
-    pub fn push_to_history(&mut self, input: String) {
-        self.engine.push_to_history(input);
-    }
-
-    pub fn move_cursor_left(&mut self) {
-        self.engine.move_cursor_left();
-    }
-
-    pub fn move_cursor_right(&mut self) {
-        self.engine.move_cursor_right();
-    }
-
-    pub fn move_cursor_to_end(&mut self) {
-        self.engine.move_cursor_to_end();
-    }
-
-    pub fn delete_word_backward(&mut self) {
-        self.engine.delete_word_backward();
-    }
-
-    pub fn move_cursor_word_left(&mut self) {
-        self.engine.move_cursor_word_left();
-    }
-
-    pub fn move_cursor_word_right(&mut self) {
-        self.engine.move_cursor_word_right();
-    }
-
-    pub fn select_all(&mut self) {
-        self.engine.select_all();
-    }
-
-    pub fn clear_selection(&mut self) {
-        self.engine.clear_selection();
-    }
-
-    pub fn has_selection(&self) -> bool {
-        self.engine.has_selection()
-    }
-
-    pub fn copy_selection(&mut self) -> Option<String> {
-        self.engine.copy_selection()
-    }
-
-    pub fn cut_selection(&mut self) -> Option<String> {
-        self.engine.cut_selection()
     }
 
     pub fn theme_next(&mut self) {
@@ -990,12 +886,23 @@ available tools to refine and polish your work."
         self.overlay = Overlay::None;
     }
 
-    pub fn get_tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
-        self.engine.get_tools_for_request()
+    pub fn voice(&self) -> &VoiceManager {
+        &self.voice
     }
-
-    pub fn build_tool_result_messages(&self) -> Vec<Message> {
-        self.engine.build_tool_result_messages()
+    pub fn voice_mut(&mut self) -> &mut VoiceManager {
+        &mut self.voice
+    }
+    pub fn search(&self) -> &SearchState {
+        &self.search
+    }
+    pub fn search_mut(&mut self) -> &mut SearchState {
+        &mut self.search
+    }
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+    pub fn theme_mut(&mut self) -> &mut Theme {
+        &mut self.theme
     }
 }
 
@@ -1037,7 +944,7 @@ mod tests {
     fn autocomplete_suggestions_for_prefix() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.buffer = "/s".to_string();
+        app.input.buffer = "/s".to_string();
         let suggestions = app.get_autocomplete_suggestions();
         assert!(suggestions.contains(&"/save"));
         assert!(suggestions.contains(&"/sessions"));
@@ -1055,29 +962,29 @@ mod tests {
     fn history_navigation() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.history = vec!["first".to_string(), "second".to_string()];
+        app.input.history = vec!["first".to_string(), "second".to_string()];
 
         app.history_prev();
-        assert_eq!(app.engine.input.buffer, "second");
+        assert_eq!(app.input.buffer, "second");
 
         app.history_prev();
-        assert_eq!(app.engine.input.buffer, "first");
+        assert_eq!(app.input.buffer, "first");
 
         app.history_next();
-        assert_eq!(app.engine.input.buffer, "second");
+        assert_eq!(app.input.buffer, "second");
     }
 
     #[test]
     fn history_wraps_around() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.history = vec!["only".to_string()];
+        app.input.history = vec!["only".to_string()];
 
         app.history_prev();
-        assert_eq!(app.engine.input.buffer, "only");
+        assert_eq!(app.input.buffer, "only");
 
         app.history_next();
-        assert_eq!(app.engine.input.buffer, "");
+        assert_eq!(app.input.buffer, "");
     }
 
     #[test]
@@ -1201,38 +1108,38 @@ mod tests {
     fn agent_starts_disabled() {
         let config = Config::default();
         let app = App::new(config);
-        assert_eq!(app.engine.agents.status, AgentStatus::Disabled);
-        assert_eq!(app.engine.agents.max_iterations, 10);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.agents.status, AgentStatus::Disabled);
+        assert_eq!(app.agents.max_iterations, 10);
+        assert_eq!(app.agents.current_iteration, 0);
     }
 
     #[test]
     fn agent_status_transitions() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents.status = AgentStatus::Idle;
+        app.agents.status = AgentStatus::Idle;
         app.start_agent_loop();
-        assert_eq!(app.engine.agents.status, AgentStatus::Active);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.agents.status, AgentStatus::Active);
+        assert_eq!(app.agents.current_iteration, 0);
 
         app.finish_agent_loop();
-        assert_eq!(app.engine.agents.status, AgentStatus::Idle);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.agents.status, AgentStatus::Idle);
+        assert_eq!(app.agents.current_iteration, 0);
     }
 
     #[test]
     fn agent_iteration_tracking() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents.status = AgentStatus::Idle;
+        app.agents.status = AgentStatus::Idle;
         app.start_agent_loop();
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.agents.current_iteration, 0);
 
         app.increment_agent_iteration();
-        assert_eq!(app.engine.agents.current_iteration, 1);
+        assert_eq!(app.agents.current_iteration, 1);
         assert!(!app.agent_iteration_exceeded());
 
-        app.engine.agents.current_iteration = 10;
+        app.agents.current_iteration = 10;
         assert!(app.agent_iteration_exceeded());
     }
 
@@ -1240,10 +1147,10 @@ mod tests {
     fn agent_persona_cycles() {
         let config = Config::default();
         let mut app = App::new(config);
-        let initial = app.engine.agents.persona.clone();
+        let initial = app.agents.persona.clone();
 
         app.cycle_agent_persona();
-        assert_ne!(app.engine.agents.persona, initial);
+        assert_ne!(app.agents.persona, initial);
     }
 
     #[test]

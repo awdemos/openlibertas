@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn git_status_runs() {
-        let result = run(serde_json::json!({"subcommand": "status", "args": "--short"})).unwrap();
+        let result = git(serde_json::json!({"subcommand": "status", "args": "--short"})).unwrap();
         assert!(!result.is_empty());
     }
 }

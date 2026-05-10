@@ -39,9 +39,9 @@ fn attach_chat_stream(
     event_stream: &mut EventStream,
 ) {
     use openlibertas_core::engine::AgentStatus;
-    let messages = app.engine.chat.messages.clone();
-    let messages = if app.engine.agents.status == AgentStatus::Active {
-        let compacted = app.engine.chat.compactor.compact(&messages);
+    let messages = app.chat.messages.clone();
+    let messages = if app.agents.status == AgentStatus::Active {
+        let compacted = app.chat.compactor.compact(&messages);
         if compacted.len() < messages.len() {
             app.add_system_message(format!(
                 "[Context compacted: {} → {} messages]",
@@ -66,14 +66,14 @@ fn attach_chat_stream(
                 openlibertas_core::config::SecretString::new("".to_string()),
             ))
         });
-    app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
-    app.engine.tools.pending_tool_calls.clear();
+    app.chat.cancel_token = tokio_util::sync::CancellationToken::new();
+    app.tools.pending_tool_calls.clear();
     let stream_rx = backend.chat(
         model,
         messages,
         max_tokens,
         tools,
-        app.engine.chat.cancel_token.clone(),
+        app.chat.cancel_token.clone(),
     );
     event_stream.attach_chat_stream(stream_rx);
 }
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    app.engine.tools.client = match openlibertas_core::mcp::McpClient::from_opencode_config() {
+    app.tools.client = match openlibertas_core::mcp::McpClient::from_opencode_config() {
         Ok(client) => Some(std::sync::Arc::new(client)),
         Err(e) => {
             eprintln!("[MCP] Failed to initialize MCP client: {}", e);
@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    if let Some(client) = app.engine.tools.client.clone() {
+    if let Some(client) = app.tools.client.clone() {
         let sender = event_stream.sender();
         tokio::spawn(async move {
             match client.discover_tools().await {
@@ -181,28 +181,28 @@ async fn main() -> Result<()> {
     loop {
         app.advance_spinner();
 
-        if app.voice.is_enabled()
+        if app.voice().is_enabled()
             && matches!(
-                app.voice.state(),
+                app.voice().state(),
                 openlibertas_core::voice::VoiceState::Recording
             )
-            && app.voice.has_max_recording_duration()
+            && app.voice().has_max_recording_duration()
         {
             app.add_system_message(
                 "[Voice] Recording stopped — maximum duration reached.".to_string(),
             );
             app.voice_status = None;
-            match app.voice.stop_recording() {
+            match app.voice_mut().stop_recording() {
                 Ok(audio_bytes) => {
                     if audio_bytes.len() > 44 {
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
+                        let api_key = app.voice().config.api_key.clone();
                         spawn_voice_transcription(api_key, audio_bytes, sender);
                     }
                 }
                 Err(e) => {
                     app.voice_status = Some(format!("Recording failed: {}", e));
-                    app.voice.cancel();
+                    app.voice_mut().cancel();
                 }
             }
         }
@@ -226,36 +226,36 @@ async fn main() -> Result<()> {
                 Event::Input(CEvent::Key(key)) if key.kind == KeyEventKind::Release => {
                     let is_space = key.code == KeyCode::Char(' ') || key.code == KeyCode::Null;
                     if is_space
-                        && app.voice.push_to_talk_active
+                        && app.voice().push_to_talk_active
                         && matches!(
-                            app.voice.state(),
+                            app.voice().state(),
                             openlibertas_core::voice::VoiceState::Recording
                         )
                     {
                         app.voice_status = None;
-                        if !app.voice.has_min_recording_duration() {
+                        if !app.voice().has_min_recording_duration() {
                             app.voice_status = Some(
                                 "Recording too short — hold Ctrl+Space longer".to_string(),
                             );
-                            app.voice.cancel();
+                            app.voice_mut().cancel();
                         } else {
-                            match app.voice.stop_recording() {
+                            match app.voice_mut().stop_recording() {
                                 Ok(audio_bytes) => {
                                     if audio_bytes.len() <= 44 {
                                         app.voice_status = Some(
                                             "No audio captured — check microphone".to_string(),
                                         );
-                                        app.voice.cancel();
+                                        app.voice_mut().cancel();
                                     } else {
                                         let sender = event_stream.sender();
-                                        let api_key = app.voice.config.api_key.clone();
+                                        let api_key = app.voice().config.api_key.clone();
                                         spawn_voice_transcription(api_key, audio_bytes, sender);
                                     }
                                 }
                                 Err(e) => {
                                     app.voice_status =
                                         Some(format!("Recording failed: {}", e));
-                                    app.voice.cancel();
+                                    app.voice_mut().cancel();
                                 }
                             }
                         }
@@ -292,9 +292,9 @@ async fn main() -> Result<()> {
                                     term_size.width.saturating_sub(4) as usize;
                                 let y_in_messages = (mouse.row.saturating_sub(3)) as usize;
                                 if let Some(msg_idx) =
-                                    app.engine.message_at_y(y_in_messages, messages_area_width)
+                                    app.message_at_y(y_in_messages, messages_area_width)
                                 {
-                                    if let Some(msg) = app.engine.chat.messages.get(msg_idx) {
+                                    if let Some(msg) = app.chat.messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
                                             base64::engine::general_purpose::STANDARD.encode(&text);
@@ -303,7 +303,7 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             } else if is_input_area {
-                                let prompt_symbol = if app.voice.is_enabled() {
+                                let prompt_symbol = if app.voice().is_enabled() {
                                     "🎙 "
                                 } else {
                                     "> "
@@ -311,8 +311,8 @@ async fn main() -> Result<()> {
                                 let prompt_width = prompt_symbol.width();
                                 app.engine
                                     .set_cursor_from_click(mouse.column as usize, prompt_width);
-                                app.engine.input.selection_anchor =
-                                    Some(app.engine.input.cursor_pos);
+                                app.input.selection_anchor =
+                                    Some(app.input.cursor_pos);
                             }
                         }
                         MouseEventKind::Drag(MouseButton::Left) if app.screen == Screen::Chat => {
@@ -324,7 +324,7 @@ async fn main() -> Result<()> {
                                 || mouse.row == input_area_y + 1
                                 || mouse.row == input_area_y + 2
                             {
-                                let prompt_symbol = if app.voice.is_enabled() {
+                                let prompt_symbol = if app.voice().is_enabled() {
                                     "🎙 "
                                 } else {
                                     "> "
@@ -335,10 +335,10 @@ async fn main() -> Result<()> {
                             }
                         }
                         MouseEventKind::Up(MouseButton::Left) if app.screen == Screen::Chat
-                            && app.engine.input.selection_anchor
-                                == Some(app.engine.input.cursor_pos)
+                            && app.input.selection_anchor
+                                == Some(app.input.cursor_pos)
                             => {
-                                app.engine.input.selection_anchor = None;
+                                app.input.selection_anchor = None;
                             }
                         MouseEventKind::Down(MouseButton::Right) if app.screen == Screen::Chat => {
                             let input_area_y = terminal
@@ -354,9 +354,9 @@ async fn main() -> Result<()> {
                                     term_size.width.saturating_sub(4) as usize;
                                 let y_in_messages = (mouse.row.saturating_sub(3)) as usize;
                                 if let Some(msg_idx) =
-                                    app.engine.message_at_y(y_in_messages, messages_area_width)
+                                    app.message_at_y(y_in_messages, messages_area_width)
                                 {
-                                    if let Some(msg) = app.engine.chat.messages.get(msg_idx) {
+                                    if let Some(msg) = app.chat.messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
                                             base64::engine::general_purpose::STANDARD.encode(&text);
@@ -427,40 +427,40 @@ async fn main() -> Result<()> {
                             }
                             KeyCode::Char(' ') | KeyCode::Null
                                 if app.screen == Screen::Chat
-                                    && app.voice.is_enabled()
+                                    && app.voice().is_enabled()
                                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
                             {
-                                if app.voice.push_to_talk_active
+                                if app.voice().push_to_talk_active
                                     && matches!(
-                                        app.voice.state(),
+                                        app.voice().state(),
                                         openlibertas_core::voice::VoiceState::Recording
                                     )
                                 {
                                     app.voice_status = None;
-                                    match app.voice.stop_recording() {
+                                    match app.voice_mut().stop_recording() {
                                         Ok(audio_bytes) => {
                                             if audio_bytes.len() <= 44 {
                                                 app.voice_status = Some(
                                                     "No audio captured — check microphone"
                                                         .to_string(),
                                                 );
-                                                app.voice.cancel();
+                                                app.voice_mut().cancel();
                                             } else {
                                                 let sender = event_stream.sender();
-                                                let api_key = app.voice.config.api_key.clone();
+                                                let api_key = app.voice().config.api_key.clone();
                                                 spawn_voice_transcription(api_key, audio_bytes, sender);
                                             }
                                         }
                                         Err(e) => {
                                             app.voice_status =
                                                 Some(format!("Recording failed: {}", e));
-                                            app.voice.cancel();
+                                            app.voice_mut().cancel();
                                         }
                                     }
                                     continue;
                                 }
 
-                                if let Err(e) = app.voice.start_recording(true) {
+                                if let Err(e) = app.voice_mut().start_recording(true) {
                                     app.voice_status =
                                         Some(format!("Failed to start recording: {}", e));
                                 } else {
@@ -494,22 +494,22 @@ async fn main() -> Result<()> {
                         },
                         Screen::Chat => match key.code {
                             KeyCode::Esc => {
-                                if app.engine.chat.streaming {
-                                    app.engine.chat.cancel_token.cancel();
+                                if app.chat.streaming {
+                                    app.chat.cancel_token.cancel();
                                     app.finish_stream();
                                     app.add_system_message("[Request cancelled]".to_string());
                                 } else if matches!(
-                                    app.voice.state(),
+                                    app.voice().state(),
                                     openlibertas_core::voice::VoiceState::Recording
                                 ) {
                                     app.voice_status = Some("Recording cancelled".to_string());
-                                    app.voice.cancel();
+                                    app.voice_mut().cancel();
                                 } else if matches!(
-                                    app.voice.state(),
+                                    app.voice().state(),
                                     openlibertas_core::voice::VoiceState::ProcessingTts
                                         | openlibertas_core::voice::VoiceState::Playing
                                 ) {
-                                    app.voice.cancel();
+                                    app.voice_mut().cancel();
                                     app.voice_status = Some("Speaking cancelled".to_string());
                                 } else if app.overlay != Overlay::None {
                                     app.overlay = Overlay::None;
@@ -518,19 +518,19 @@ async fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::F(1) | KeyCode::Char('?')
-                                if app.engine.input.buffer.is_empty() =>
+                                if app.input.buffer.is_empty() =>
                             {
                                 app.overlay = Overlay::Help;
                             }
-                            KeyCode::Tab if app.engine.input.buffer.is_empty() => {
-                                if app.engine.agents.status
+                            KeyCode::Tab if app.input.buffer.is_empty() => {
+                                if app.agents.status
                                     == openlibertas_core::engine::AgentStatus::Disabled
                                 {
                                     let personas = app.agent_personas();
                                     if let Some((name, _)) = personas.first() {
-                                        app.engine.agents.status =
+                                        app.agents.status =
                                             openlibertas_core::engine::AgentStatus::Idle;
-                                        app.engine.agents.persona = name.clone();
+                                        app.agents.persona = name.clone();
                                         app.add_system_message(format!(
                                         "Agents enabled with '{}' persona. Press Tab to cycle, Enter to chat with agent.",
                                         name
@@ -540,14 +540,14 @@ async fn main() -> Result<()> {
                                     app.cycle_agent_persona();
                                 }
                             }
-                            KeyCode::Tab if app.engine.input.buffer.starts_with('/') => {
+                            KeyCode::Tab if app.input.buffer.starts_with('/') => {
                                 if app.overlay != Overlay::Palette {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
                                 }
                                 if let Some(cmd) = app.select_palette_command() {
-                                    app.engine.input.buffer = cmd;
-                                    app.engine.input.cursor_pos = app.engine.input.buffer.len();
+                                    app.input.buffer = cmd;
+                                    app.input.cursor_pos = app.input.buffer.len();
                                     app.palette_next();
                                 } else {
                                     app.overlay = Overlay::None;
@@ -559,32 +559,32 @@ async fn main() -> Result<()> {
                                     Overlay::Themes => app.select_theme(),
                                     Overlay::Palette => {
                                         if let Some(cmd) = app.select_palette_command() {
-                                            app.engine.input.buffer = cmd;
-                                            app.engine.input.cursor_pos =
-                                                app.engine.input.buffer.len();
+                                            app.input.buffer = cmd;
+                                            app.input.cursor_pos =
+                                                app.input.buffer.len();
                                         }
                                         app.overlay = Overlay::None;
                                     }
                                     _ => {}
                                 }
-                                let voice_recording = app.voice.is_enabled()
+                                let voice_recording = app.voice().is_enabled()
                                     && matches!(
-                                        app.voice.state(),
+                                        app.voice().state(),
                                         openlibertas_core::voice::VoiceState::Recording
                                     );
-                                if !app.engine.input.buffer.trim().is_empty()
-                                    && !app.engine.chat.streaming
+                                if !app.input.buffer.trim().is_empty()
+                                    && !app.chat.streaming
                                     && !voice_recording
                                 {
                                     app.voice_status = None;
-                                    app.engine.input.show_autocomplete = false;
-                                    let input = app.engine.input.buffer.trim().to_string();
+                                    app.input.show_autocomplete = false;
+                                    let input = app.input.buffer.trim().to_string();
                                     app.push_to_history(input.clone());
 
                                     if let Some(cmd) = App::parse_slash_command(&input) {
                                         let is_quit = matches!(cmd, SlashCommand::Quit);
-                                        app.engine.input.buffer.clear();
-                                        app.engine.input.cursor_pos = 0;
+                                        app.input.buffer.clear();
+                                        app.input.cursor_pos = 0;
                                         if let Some(response) = app.execute_slash_command(cmd) {
                                             app.add_system_message(response);
                                         }
@@ -600,7 +600,7 @@ async fn main() -> Result<()> {
                                             let _ = state.save();
                                         }
                                     } else {
-                                        if app.engine.agents.status
+                                        if app.agents.status
                                             == openlibertas_core::engine::AgentStatus::Idle
                                         {
                                             app.start_agent_loop();
@@ -608,25 +608,25 @@ async fn main() -> Result<()> {
                         let _ = app.push_user_message();
                         let _ = app.autosave();
                         attach_chat_stream(&mut app, &registry, &mut event_stream);
-                        app.engine.input.buffer.clear();
-                        app.engine.input.cursor_pos = 0;
-                        app.engine.input.selection_anchor = None;
+                        app.input.buffer.clear();
+                        app.input.cursor_pos = 0;
+                        app.input.selection_anchor = None;
                                     }
                                 }
                             }
-                            KeyCode::Char('n') if app.search.active => app.search_next(),
-                            KeyCode::Char('N') if app.search.active => app.search_prev(),
+                            KeyCode::Char('n') if app.search().active => app.search_next(),
+                            KeyCode::Char('N') if app.search().active => app.search_prev(),
                             KeyCode::Char(c) => {
-                                if app.engine.input.selection_anchor.is_some() {
-                                    app.engine.delete_selection();
+                                if app.input.selection_anchor.is_some() {
+                                    app.delete_selection();
                                 }
                                 let pos = app
                                     .engine
                                     .input
                                     .cursor_pos
-                                    .min(app.engine.input.buffer.len());
-                                app.engine.input.cursor_pos =
-                                    if app.engine.input.buffer.is_char_boundary(pos) {
+                                    .min(app.input.buffer.len());
+                                app.input.cursor_pos =
+                                    if app.input.buffer.is_char_boundary(pos) {
                                         pos
                                     } else {
                                         app.engine
@@ -641,13 +641,13 @@ async fn main() -> Result<()> {
                                 app.engine
                                     .input
                                     .buffer
-                                    .insert(app.engine.input.cursor_pos, c);
-                                app.engine.input.cursor_pos += c.len_utf8();
-                                app.engine.input.show_autocomplete = false;
-                                app.engine.input.autocomplete_index = 0;
-                                app.engine.input.history_index = None;
-                                if app.engine.input.buffer.starts_with('/')
-                                    && !app.engine.input.buffer.contains(' ')
+                                    .insert(app.input.cursor_pos, c);
+                                app.input.cursor_pos += c.len_utf8();
+                                app.input.show_autocomplete = false;
+                                app.input.autocomplete_index = 0;
+                                app.input.history_index = None;
+                                if app.input.buffer.starts_with('/')
+                                    && !app.input.buffer.contains(' ')
                                 {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
@@ -656,15 +656,15 @@ async fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::Backspace => {
-                                if app.engine.input.selection_anchor.is_some() {
-                                    app.engine.delete_selection();
-                                } else if app.engine.input.cursor_pos > 0 {
+                                if app.input.selection_anchor.is_some() {
+                                    app.delete_selection();
+                                } else if app.input.cursor_pos > 0 {
                                     let pos = app
                                         .engine
                                         .input
                                         .cursor_pos
-                                        .min(app.engine.input.buffer.len());
-                                    let safe_pos = if app.engine.input.buffer.is_char_boundary(pos)
+                                        .min(app.input.buffer.len());
+                                    let safe_pos = if app.input.buffer.is_char_boundary(pos)
                                     {
                                         pos
                                     } else {
@@ -677,18 +677,18 @@ async fn main() -> Result<()> {
                                             .last()
                                             .unwrap_or(0)
                                     };
-                                    let prev = app.engine.input.buffer[..safe_pos]
+                                    let prev = app.input.buffer[..safe_pos]
                                         .char_indices()
                                         .next_back()
                                         .map(|(i, _)| i)
                                         .unwrap_or(0);
-                                    app.engine.input.buffer.remove(prev);
-                                    app.engine.input.cursor_pos = prev;
+                                    app.input.buffer.remove(prev);
+                                    app.input.cursor_pos = prev;
                                 }
-                                app.engine.input.show_autocomplete = false;
-                                app.engine.input.autocomplete_index = 0;
-                                if app.engine.input.buffer.starts_with('/')
-                                    && !app.engine.input.buffer.contains(' ')
+                                app.input.show_autocomplete = false;
+                                app.input.autocomplete_index = 0;
+                                if app.input.buffer.starts_with('/')
+                                    && !app.input.buffer.contains(' ')
                                 {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
@@ -700,22 +700,22 @@ async fn main() -> Result<()> {
                                 if key.modifiers.contains(KeyModifiers::SHIFT)
                                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
                             {
-                                app.engine.extend_selection_left();
-                                app.engine.move_cursor_word_left();
+                                app.extend_selection_left();
+                                app.move_cursor_word_left();
                             }
                             KeyCode::Right
                                 if key.modifiers.contains(KeyModifiers::SHIFT)
                                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
                             {
-                                app.engine.extend_selection_right();
-                                app.engine.move_cursor_word_right();
+                                app.extend_selection_right();
+                                app.move_cursor_word_right();
                             }
                             KeyCode::Left if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                                app.engine.extend_selection_left();
+                                app.extend_selection_left();
                                 app.move_cursor_left();
                             }
                             KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                                app.engine.extend_selection_right();
+                                app.extend_selection_right();
                                 app.move_cursor_right();
                             }
                             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -785,8 +785,8 @@ async fn main() -> Result<()> {
                     app.connection_status = app::ConnectionStatus::Disconnected;
                 }
                 Event::McpToolsLoaded(Ok((tools, statuses))) => {
-                    app.engine.tools.available_tools = tools;
-                    app.engine.tools.server_statuses = statuses;
+                    app.tools.available_tools = tools;
+                    app.tools.server_statuses = statuses;
                 }
                 Event::McpToolsLoaded(Err(e)) => {
                     app.error = Some(format!("MCP discovery failed: {}", e));
@@ -795,15 +795,15 @@ async fn main() -> Result<()> {
                     if text.trim().is_empty() {
                         app.voice_status =
                             Some("No speech detected — check mic and speak louder".to_string());
-                        app.voice.cancel();
+                        app.voice_mut().cancel();
                     } else {
                         app.voice_status = None;
-                        app.engine.input.buffer = text;
-                        app.engine.input.cursor_pos = app.engine.input.buffer.len();
-                        app.engine.input.selection_anchor = None;
-                        let input = app.engine.input.buffer.trim().to_string();
+                        app.input.buffer = text;
+                        app.input.cursor_pos = app.input.buffer.len();
+                        app.input.selection_anchor = None;
+                        let input = app.input.buffer.trim().to_string();
                         app.push_to_history(input.clone());
-                        if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Idle
+                        if app.agents.status == openlibertas_core::engine::AgentStatus::Idle
                         {
                             app.start_agent_loop();
                         }
@@ -815,12 +815,12 @@ async fn main() -> Result<()> {
                 Event::VoiceError(err) => {
                     app.voice_status = Some(format!("Voice error: {}", err));
                     if err.contains("MissingApiKey") || err.contains("No ElevenLabs API key") {
-                        app.voice.clear_tts_queue();
-                    } else if let Some(text) = app.voice.next_queued_speech() {
+                        app.voice_mut().clear_tts_queue();
+                    } else if let Some(text) = app.voice_mut().next_queued_speech() {
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
-                        let voice_id = app.voice.config.voice_id.clone();
-                        let cancel_flag = app.voice.cancel_flag.clone();
+                        let api_key = app.voice().config.api_key.clone();
+                        let voice_id = app.voice().config.voice_id.clone();
+                        let cancel_flag = app.voice().cancel_flag.clone();
                         tokio::spawn(async move {
                             match openlibertas_core::voice::tts_synthesize(api_key, voice_id, &text)
                                 .await
@@ -847,11 +847,11 @@ async fn main() -> Result<()> {
                 }
                 Event::VoicePlaybackComplete => {
                     app.voice_status = None;
-                    if let Some(text) = app.voice.next_queued_speech() {
+                    if let Some(text) = app.voice_mut().next_queued_speech() {
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
-                        let voice_id = app.voice.config.voice_id.clone();
-                        let cancel_flag = app.voice.cancel_flag.clone();
+                        let api_key = app.voice().config.api_key.clone();
+                        let voice_id = app.voice().config.voice_id.clone();
+                        let cancel_flag = app.voice().cancel_flag.clone();
                         tokio::spawn(async move {
                             match openlibertas_core::voice::tts_synthesize(api_key, voice_id, &text)
                                 .await
@@ -891,13 +891,14 @@ async fn main() -> Result<()> {
 
                     if app.agent_iteration_exceeded() {
                         app.finish_agent_loop();
+                        let max_iterations = app.agents.max_iterations;
                         app.add_system_message(format!(
                         "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
-                        app.engine.agents.max_iterations
+                        max_iterations
                     ));
-                        app.engine.tools.pending_tool_calls.clear();
-                    } else if !app.engine.tools.pending_tool_calls.is_empty() {
-                        let results = app.engine.execute_pending_tools().await;
+                        app.tools.pending_tool_calls.clear();
+                    } else if !app.tools.pending_tool_calls.is_empty() {
+                        let results = app.execute_pending_tools().await;
 
                         for result in &results {
                             match result {
@@ -934,7 +935,7 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        let switch_requests: Vec<String> = app.engine.tools.pending_tool_calls.iter().filter_map(|tc| {
+                        let switch_requests: Vec<String> = app.tools.pending_tool_calls.iter().filter_map(|tc| {
                             if tc.function.name == "switch_persona" {
                                 serde_json::from_str::<serde_json::Value>(&tc.function.arguments).ok()
                                     .and_then(|args| args.get("persona").and_then(|v| v.as_str()).map(String::from))
@@ -944,7 +945,7 @@ async fn main() -> Result<()> {
                         }).collect();
 
                         for persona in switch_requests {
-                            let current_persona = app.engine.agents.persona.clone();
+                            let current_persona = app.agents.persona.clone();
                             if persona.eq_ignore_ascii_case(&current_persona) {
                                 continue;
                             }
@@ -960,10 +961,10 @@ async fn main() -> Result<()> {
 
                         let tool_messages = app.build_tool_result_messages();
 
-                        let tool_messages = if app.engine.agents.status
+                        let tool_messages = if app.agents.status
                             == openlibertas_core::engine::AgentStatus::Active
                         {
-                            let compacted = app.engine.chat.compactor.compact(&tool_messages);
+                            let compacted = app.chat.compactor.compact(&tool_messages);
                             if compacted.len() < tool_messages.len() {
                                 app.add_system_message(format!(
                                     "[Context compacted: {} → {} messages]",
@@ -980,9 +981,9 @@ async fn main() -> Result<()> {
                         let max_tokens = app.config.max_tokens;
                         let tools = app.get_tools_for_request();
 
-                        app.engine.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
-                        app.engine.chat.streaming = true;
-                        app.engine.tools.pending_tool_calls.clear();
+                        app.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+                        app.chat.streaming = true;
+                        app.tools.pending_tool_calls.clear();
 
                         let backend = registry
                             .get(&app.models.provider)
@@ -994,29 +995,29 @@ async fn main() -> Result<()> {
                                     openlibertas_core::config::SecretString::new("".to_string()),
                                 ))
                             });
-                        app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
+                        app.chat.cancel_token = tokio_util::sync::CancellationToken::new();
                         let stream_rx = backend.chat(
                             model,
                             tool_messages,
                             max_tokens,
                             tools,
-                            app.engine.chat.cancel_token.clone(),
+        app.chat.cancel_token.clone(),
                         );
                         event_stream.attach_chat_stream(stream_rx);
                     } else {
                         app.finish_agent_loop();
-                        app.engine.tools.pending_tool_calls.clear();
+                        app.tools.pending_tool_calls.clear();
 
-                        if app.voice.is_enabled() {
-                            if let Some(last_msg) = app.engine.chat.messages.last() {
+                        if app.voice().is_enabled() {
+                            if let Some(last_msg) = app.chat.messages.last() {
                                 if last_msg.role == Role::Assistant && !last_msg.content.is_empty()
                                 {
                                     let text = last_msg.content.clone();
-                                    if let Some(text_to_speak) = app.voice.queue_speech(text) {
+                                    if let Some(text_to_speak) = app.voice_mut().queue_speech(text) {
                                         let sender = event_stream.sender();
-                                        let api_key = app.voice.config.api_key.clone();
-                                        let voice_id = app.voice.config.voice_id.clone();
-                                        let cancel_flag = app.voice.cancel_flag.clone();
+                                        let api_key = app.voice().config.api_key.clone();
+                                        let voice_id = app.voice().config.voice_id.clone();
+                                        let cancel_flag = app.voice().cancel_flag.clone();
                                         tokio::spawn(async move {
                                             match openlibertas_core::voice::tts_synthesize(
                                                 api_key, voice_id, &text_to_speak,
@@ -1053,12 +1054,12 @@ async fn main() -> Result<()> {
                 Event::ChatEvent(ChatEvent::Cancelled) => {
                     app.finish_stream();
                     app.finish_agent_loop();
-                    app.engine.tools.pending_tool_calls.clear();
+                    app.tools.pending_tool_calls.clear();
                 }
                 Event::ChatEvent(ChatEvent::Error(err)) => {
                     app.finish_stream();
                     app.finish_agent_loop();
-                    app.engine.tools.pending_tool_calls.clear();
+                    app.tools.pending_tool_calls.clear();
                     app.add_error_message(err);
                 }
                 Event::Input(CEvent::Resize(_, _)) => {}

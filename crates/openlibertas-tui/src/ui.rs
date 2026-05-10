@@ -45,14 +45,14 @@ fn draw_models(frame: &mut Frame, app: &App) {
     let title = Paragraph::new("OpenLibertas")
         .style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Center);
     frame.render_widget(title, chunks[0]);
 
     let sub_title = Paragraph::new("Select a Model")
-        .style(Style::default().fg(app.theme.secondary()))
+        .style(Style::default().fg(app.theme().secondary()))
         .alignment(Alignment::Center);
     let sub_area = Rect {
         x: chunks[0].x,
@@ -64,19 +64,19 @@ fn draw_models(frame: &mut Frame, app: &App) {
 
     if app.loading {
         let loading = Paragraph::new("Loading models...")
-            .style(Style::default().fg(app.theme.secondary()))
+            .style(Style::default().fg(app.theme().secondary()))
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(loading, chunks[1]);
     } else if let Some(ref err) = app.error {
         let error_msg = Paragraph::new(format!("Error: {}", err))
-            .style(Style::default().fg(app.theme.error_color()))
+            .style(Style::default().fg(app.theme().error_color()))
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(error_msg, chunks[1]);
     } else if app.models.models.is_empty() {
         let empty = Paragraph::new("No models found.\nMake sure your provider is running.")
-            .style(Style::default().fg(app.theme.secondary()))
+            .style(Style::default().fg(app.theme().secondary()))
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(empty, chunks[1]);
@@ -90,10 +90,10 @@ fn draw_models(frame: &mut Frame, app: &App) {
                 if !items.is_empty() {
                     items.push(ListItem::new(Line::from(Span::styled(
                         "─".repeat((chunks[1].width as usize).saturating_sub(2)),
-                        Style::default().fg(app.theme.border_color()),
+                        Style::default().fg(app.theme().border_color()),
                     ))));
                 }
-                let provider_color = provider_color(provider, app.theme);
+                let provider_color = provider_color(provider, *app.theme());
                 items.push(
                     ListItem::new(Line::from(vec![
                         Span::styled("  ", Style::default()),
@@ -112,11 +112,11 @@ fn draw_models(frame: &mut Frame, app: &App) {
             let is_selected = i == app.models.selected;
             let style = if is_selected {
                 Style::default()
-                    .bg(app.theme.primary())
-                    .fg(app.theme.panel_bg())
+                    .bg(app.theme().primary())
+                    .fg(app.theme().panel_bg())
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(app.theme.foreground())
+                Style::default().fg(app.theme().foreground())
             };
 
             let marker = if is_selected { "▸ " } else { "  " };
@@ -124,24 +124,24 @@ fn draw_models(frame: &mut Frame, app: &App) {
             let voice_indicator = if m.supports_voice { " 🎤" } else { "" };
             let local_indicator = if m.local { " [local]" } else { "" };
             items.push(ListItem::new(Line::from(vec![
-                Span::styled(marker, Style::default().fg(app.theme.primary())),
+                Span::styled(marker, Style::default().fg(app.theme().primary())),
                 Span::styled(m.id.clone(), style),
                 Span::styled(
                     local_indicator,
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::DIM),
                 ),
                 Span::styled(
                     tool_indicator,
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::DIM),
                 ),
                 Span::styled(
                     voice_indicator,
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::DIM),
                 ),
             ])));
@@ -155,7 +155,7 @@ fn draw_models(frame: &mut Frame, app: &App) {
                     .title(format!(" Models ({}) ", total_models))
                     .title_style(
                         Style::default()
-                            .fg(app.theme.primary())
+                            .fg(app.theme().primary())
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -167,30 +167,30 @@ fn draw_models(frame: &mut Frame, app: &App) {
         Span::styled(
             "↑/↓",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Enter",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Select  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "q",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " Quit (press twice)",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
     ];
     let help = Paragraph::new(Line::from(footer_spans))
-        .style(Style::default().fg(app.theme.system_color()))
+        .style(Style::default().fg(app.theme().system_color()))
         .alignment(Alignment::Center);
     frame.render_widget(help, chunks[2]);
 }
@@ -230,41 +230,41 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let (conn_symbol, conn_color) = match app.connection_status {
-        ConnectionStatus::Connected => ("●", app.theme.user_color()),
-        ConnectionStatus::Disconnected => ("●", app.theme.error_color()),
-        ConnectionStatus::Checking => ("◐", app.theme.secondary()),
+        ConnectionStatus::Connected => ("●", app.theme().user_color()),
+        ConnectionStatus::Disconnected => ("●", app.theme().error_color()),
+        ConnectionStatus::Checking => ("◐", app.theme().secondary()),
     };
 
-    let tool_indicator = if app.engine.tools.available_tools.is_empty() {
+    let tool_indicator = if app.tools.available_tools.is_empty() {
         ""
     } else {
         " [Tools: ✓]"
     };
 
-    let mcp_indicator = if app.engine.tools.client.is_some() {
+    let mcp_indicator = if app.tools.client.is_some() {
         " [MCP: ✓]"
     } else {
         " [MCP: ✗]"
     };
 
-    let agent_indicator = match app.engine.agents.status {
+    let agent_indicator = match app.agents.status {
         openlibertas_core::engine::AgentStatus::Disabled => String::new(),
         openlibertas_core::engine::AgentStatus::Idle => {
-            format!(" [Agents: ○ {} Ready]", app.engine.agents.persona)
+            format!(" [Agents: ○ {} Ready]", app.agents.persona)
         }
         openlibertas_core::engine::AgentStatus::Active => {
             format!(
                 " [Agents: ● {}/{} {}]",
-                app.engine.agents.current_iteration,
-                app.engine.agents.max_iterations,
-                app.engine.agents.persona
+                app.agents.current_iteration,
+                app.agents.max_iterations,
+                app.agents.persona
             )
         }
     };
 
-    let voice_indicator = if app.voice.is_enabled() {
-        let state_label = app.voice.state().label();
-        let icon = match app.voice.state() {
+    let voice_indicator = if app.voice().is_enabled() {
+        let state_label = app.voice().state().label();
+        let icon = match app.voice().state() {
             openlibertas_core::voice::VoiceState::Recording => "🔴",
             openlibertas_core::voice::VoiceState::ProcessingStt => "⏳",
             openlibertas_core::voice::VoiceState::ProcessingTts => "🔊",
@@ -277,9 +277,9 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
-    let (search_indicator, search_snippet) = if app.search.active && !app.search.matches.is_empty()
+    let (search_indicator, search_snippet) = if app.search().active && !app.search().matches.is_empty()
     {
-        let m = &app.search.matches[app.search.index];
+        let m = &app.search().matches[app.search().index];
         let snippet = app
             .engine
             .chat
@@ -289,8 +289,8 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             .unwrap_or("");
         let indicator = format!(
             "Search: {}/{}",
-            app.search.index + 1,
-            app.search.matches.len()
+            app.search().index + 1,
+            app.search().matches.len()
         );
         let preview = if snippet.len() > 20 {
             format!(" ...'{}'...", &snippet[..20])
@@ -306,7 +306,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(
             "OpenLibertas",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
@@ -355,7 +355,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let right_pad = max_right_width.saturating_sub(right_text_display.width());
     let right_span = Span::styled(
         format!("{}{}", " ".repeat(right_pad), right_text_display),
-        Style::default().fg(app.theme.system_color()),
+        Style::default().fg(app.theme().system_color()),
     );
 
     let header_lines = if search_snippet.is_empty() {
@@ -375,7 +375,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             ),
             Line::from(Span::styled(
                 search_snippet,
-                Style::default().fg(app.theme.secondary()),
+                Style::default().fg(app.theme().secondary()),
             )),
         ]
     };
@@ -388,10 +388,10 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
     let current_match_msg = app
         .search
         .matches
-        .get(app.search.index)
+        .get(app.search().index)
         .map(|m| m.message_index);
 
-    let is_last_msg_streaming = app.engine.chat.streaming
+    let is_last_msg_streaming = app.chat.streaming
         && app
             .engine
             .chat
@@ -400,7 +400,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
             .map(|m| m.role == Role::Assistant)
             .unwrap_or(false);
     let spinner_frame =
-        app.engine.chat.spinner_frame % openlibertas_core::engine::SPINNER_FRAMES.len();
+        app.chat.spinner_frame % openlibertas_core::engine::SPINNER_FRAMES.len();
 
     let messages_text: Vec<Line> = app
         .engine
@@ -411,10 +411,10 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
         .flat_map(|(msg_idx, msg)| {
             let model_name = app.models.current.as_deref().unwrap_or("AI");
             let (label, color) = match msg.role {
-                Role::User => ("You", app.theme.user_color()),
-                Role::Assistant => (model_name, app.theme.assistant_color()),
-                Role::Tool => ("🔧 Tool", app.theme.tool_color()),
-                Role::System => ("System", app.theme.system_color()),
+                Role::User => ("You", app.theme().user_color()),
+                Role::Assistant => (model_name, app.theme().assistant_color()),
+                Role::Tool => ("🔧 Tool", app.theme().tool_color()),
+                Role::System => ("System", app.theme().system_color()),
             };
 
             let is_current_match = current_match_msg == Some(msg_idx);
@@ -423,14 +423,14 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 .matches
                 .iter()
                 .any(|m| m.message_index == msg_idx);
-            let is_last = msg_idx == app.engine.chat.messages.len().saturating_sub(1);
+            let is_last = msg_idx == app.chat.messages.len().saturating_sub(1);
 
             let bg_style = if is_current_match {
                 Style::default()
-                    .bg(app.theme.secondary())
-                    .fg(app.theme.panel_bg())
+                    .bg(app.theme().secondary())
+                    .fg(app.theme().panel_bg())
             } else if has_match {
-                Style::default().bg(app.theme.border_color())
+                Style::default().bg(app.theme().border_color())
             } else {
                 Style::default()
             };
@@ -448,18 +448,18 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                         format!("{}: {}", tc.function.name, key_arg)
                     };
                     lines.push(Line::from(vec![
-                        Span::styled("🔧 ", Style::default().fg(app.theme.tool_color())),
+                        Span::styled("🔧 ", Style::default().fg(app.theme().tool_color())),
                         Span::styled(
                             display,
                             Style::default()
-                                .fg(app.theme.tool_color())
+                                .fg(app.theme().tool_color())
                                 .add_modifier(Modifier::BOLD),
                         ),
                     ]));
                     if key_arg.is_empty() {
                         lines.push(Line::from(vec![Span::styled(
                             format!("   Args: {}", tc.function.arguments),
-                            Style::default().fg(app.theme.system_color()),
+                            Style::default().fg(app.theme().system_color()),
                         )]));
                     }
                 }
@@ -481,16 +481,16 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                     if let Some(ref reasoning) = msg.reasoning_content {
                         if !reasoning.is_empty() {
                             lines.push(Line::from(vec![
-                                Span::styled("┌─ ", Style::default().fg(app.theme.system_color())),
+                                Span::styled("┌─ ", Style::default().fg(app.theme().system_color())),
                                 Span::styled(
                                     "Thinking",
                                     Style::default()
-                                        .fg(app.theme.system_color())
+                                        .fg(app.theme().system_color())
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(
                                     " ─",
-                                    Style::default().fg(app.theme.system_color()),
+                                    Style::default().fg(app.theme().system_color()),
                                 ),
                             ]));
                             let wrapped_reasoning = if viewport_width > 10 {
@@ -498,7 +498,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                             } else {
                                 reasoning.clone()
                             };
-                            let reasoning_rendered = app.markdown_renderer.render(&wrapped_reasoning, app.theme);
+                            let reasoning_rendered = app.markdown_renderer.render(&wrapped_reasoning, *app.theme());
                             for line in reasoning_rendered.lines {
                                 let dimmed_line = Line::from(
                                     line.spans
@@ -507,7 +507,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                                             Span::styled(
                                                 span.content.to_string(),
                                                 span.style
-                                                    .fg(app.theme.system_color())
+                                                    .fg(app.theme().system_color())
                                                     .add_modifier(Modifier::ITALIC),
                                             )
                                         })
@@ -517,7 +517,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                             }
                             lines.push(Line::from(vec![Span::styled(
                                 "└",
-                                Style::default().fg(app.theme.system_color()),
+                                Style::default().fg(app.theme().system_color()),
                             )]));
                             lines.push(Line::from(""));
                         }
@@ -529,7 +529,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 } else {
                     msg.content.clone()
                 };
-                let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
+                let rendered = app.markdown_renderer.render(&wrapped_content, *app.theme());
                 for line in rendered.lines {
                     lines.push(line);
                 }
@@ -538,13 +538,13 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                         Span::styled(
                             openlibertas_core::engine::SPINNER_FRAMES[spinner_frame],
                             Style::default()
-                                .fg(app.theme.primary())
+                                .fg(app.theme().primary())
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             " generating...",
                             Style::default()
-                                .fg(app.theme.secondary())
+                                .fg(app.theme().secondary())
                                 .add_modifier(Modifier::ITALIC),
                         ),
                     ]));
@@ -563,21 +563,21 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
     let total_lines = messages_text.len();
     let viewport_height = area.height.saturating_sub(2) as usize;
     let max_scroll = total_lines.saturating_sub(viewport_height);
-    let scroll = if app.engine.chat.auto_scroll {
+    let scroll = if app.chat.auto_scroll {
         max_scroll
     } else {
-        app.engine.chat.scroll.min(max_scroll)
+        app.chat.scroll.min(max_scroll)
     };
 
-    let messages_widget = if app.engine.chat.messages.is_empty() && !app.engine.chat.streaming {
+    let messages_widget = if app.chat.messages.is_empty() && !app.chat.streaming {
         let welcome_lines = vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled("Welcome to ", Style::default().fg(app.theme.foreground())),
+                Span::styled("Welcome to ", Style::default().fg(app.theme().foreground())),
                 Span::styled(
                     "OpenLibertas",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -585,94 +585,94 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::styled(
                     "• Type a message and press ",
-                    Style::default().fg(app.theme.system_color()),
+                    Style::default().fg(app.theme().system_color()),
                 ),
                 Span::styled(
                     "Enter",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" to chat", Style::default().fg(app.theme.system_color())),
+                Span::styled(" to chat", Style::default().fg(app.theme().system_color())),
             ]),
             Line::from(vec![
-                Span::styled("• Use ", Style::default().fg(app.theme.system_color())),
+                Span::styled("• Use ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "@path/to/file",
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " to attach files",
-                    Style::default().fg(app.theme.system_color()),
+                    Style::default().fg(app.theme().system_color()),
                 ),
             ]),
             Line::from(vec![
-                Span::styled("• Press ", Style::default().fg(app.theme.system_color())),
+                Span::styled("• Press ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "/",
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " for slash commands",
-                    Style::default().fg(app.theme.system_color()),
+                    Style::default().fg(app.theme().system_color()),
                 ),
             ]),
             Line::from(vec![
-                Span::styled("• Press ", Style::default().fg(app.theme.system_color())),
+                Span::styled("• Press ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "F1",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" or ", Style::default().fg(app.theme.system_color())),
+                Span::styled(" or ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "?",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" for help", Style::default().fg(app.theme.system_color())),
+                Span::styled(" for help", Style::default().fg(app.theme().system_color())),
             ]),
             Line::from(vec![
-                Span::styled("• Use ", Style::default().fg(app.theme.system_color())),
+                Span::styled("• Use ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "/voice",
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" then hold ", Style::default().fg(app.theme.system_color())),
+                Span::styled(" then hold ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "Ctrl+Space",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" to talk", Style::default().fg(app.theme.system_color())),
+                Span::styled(" to talk", Style::default().fg(app.theme().system_color())),
             ]),
             Line::from(vec![
-                Span::styled("• Press ", Style::default().fg(app.theme.system_color())),
+                Span::styled("• Press ", Style::default().fg(app.theme().system_color())),
                 Span::styled(
                     "Esc",
                     Style::default()
-                        .fg(app.theme.primary())
+                        .fg(app.theme().primary())
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " to switch models",
-                    Style::default().fg(app.theme.system_color()),
+                    Style::default().fg(app.theme().system_color()),
                 ),
             ]),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Start typing below...",
                 Style::default()
-                    .fg(app.theme.secondary())
+                    .fg(app.theme().secondary())
                     .add_modifier(Modifier::ITALIC),
             )]),
         ];
@@ -683,7 +683,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                     .title(" Chat ")
                     .title_style(
                         Style::default()
-                            .fg(app.theme.primary())
+                            .fg(app.theme().primary())
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -697,7 +697,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                     .title(" Chat ")
                     .title_style(
                         Style::default()
-                            .fg(app.theme.primary())
+                            .fg(app.theme().primary())
                             .add_modifier(Modifier::BOLD),
                     ),
             )
@@ -725,16 +725,16 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let model_name = app.models.current.as_deref().unwrap_or("Unknown");
 
     let (conn_symbol, conn_color) = match app.connection_status {
-        ConnectionStatus::Connected => ("●", app.theme.user_color()),
-        ConnectionStatus::Disconnected => ("●", app.theme.error_color()),
-        ConnectionStatus::Checking => ("◐", app.theme.secondary()),
+        ConnectionStatus::Connected => ("●", app.theme().user_color()),
+        ConnectionStatus::Disconnected => ("●", app.theme().error_color()),
+        ConnectionStatus::Checking => ("◐", app.theme().secondary()),
     };
 
     let display_model =
-        if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
+        if app.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
             model_name.to_string()
         } else {
-            format!("{}@{}", app.engine.agents.persona, model_name)
+            format!("{}@{}", app.agents.persona, model_name)
         };
 
     let base_url = app
@@ -756,24 +756,24 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(
             display_model.clone(),
             Style::default()
-                .fg(app.theme.foreground())
+                .fg(app.theme().foreground())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" | ", Style::default().fg(app.theme.border_color())),
+        Span::styled(" | ", Style::default().fg(app.theme().border_color())),
         Span::styled(
             base_url.clone(),
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
     ];
     let status_bar = Paragraph::new(Line::from(status_spans))
-        .style(Style::default().fg(app.theme.system_color()));
+        .style(Style::default().fg(app.theme().system_color()));
     frame.render_widget(status_bar, area);
 }
 
 fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
-    let prompt_symbol = if app.voice.is_enabled() {
+    let prompt_symbol = if app.voice().is_enabled() {
         "🎙 "
-    } else if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
+    } else if app.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
         "> "
     } else {
         "✨ "
@@ -786,8 +786,8 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
             .engine
             .input
             .cursor_pos
-            .min(app.engine.input.buffer.len());
-        if app.engine.input.buffer.is_char_boundary(pos) {
+            .min(app.input.buffer.len());
+        if app.input.buffer.is_char_boundary(pos) {
             pos
         } else {
             app.engine
@@ -801,10 +801,10 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
         }
     };
 
-    let text_before_cursor = &app.engine.input.buffer[..safe_cursor_pos];
+    let text_before_cursor = &app.input.buffer[..safe_cursor_pos];
     let cursor_display_pos = prompt_width + text_before_cursor.width();
 
-    let mut scroll_offset = app.engine.input.scroll_offset;
+    let mut scroll_offset = app.input.scroll_offset;
     if cursor_display_pos < scroll_offset {
         scroll_offset = cursor_display_pos.saturating_sub(1);
     } else if cursor_display_pos >= scroll_offset + viewport_width.saturating_sub(1) {
@@ -813,16 +813,16 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
             .saturating_add(2);
     }
 
-    let selection = app.engine.selection();
+    let selection = app.selection();
     let mut spans: Vec<Span> = vec![Span::styled(
         prompt_symbol,
-        Style::default().fg(app.theme.foreground()),
+        Style::default().fg(app.theme().foreground()),
     )];
 
     let mut current_width = 0;
     let mut in_visible_region = false;
 
-    for (byte_idx, ch) in app.engine.input.buffer.char_indices() {
+    for (byte_idx, ch) in app.input.buffer.char_indices() {
         let ch_width = ch.width().unwrap_or(1);
 
         if current_width >= scroll_offset && current_width < scroll_offset + viewport_width {
@@ -836,10 +836,10 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
                 selection.is_some_and(|(start, end)| byte_idx >= start && byte_idx < end);
             let style = if is_selected {
                 Style::default()
-                    .fg(app.theme.panel_bg())
-                    .bg(app.theme.primary())
+                    .fg(app.theme().panel_bg())
+                    .bg(app.theme().primary())
             } else {
-                Style::default().fg(app.theme.foreground())
+                Style::default().fg(app.theme().foreground())
             };
             spans.push(Span::styled(ch.to_string(), style));
         }
@@ -851,18 +851,18 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let input = Paragraph::new(line).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.border_color()))
+            .border_style(Style::default().fg(app.theme().border_color()))
             .title({
                 let base_status = if let Some(ref status) = app.voice_status {
                     status.clone()
-                } else if app.engine.chat.streaming {
+                } else if app.chat.streaming {
                     "Streaming...".to_string()
                 } else {
                     String::new()
                 };
-                if app.voice.is_enabled()
+                if app.voice().is_enabled()
                     && matches!(
-                        app.voice.state(),
+                        app.voice().state(),
                         openlibertas_core::voice::VoiceState::Recording
                     )
                 {
@@ -891,7 +891,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
             })
             .title_style(
                 Style::default()
-                    .fg(app.theme.primary())
+                    .fg(app.theme().primary())
                     .add_modifier(Modifier::BOLD),
             ),
     );
@@ -914,14 +914,14 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .title(format!(
             " MCP Tools ({}) ",
-            app.engine.tools.available_tools.len()
+            app.tools.available_tools.len()
         ))
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = popup_area.inner(Margin {
         horizontal: 1,
@@ -934,7 +934,7 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
         height: inner.height.saturating_sub(1),
     };
 
-    if app.engine.tools.available_tools.is_empty() {
+    if app.tools.available_tools.is_empty() {
         let content = Paragraph::new("No tools available.\nCheck MCP server configuration in ~/.config/opencode/opencode.json")
             .alignment(Alignment::Center);
         frame.render_widget(content, content_area);
@@ -947,17 +947,17 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
             .flat_map(|tool| {
                 vec![
                     Line::from(vec![
-                        Span::styled("• ", Style::default().fg(app.theme.primary())),
+                        Span::styled("• ", Style::default().fg(app.theme().primary())),
                         Span::styled(
                             &tool.name,
                             Style::default()
-                                .fg(app.theme.secondary())
+                                .fg(app.theme().secondary())
                                 .add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(vec![Span::styled(
                         format!("  {}", tool.description),
-                        Style::default().fg(app.theme.system_color()),
+                        Style::default().fg(app.theme().system_color()),
                     )]),
                     Line::from(""),
                 ]
@@ -974,20 +974,20 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " to close  |  ",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
         Span::styled(
             "/tools",
             Style::default()
-                .fg(app.theme.secondary())
+                .fg(app.theme().secondary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" to toggle", Style::default().fg(app.theme.system_color())),
+        Span::styled(" to toggle", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1016,10 +1016,10 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         .title(format!(" MCP Servers ({}) ", servers.len()))
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = popup_area.inner(Margin {
         horizontal: 1,
@@ -1042,24 +1042,24 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         let lines: Vec<Line> = servers
             .into_iter()
             .map(|name| {
-                let status = app.engine.tools.server_statuses.get(&name);
+                let status = app.tools.server_statuses.get(&name);
                 let (indicator, color) = match status {
                     Some(openlibertas_core::domain::McpServerStatus::Connected) => {
-                        ("●", app.theme.user_color())
+                        ("●", app.theme().user_color())
                     }
                     Some(openlibertas_core::domain::McpServerStatus::Connecting) => {
-                        ("◐", app.theme.secondary())
+                        ("◐", app.theme().secondary())
                     }
                     Some(openlibertas_core::domain::McpServerStatus::Failed) => {
-                        ("✗", app.theme.error_color())
+                        ("✗", app.theme().error_color())
                     }
                     Some(openlibertas_core::domain::McpServerStatus::Disabled) => {
-                        ("○", app.theme.system_color())
+                        ("○", app.theme().system_color())
                     }
                     Some(openlibertas_core::domain::McpServerStatus::Pending) => {
-                        ("○", app.theme.system_color())
+                        ("○", app.theme().system_color())
                     }
-                    None => ("?", app.theme.system_color()),
+                    None => ("?", app.theme().system_color()),
                 };
                 let status_text = match status {
                     Some(s) => format!("{:?}", s),
@@ -1067,10 +1067,10 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
                 };
                 Line::from(vec![
                     Span::styled(format!("{} ", indicator), Style::default().fg(color)),
-                    Span::styled(name.clone(), Style::default().fg(app.theme.foreground())),
+                    Span::styled(name.clone(), Style::default().fg(app.theme().foreground())),
                     Span::styled(
                         format!(" ({})", status_text.to_lowercase()),
-                        Style::default().fg(app.theme.system_color()),
+                        Style::default().fg(app.theme().system_color()),
                     ),
                 ])
             })
@@ -1085,20 +1085,20 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " to close  |  ",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
         Span::styled(
             "/mcp",
             Style::default()
-                .fg(app.theme.secondary())
+                .fg(app.theme().secondary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" to toggle", Style::default().fg(app.theme.system_color())),
+        Span::styled(" to toggle", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1125,10 +1125,10 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
         .title(format!(" Saved Sessions ({}) ", sessions.len()))
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = popup_area.inner(Margin {
         horizontal: 1,
@@ -1155,16 +1155,16 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
                 let time = &created[created.find('T').map(|i| i + 1).unwrap_or(0)
                     ..created.find('.').unwrap_or(created.len())];
                 Line::from(vec![
-                    Span::styled("● ", Style::default().fg(app.theme.user_color())),
+                    Span::styled("● ", Style::default().fg(app.theme().user_color())),
                     Span::styled(
                         id.to_string(),
                         Style::default()
-                            .fg(app.theme.secondary())
+                            .fg(app.theme().secondary())
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         format!("  [{} | {} {}]", model_str, date, time),
-                        Style::default().fg(app.theme.system_color()),
+                        Style::default().fg(app.theme().system_color()),
                     ),
                 ])
             })
@@ -1179,30 +1179,30 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " to close  |  ",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
         Span::styled(
             "/load <name>",
             Style::default()
-                .fg(app.theme.secondary())
+                .fg(app.theme().secondary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " to load  |  ",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
         Span::styled(
             "/sessions",
             Style::default()
-                .fg(app.theme.secondary())
+                .fg(app.theme().secondary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" to toggle", Style::default().fg(app.theme.system_color())),
+        Span::styled(" to toggle", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1232,10 +1232,10 @@ fn draw_command_palette(frame: &mut Frame, app: &App, input_area: Rect) {
         .title(" Commands ")
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = area.inner(Margin {
         horizontal: 1,
@@ -1255,8 +1255,8 @@ fn draw_command_palette(frame: &mut Frame, app: &App, input_area: Rect) {
         .map(|(i, (cmd, desc))| {
             let style = if i == app.palette_selected {
                 Style::default()
-                    .bg(app.theme.primary())
-                    .fg(app.theme.panel_bg())
+                    .bg(app.theme().primary())
+                    .fg(app.theme().panel_bg())
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -1273,31 +1273,31 @@ fn draw_command_palette(frame: &mut Frame, app: &App, input_area: Rect) {
         Span::styled(
             "↑/↓",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" or ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" or ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Tab",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Enter",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Select  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Close", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Close", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1320,10 +1320,10 @@ fn draw_themes_panel(frame: &mut Frame, app: &App) {
         .title(" Select Theme ")
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = popup_area.inner(Margin {
         horizontal: 1,
@@ -1344,13 +1344,13 @@ fn draw_themes_panel(frame: &mut Frame, app: &App) {
             let is_current = i == app.theme_selected;
             let style = if is_current {
                 Style::default()
-                    .bg(app.theme.primary())
-                    .fg(app.theme.panel_bg())
+                    .bg(app.theme().primary())
+                    .fg(app.theme().panel_bg())
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(app.theme.foreground())
+                Style::default().fg(app.theme().foreground())
             };
-            let marker = if *name == app.theme.name() {
+            let marker = if *name == app.theme().name() {
                 "● "
             } else {
                 "  "
@@ -1367,24 +1367,24 @@ fn draw_themes_panel(frame: &mut Frame, app: &App) {
         Span::styled(
             "↑/↓",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Enter",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Select  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" to close", Style::default().fg(app.theme.system_color())),
+        Span::styled(" to close", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1407,10 +1407,10 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
         .title(" Agent Configuration ")
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let inner = popup_area.inner(Margin {
         horizontal: 2,
@@ -1425,16 +1425,16 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
 
     let options = [(
             "Status",
-            (match app.engine.agents.status {
+            (match app.agents.status {
                     openlibertas_core::engine::AgentStatus::Disabled => "Disabled",
                     openlibertas_core::engine::AgentStatus::Idle => "Enabled",
                     openlibertas_core::engine::AgentStatus::Active => "Active",
                 }).to_string(),
         ),
-        ("Persona", app.engine.agents.persona.clone()),
+        ("Persona", app.agents.persona.clone()),
         (
             "Max Iterations",
-            format!("{}", app.engine.agents.max_iterations),
+            format!("{}", app.agents.max_iterations),
         )];
 
     let mut items: Vec<ListItem> = options
@@ -1444,11 +1444,11 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
             let is_selected = i == app.agent_selected;
             let style = if is_selected {
                 Style::default()
-                    .bg(app.theme.primary())
-                    .fg(app.theme.panel_bg())
+                    .bg(app.theme().primary())
+                    .fg(app.theme().panel_bg())
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(app.theme.foreground())
+                Style::default().fg(app.theme().foreground())
             };
             let marker = if is_selected { "▸ " } else { "  " };
             ListItem::new(format!("{}{}: {}", marker, label, value)).style(style)
@@ -1458,20 +1458,20 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
     items.push(ListItem::new(""));
     items.push(ListItem::new("Available Specialists:").style(
         Style::default()
-            .fg(app.theme.primary())
+            .fg(app.theme().primary())
             .add_modifier(Modifier::BOLD),
     ));
 
     let personas = app.agent_personas();
-    for (name, _) in personas.iter().filter(|(n, _)| n != &app.engine.agents.persona) {
+    for (name, _) in personas.iter().filter(|(n, _)| n != &app.agents.persona) {
         items.push(ListItem::new(format!("  • {}", name)).style(
-            Style::default().fg(app.theme.secondary()),
+            Style::default().fg(app.theme().secondary()),
         ));
     }
 
     items.push(ListItem::new(""));
     items.push(ListItem::new("Agents can delegate to specialists using the switch_persona tool.").style(
-        Style::default().fg(app.theme.system_color()),
+        Style::default().fg(app.theme().system_color()),
     ));
 
     let list = List::new(items).highlight_style(Style::default().add_modifier(Modifier::BOLD));
@@ -1482,24 +1482,24 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
         Span::styled(
             "↑/↓",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Enter",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Change  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Change  ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Close", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Close", Style::default().fg(app.theme().system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1522,10 +1522,10 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
         .title(" Keyboard Shortcuts ")
         .title_style(
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(app.theme.border_color()));
+        .border_style(Style::default().fg(app.theme().border_color()));
 
     let sections = vec![
         (
@@ -1616,7 +1616,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
         lines.push(Line::from(vec![Span::styled(
             section_name,
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         )]));
         lines.push(Line::from(""));
@@ -1625,33 +1625,33 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
                 Span::styled(
                     format!("  {:<18}", key),
                     Style::default()
-                        .fg(app.theme.secondary())
+                        .fg(app.theme().secondary())
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(desc, Style::default().fg(app.theme.foreground())),
+                Span::styled(desc, Style::default().fg(app.theme().foreground())),
             ]));
         }
         lines.push(Line::from(""));
     }
 
     lines.push(Line::from(vec![
-        Span::styled("Press ", Style::default().fg(app.theme.system_color())),
+        Span::styled("Press ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" or ", Style::default().fg(app.theme.system_color())),
+        Span::styled(" or ", Style::default().fg(app.theme().system_color())),
         Span::styled(
             "F1/?",
             Style::default()
-                .fg(app.theme.primary())
+                .fg(app.theme().primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " to close this panel",
-            Style::default().fg(app.theme.system_color()),
+            Style::default().fg(app.theme().system_color()),
         ),
     ]));
 

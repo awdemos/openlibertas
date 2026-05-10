@@ -81,13 +81,13 @@ mod tests {
 
     #[test]
     fn shell_echo_works() {
-        let result = run(serde_json::json!({"command": "echo hello"})).unwrap();
+        let result = shell(serde_json::json!({"command": "echo hello"})).unwrap();
         assert!(result.contains("hello"));
     }
 
     #[test]
     fn shell_empty_command_fails() {
-        let result = run(serde_json::json!({"command": ""}));
+        let result = shell(serde_json::json!({"command": ""}));
         assert!(result.is_err());
     }
 }
