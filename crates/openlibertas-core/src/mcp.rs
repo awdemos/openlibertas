@@ -1,3 +1,4 @@
+use crate::config::SecretString;
 use crate::domain::McpServerStatus;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,8 @@ pub struct McpServerConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
     /// Optional API key for remote MCP server authentication.
-    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<SecretString>,
     /// Optional additional headers for remote MCP requests.
     #[serde(default)]
     pub headers: HashMap<String, String>,
@@ -266,7 +268,7 @@ impl McpClient {
         let client = reqwest::Client::new();
         let mut req = client.get(format!("{}/tools", url.trim_end_matches("/mcp")));
         if let Some(key) = &config.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
+            req = req.header("Authorization", format!("Bearer {}", key.expose_secret()));
         }
         for (k, v) in &config.headers {
             req = req.header(k, v);
@@ -385,7 +387,7 @@ impl McpClient {
                 "arguments": arguments,
             }));
         if let Some(key) = &config.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
+            req = req.header("Authorization", format!("Bearer {}", key.expose_secret()));
         }
         for (k, v) in &config.headers {
             req = req.header(k, v);

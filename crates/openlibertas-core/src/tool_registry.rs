@@ -288,6 +288,9 @@ pub fn tool_needs_approval(tool_name: &str) -> bool {
         "patch",
         "apply_patch",
         "applyPatch",
+        "str_replace_file",
+        "strreplacefile",
+        "strReplaceFile",
     ];
     destructive
         .iter()
@@ -331,6 +334,8 @@ mod tests {
     fn tool_needs_approval_detects_destructive() {
         assert!(tool_needs_approval("write_file"));
         assert!(tool_needs_approval("shell"));
+        assert!(tool_needs_approval("str_replace_file"));
+        assert!(tool_needs_approval("strReplaceFile"));
         assert!(!tool_needs_approval("read_file"));
     }
 

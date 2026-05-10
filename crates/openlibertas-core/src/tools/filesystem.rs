@@ -183,14 +183,14 @@ pub fn str_replace_file_tool() -> BuiltinTool {
 
 pub fn str_replace_file(args: Value) -> Result<String> {
     let args: StrReplaceFileArgs = serde_json::from_value(args)?;
-    let path = Path::new(&args.path);
+    let path = verify_sandbox(Path::new(&args.path))?;
 
     if !path.exists() {
         return Err(anyhow::anyhow!("File not found: {}", args.path));
     }
 
     let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", args.path))?;
+        fs::read_to_string(&path).with_context(|| format!("Failed to read file: {}", args.path))?;
 
     if !content.contains(&args.old_str) {
         return Err(anyhow::anyhow!(
