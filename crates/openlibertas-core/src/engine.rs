@@ -262,13 +262,15 @@ impl ChatEngine {
         self.tools.get_tools_for_request()
     }
 
-    pub fn build_tool_result_messages(&self) -> Vec<Message> {
+    /// Assemble tool result messages with agent context.
+    /// Delegates to ToolRegistry::assemble_messages_with_agent_context.
+    pub fn assemble_tool_result_messages(&self) -> Vec<Message> {
         let agent_prompt = if self.agents.status == AgentStatus::Active {
             self.agent_prompt.as_deref()
         } else {
             None
         };
-        self.tools.build_tool_result_messages(
+        self.tools.assemble_messages_with_agent_context(
             &self.chat.messages,
             Some("active").filter(|_| self.agents.status == AgentStatus::Active),
             agent_prompt,

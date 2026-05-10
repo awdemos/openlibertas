@@ -99,7 +99,10 @@ impl ToolRegistry {
         }
     }
 
-    pub fn build_tool_result_messages(
+    /// Assemble messages with agent context injected.
+    /// Prepends the agent prompt as a system message when active, then
+    /// appends tool result messages for pending tool calls.
+    pub fn assemble_messages_with_agent_context(
         &self,
         messages: &[Message],
         agent_status: Option<&str>,

@@ -936,7 +936,7 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        let tool_messages = app.engine.build_tool_result_messages();
+                        let tool_messages = app.engine.assemble_tool_result_messages();
 
                         let tool_messages = if app.engine.agents.status
                             == openlibertas_core::engine::AgentStatus::Active
