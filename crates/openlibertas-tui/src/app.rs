@@ -97,6 +97,7 @@ impl App {
             .and_then(|d| ConversationStore::new(d).ok());
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
+        let voice_input_device = config.input_device.clone();
         let local_models = openlibertas_core::model_scanner::scan_local_models(&config.models_dir);
         let filtered_local: Vec<Model> = if config.filter_require_voice_and_tools {
             local_models
@@ -134,7 +135,11 @@ impl App {
             theme: Theme::Default,
             theme_selected: 0,
             agent_selected: 0,
-            voice: VoiceManager::new(voice_api_key, voice_id),
+            voice: {
+                let mut vm = VoiceManager::new(voice_api_key, voice_id);
+                vm.config.input_device = voice_input_device;
+                vm
+            },
             voice_status: None,
             mouse_enabled: true,
             last_click_time: None,
@@ -559,7 +564,12 @@ impl App {
                     }
                 } else {
                     self.voice.config.input_device = Some(device.clone());
-                    Some(format!("Voice input device set to: {}", device))
+                    self.config.input_device = Some(device.clone());
+                    let msg = format!("Voice input device set to: {}", device);
+                    if let Err(e) = self.config.save() {
+                        return Some(format!("{} (config save failed: {})", msg, e));
+                    }
+                    Some(msg)
                 }
             }
             SlashCommand::Mouse => {

@@ -93,6 +93,8 @@ pub struct Config {
     pub auto_save: bool,
     #[serde(default = "default_filter_voice_tools")]
     pub filter_require_voice_and_tools: bool,
+    #[serde(default)]
+    pub input_device: Option<String>,
 }
 
 fn default_models_dir() -> PathBuf {
@@ -113,6 +115,7 @@ impl Default for Config {
             models_dir: default_models_dir(),
             auto_save: default_auto_save(),
             filter_require_voice_and_tools: default_filter_voice_tools(),
+            input_device: None,
         }
     }
 }
@@ -198,6 +201,21 @@ impl Config {
     pub fn data_dir() -> Option<PathBuf> {
         directories::ProjectDirs::from("com", "openlibertas", "openlibertas")
             .map(|dirs| dirs.data_dir().to_path_buf())
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::config_path()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine config path"))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+        }
+        let contents = toml::to_string_pretty(self)
+            .with_context(|| "Failed to serialize config to TOML")?;
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write config to {:?}", path))?;
+        info!("Config saved to {:?}", path);
+        Ok(())
     }
 }
 
