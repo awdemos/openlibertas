@@ -782,23 +782,10 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let viewport_width = area.width as usize;
 
     let safe_cursor_pos = {
-        let pos = app
-            .engine
+        app.engine
             .input
             .cursor_pos
-            .min(app.engine.input.buffer.len());
-        if app.engine.input.buffer.is_char_boundary(pos) {
-            pos
-        } else {
-            app.engine
-                .input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        }
+            .min(app.engine.input.buffer.len())
     };
 
     let text_before_cursor = &app.engine.input.buffer[..safe_cursor_pos];

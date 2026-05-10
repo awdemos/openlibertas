@@ -337,40 +337,21 @@ impl ChatEngine {
     pub fn move_cursor_left(&mut self) {
         self.input.selection_anchor = None;
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        self.input.cursor_pos = if self.input.buffer.is_char_boundary(pos) {
-            self.input.buffer[..pos]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0)
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        };
+        self.input.cursor_pos = self.input.buffer[..pos]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
     }
 
     pub fn move_cursor_right(&mut self) {
         self.input.selection_anchor = None;
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        self.input.cursor_pos = if self.input.buffer.is_char_boundary(pos) {
-            self.input.buffer[pos..]
-                .char_indices()
-                .nth(1)
-                .map(|(i, _)| pos + i)
-                .unwrap_or(self.input.buffer.len())
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .find(|&i| i > pos)
-                .unwrap_or(self.input.buffer.len())
-        };
+        self.input.cursor_pos = self.input.buffer[pos..]
+            .char_indices()
+            .nth(1)
+            .map(|(i, _)| pos + i)
+            .unwrap_or(self.input.buffer.len());
     }
 
     pub fn move_cursor_to_start(&mut self) {
@@ -392,17 +373,7 @@ impl ChatEngine {
             return;
         }
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
-            pos
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        };
+        let safe_pos = pos;
         let before = &self.input.buffer[..safe_pos];
         let mut chars = before.char_indices().rev().peekable();
         while let Some((_, ch)) = chars.peek() {
@@ -427,17 +398,7 @@ impl ChatEngine {
             self.delete_selection();
         }
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
-            pos
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        };
+        let safe_pos = pos;
         self.input.buffer.insert(safe_pos, c);
         self.input.cursor_pos = safe_pos + c.len_utf8();
         self.input.show_autocomplete = false;
@@ -452,17 +413,7 @@ impl ChatEngine {
         }
         if self.input.cursor_pos > 0 {
             let pos = self.input.cursor_pos.min(self.input.buffer.len());
-            let safe_pos = if self.input.buffer.is_char_boundary(pos) {
-                pos
-            } else {
-                self.input
-                    .buffer
-                    .char_indices()
-                    .map(|(i, _)| i)
-                    .take_while(|&i| i < pos)
-                    .last()
-                    .unwrap_or(0)
-            };
+            let safe_pos = pos;
             let prev = self.input.buffer[..safe_pos]
                 .char_indices()
                 .next_back()
@@ -541,17 +492,7 @@ impl ChatEngine {
 
     pub fn move_cursor_word_left(&mut self) {
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
-            pos
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        };
+        let safe_pos = pos;
         let before = &self.input.buffer[..safe_pos];
         let mut chars = before.char_indices().rev().peekable();
         while let Some((_, ch)) = chars.peek() {
@@ -571,17 +512,7 @@ impl ChatEngine {
 
     pub fn move_cursor_word_right(&mut self) {
         let pos = self.input.cursor_pos.min(self.input.buffer.len());
-        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
-            pos
-        } else {
-            self.input
-                .buffer
-                .char_indices()
-                .map(|(i, _)| i)
-                .take_while(|&i| i < pos)
-                .last()
-                .unwrap_or(0)
-        };
+        let safe_pos = pos;
         let after = &self.input.buffer[safe_pos..];
         let mut chars = after.char_indices().peekable();
         while let Some((_, ch)) = chars.peek() {

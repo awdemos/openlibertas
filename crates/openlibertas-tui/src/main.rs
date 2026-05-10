@@ -625,19 +625,7 @@ async fn main() -> Result<()> {
                                     .input
                                     .cursor_pos
                                     .min(app.engine.input.buffer.len());
-                                app.engine.input.cursor_pos =
-                                    if app.engine.input.buffer.is_char_boundary(pos) {
-                                        pos
-                                    } else {
-                                        app.engine
-                                            .input
-                                            .buffer
-                                            .char_indices()
-                                            .map(|(i, _)| i)
-                                            .take_while(|&i| i < pos)
-                                            .last()
-                                            .unwrap_or(0)
-                                    };
+                                app.engine.input.cursor_pos = pos;
                                 app.engine
                                     .input
                                     .buffer
@@ -664,19 +652,7 @@ async fn main() -> Result<()> {
                                         .input
                                         .cursor_pos
                                         .min(app.engine.input.buffer.len());
-                                    let safe_pos = if app.engine.input.buffer.is_char_boundary(pos)
-                                    {
-                                        pos
-                                    } else {
-                                        app.engine
-                                            .input
-                                            .buffer
-                                            .char_indices()
-                                            .map(|(i, _)| i)
-                                            .take_while(|&i| i < pos)
-                                            .last()
-                                            .unwrap_or(0)
-                                    };
+                                    let safe_pos = pos;
                                     let prev = app.engine.input.buffer[..safe_pos]
                                         .char_indices()
                                         .next_back()
