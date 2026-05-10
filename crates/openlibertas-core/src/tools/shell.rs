@@ -36,6 +36,27 @@ pub fn shell_tool() -> BuiltinTool {
     )
 }
 
+fn validate_shell_command(command: &str) -> Result<()> {
+    let forbidden = [
+        "rm -rf /",
+        ":(){ :|:& };:",
+        "dd if=/dev/zero",
+        "mkfs",
+        "> /dev/sda",
+        "mv / /dev/null",
+    ];
+    let normalized = command.trim().to_lowercase();
+    for pattern in &forbidden {
+        if normalized.contains(pattern) {
+            return Err(anyhow::anyhow!(
+                "Command blocked by sandbox: contains forbidden pattern '{}'",
+                pattern
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn shell(args: Value) -> Result<String> {
     let args: ShellArgs = serde_json::from_value(args)?;
     let _timeout = args.timeout.unwrap_or(30);
@@ -43,6 +64,8 @@ pub fn shell(args: Value) -> Result<String> {
     if args.command.trim().is_empty() {
         return Err(anyhow::anyhow!("Empty command"));
     }
+
+    validate_shell_command(&args.command)?;
 
     let output = std::process::Command::new("sh")
         .arg("-c")

@@ -235,29 +235,29 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         ConnectionStatus::Checking => ("◐", app.theme.secondary()),
     };
 
-    let tool_indicator = if app.engine.tools.available_tools.is_empty() {
+    let tool_indicator = if app.engine.tools().available_tools().is_empty() {
         ""
     } else {
         " [Tools: ✓]"
     };
 
-    let mcp_indicator = if app.engine.tools.client.is_some() {
+    let mcp_indicator = if app.engine.tools().client().is_some() {
         " [MCP: ✓]"
     } else {
         " [MCP: ✗]"
     };
 
-    let agent_indicator = match app.engine.agents.status {
+    let agent_indicator = match app.engine.agents().status {
         openlibertas_core::engine::AgentStatus::Disabled => String::new(),
         openlibertas_core::engine::AgentStatus::Idle => {
-            format!(" [Agents: ○ {} Ready]", app.engine.agents.persona)
+            format!(" [Agents: ○ {} Ready]", app.engine.agents().persona)
         }
         openlibertas_core::engine::AgentStatus::Active => {
             format!(
                 " [Agents: ● {}/{} {}]",
-                app.engine.agents.current_iteration,
-                app.engine.agents.max_iterations,
-                app.engine.agents.persona
+                app.engine.agents().current_iteration,
+                app.engine.agents().max_iterations,
+                app.engine.agents().persona
             )
         }
     };
@@ -282,7 +282,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         let m = &app.search.matches[app.search.index];
         let snippet = app
             .engine
-            .chat
+            .chat()
             .messages
             .get(m.message_index)
             .map(|msg| m.snippet(&msg.content))
@@ -391,20 +391,20 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
         .get(app.search.index)
         .map(|m| m.message_index);
 
-    let is_last_msg_streaming = app.engine.chat.streaming
+    let is_last_msg_streaming = app.engine.chat().streaming
         && app
             .engine
-            .chat
+            .chat()
             .messages
             .last()
             .map(|m| m.role == Role::Assistant)
             .unwrap_or(false);
     let spinner_frame =
-        app.engine.chat.spinner_frame % openlibertas_core::engine::SPINNER_FRAMES.len();
+        app.engine.chat().spinner_frame % openlibertas_core::engine::SPINNER_FRAMES.len();
 
     let messages_text: Vec<Line> = app
         .engine
-        .chat
+        .chat()
         .messages
         .iter()
         .enumerate()
@@ -423,7 +423,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 .matches
                 .iter()
                 .any(|m| m.message_index == msg_idx);
-            let is_last = msg_idx == app.engine.chat.messages.len().saturating_sub(1);
+            let is_last = msg_idx == app.engine.chat().messages.len().saturating_sub(1);
 
             let bg_style = if is_current_match {
                 Style::default()
@@ -563,13 +563,13 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
     let total_lines = messages_text.len();
     let viewport_height = area.height.saturating_sub(2) as usize;
     let max_scroll = total_lines.saturating_sub(viewport_height);
-    let scroll = if app.engine.chat.auto_scroll {
+    let scroll = if app.engine.chat().auto_scroll {
         max_scroll
     } else {
-        app.engine.chat.scroll.min(max_scroll)
+        app.engine.chat().scroll.min(max_scroll)
     };
 
-    let messages_widget = if app.engine.chat.messages.is_empty() && !app.engine.chat.streaming {
+    let messages_widget = if app.engine.chat().messages.is_empty() && !app.engine.chat().streaming {
         let welcome_lines = vec![
             Line::from(""),
             Line::from(vec![
@@ -731,10 +731,10 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let display_model =
-        if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
+        if app.engine.agents().status == openlibertas_core::engine::AgentStatus::Disabled {
             model_name.to_string()
         } else {
-            format!("{}@{}", app.engine.agents.persona, model_name)
+            format!("{}@{}", app.engine.agents().persona, model_name)
         };
 
     let base_url = app
@@ -773,7 +773,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let prompt_symbol = if app.voice.is_enabled() {
         "🎙 "
-    } else if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Disabled {
+    } else if app.engine.agents().status == openlibertas_core::engine::AgentStatus::Disabled {
         "> "
     } else {
         "✨ "
@@ -783,15 +783,15 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
 
     let safe_cursor_pos = {
         app.engine
-            .input
+            .input()
             .cursor_pos
-            .min(app.engine.input.buffer.len())
+            .min(app.engine.input().buffer.len())
     };
 
-    let text_before_cursor = &app.engine.input.buffer[..safe_cursor_pos];
+    let text_before_cursor = &app.engine.input().buffer[..safe_cursor_pos];
     let cursor_display_pos = prompt_width + text_before_cursor.width();
 
-    let mut scroll_offset = app.engine.input.scroll_offset;
+    let mut scroll_offset = app.engine.input().scroll_offset;
     if cursor_display_pos < scroll_offset {
         scroll_offset = cursor_display_pos.saturating_sub(1);
     } else if cursor_display_pos >= scroll_offset + viewport_width.saturating_sub(1) {
@@ -809,7 +809,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let mut current_width = 0;
     let mut in_visible_region = false;
 
-    for (byte_idx, ch) in app.engine.input.buffer.char_indices() {
+    for (byte_idx, ch) in app.engine.input().buffer.char_indices() {
         let ch_width = ch.width().unwrap_or(1);
 
         if current_width >= scroll_offset && current_width < scroll_offset + viewport_width {
@@ -842,7 +842,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
             .title({
                 let base_status = if let Some(ref status) = app.voice_status {
                     status.clone()
-                } else if app.engine.chat.streaming {
+                } else if app.engine.chat().streaming {
                     "Streaming...".to_string()
                 } else {
                     String::new()
@@ -901,7 +901,7 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .title(format!(
             " MCP Tools ({}) ",
-            app.engine.tools.available_tools.len()
+            app.engine.tools().available_tools().len()
         ))
         .title_style(
             Style::default()
@@ -921,15 +921,15 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
         height: inner.height.saturating_sub(1),
     };
 
-    if app.engine.tools.available_tools.is_empty() {
+    if app.engine.tools().available_tools().is_empty() {
         let content = Paragraph::new("No tools available.\nCheck MCP server configuration in ~/.config/opencode/opencode.json")
             .alignment(Alignment::Center);
         frame.render_widget(content, content_area);
     } else {
         let tool_lines: Vec<Line> = app
             .engine
-            .tools
-            .available_tools
+            .tools()
+            .available_tools()
             .iter()
             .flat_map(|tool| {
                 vec![
@@ -994,8 +994,8 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
 
     let servers: Vec<String> = app
         .engine
-        .tools
-        .client
+        .tools()
+        .client()
         .as_ref()
         .map_or(Vec::new(), |c| c.server_names());
     let block = Block::default()
@@ -1029,7 +1029,7 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         let lines: Vec<Line> = servers
             .into_iter()
             .map(|name| {
-                let status = app.engine.tools.server_statuses.get(&name);
+                let status = app.engine.tools().server_statuses().get(&name);
                 let (indicator, color) = match status {
                     Some(openlibertas_core::domain::McpServerStatus::Connected) => {
                         ("●", app.theme.user_color())
@@ -1412,16 +1412,16 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
 
     let options = [(
             "Status",
-            (match app.engine.agents.status {
+            (match app.engine.agents().status {
                     openlibertas_core::engine::AgentStatus::Disabled => "Disabled",
                     openlibertas_core::engine::AgentStatus::Idle => "Enabled",
                     openlibertas_core::engine::AgentStatus::Active => "Active",
                 }).to_string(),
         ),
-        ("Persona", app.engine.agents.persona.clone()),
+        ("Persona", app.engine.agents().persona.clone()),
         (
             "Max Iterations",
-            format!("{}", app.engine.agents.max_iterations),
+            format!("{}", app.engine.agents().max_iterations),
         )];
 
     let mut items: Vec<ListItem> = options
@@ -1450,7 +1450,7 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
     ));
 
     let personas = app.agent_personas();
-    for (name, _) in personas.iter().filter(|(n, _)| n != &app.engine.agents.persona) {
+    for (name, _) in personas.iter().filter(|(n, _)| n != &app.engine.agents().persona) {
         items.push(ListItem::new(format!("  • {}", name)).style(
             Style::default().fg(app.theme.secondary()),
         ));

@@ -87,13 +87,13 @@ impl Default for AgentState {
 
 #[derive(Default)]
 pub struct ChatEngine {
-    pub chat: ChatState,
-    pub input: InputState,
-    pub agents: AgentState,
-    pub tools: ToolRegistry,
-    pub system_prompt: Option<String>,
-    pub agent_prompt: Option<String>,
-    pub env_context: Option<EnvContext>,
+    chat: ChatState,
+    input: InputState,
+    agents: AgentState,
+    tools: ToolRegistry,
+    system_prompt: Option<String>,
+    agent_prompt: Option<String>,
+    env_context: Option<EnvContext>,
 }
 
 impl ChatEngine {
@@ -114,6 +114,62 @@ impl ChatEngine {
     pub fn with_env_context(mut self, ctx: EnvContext) -> Self {
         self.env_context = Some(ctx);
         self
+    }
+
+    pub fn chat(&self) -> &ChatState {
+        &self.chat
+    }
+
+    pub fn chat_mut(&mut self) -> &mut ChatState {
+        &mut self.chat
+    }
+
+    pub fn input(&self) -> &InputState {
+        &self.input
+    }
+
+    pub fn input_mut(&mut self) -> &mut InputState {
+        &mut self.input
+    }
+
+    pub fn agents(&self) -> &AgentState {
+        &self.agents
+    }
+
+    pub fn agents_mut(&mut self) -> &mut AgentState {
+        &mut self.agents
+    }
+
+    pub fn tools(&self) -> &ToolRegistry {
+        &self.tools
+    }
+
+    pub fn tools_mut(&mut self) -> &mut ToolRegistry {
+        &mut self.tools
+    }
+
+    pub fn system_prompt(&self) -> Option<&str> {
+        self.system_prompt.as_deref()
+    }
+
+    pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
+        self.system_prompt = Some(prompt.into());
+    }
+
+    pub fn agent_prompt(&self) -> Option<&str> {
+        self.agent_prompt.as_deref()
+    }
+
+    pub fn set_agent_prompt(&mut self, prompt: impl Into<String>) {
+        self.agent_prompt = Some(prompt.into());
+    }
+
+    pub fn env_context(&self) -> Option<&EnvContext> {
+        self.env_context.as_ref()
+    }
+
+    pub fn set_env_context(&mut self, ctx: EnvContext) {
+        self.env_context = Some(ctx);
     }
 
     pub fn switch_persona(&mut self, persona: impl Into<String>, prompt: impl Into<String>) {
@@ -217,10 +273,10 @@ impl ChatEngine {
 
     pub fn finish_stream(&mut self) {
         self.chat.streaming = false;
-        if !self.tools.pending_tool_calls.is_empty() {
+        if !self.tools.pending_tool_calls().is_empty() {
             if let Some(last) = self.chat.messages.last_mut() {
                 if last.role == Role::Assistant {
-                    last.tool_calls = Some(self.tools.pending_tool_calls.clone());
+                    last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
                 }
             }
         }
@@ -912,7 +968,7 @@ mod tests {
     fn finish_stream_sets_tool_calls() {
         let mut engine = ChatEngine::new();
         engine.push_user_message("test");
-        engine.tools.pending_tool_calls.push(crate::domain::ToolCall {
+        engine.tools_mut().add_tool_call(crate::domain::ToolCall {
             id: "t1".to_string(),
             call_type: "function".to_string(),
             function: crate::domain::FunctionCall {

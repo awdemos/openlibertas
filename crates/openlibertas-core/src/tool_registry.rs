@@ -8,12 +8,12 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct ToolRegistry {
-    pub client: Option<Arc<McpClient>>,
-    pub available_tools: Vec<McpTool>,
-    pub builtin_tools: Vec<tools::BuiltinTool>,
-    pub pending_tool_calls: Vec<ToolCall>,
-    pub tool_results: Vec<String>,
-    pub server_statuses: HashMap<String, crate::domain::McpServerStatus>,
+    client: Option<Arc<McpClient>>,
+    available_tools: Vec<McpTool>,
+    builtin_tools: Vec<tools::BuiltinTool>,
+    pending_tool_calls: Vec<ToolCall>,
+    tool_results: Vec<String>,
+    server_statuses: HashMap<String, crate::domain::McpServerStatus>,
 }
 
 impl Default for ToolRegistry {
@@ -35,12 +35,64 @@ impl ToolRegistry {
         self
     }
 
-    pub fn clear_pending(&mut self) {
+    pub fn client(&self) -> Option<Arc<McpClient>> {
+        self.client.clone()
+    }
+
+    pub fn set_client(&mut self, client: Option<Arc<McpClient>>) {
+        self.client = client;
+    }
+
+    pub fn available_tools(&self) -> &[McpTool] {
+        &self.available_tools
+    }
+
+    pub fn set_available_tools(&mut self, tools: Vec<McpTool>) {
+        self.available_tools = tools;
+    }
+
+    pub fn builtin_tools(&self) -> &[tools::BuiltinTool] {
+        &self.builtin_tools
+    }
+
+    pub fn pending_tool_calls(&self) -> &[ToolCall] {
+        &self.pending_tool_calls
+    }
+
+    pub fn clear_pending_tool_calls(&mut self) {
         self.pending_tool_calls.clear();
     }
 
     pub fn add_tool_call(&mut self, tool_call: ToolCall) {
         self.pending_tool_calls.push(tool_call);
+    }
+
+    pub fn tool_results(&self) -> &[String] {
+        &self.tool_results
+    }
+
+    pub fn push_tool_result(&mut self, result: String) {
+        self.tool_results.push(result);
+    }
+
+    pub fn clear_tool_results(&mut self) {
+        self.tool_results.clear();
+    }
+
+    pub fn server_statuses(&self) -> &HashMap<String, crate::domain::McpServerStatus> {
+        &self.server_statuses
+    }
+
+    pub fn set_server_statuses(&mut self, statuses: HashMap<String, crate::domain::McpServerStatus>) {
+        self.server_statuses = statuses;
+    }
+
+    pub fn has_pending_tool_calls(&self) -> bool {
+        !self.pending_tool_calls.is_empty()
+    }
+
+    pub fn clear_pending(&mut self) {
+        self.pending_tool_calls.clear();
     }
 
     pub fn get_tools_for_request(&self) -> Option<Vec<ToolDefinition>> {

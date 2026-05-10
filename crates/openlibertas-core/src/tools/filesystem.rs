@@ -2,9 +2,32 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::tools::BuiltinTool;
+
+/// Verify that `path` stays within the current working directory.
+/// Rejects absolute paths and paths that traverse above the working directory.
+fn verify_sandbox(path: &Path) -> Result<PathBuf> {
+    let cwd = std::env::current_dir().context("Failed to get working directory")?;
+    let resolved = if path.is_absolute() {
+        return Err(anyhow::anyhow!(
+            "Absolute paths are not allowed: {}. Use a relative path.",
+            path.display()
+        ));
+    } else {
+        cwd.join(path)
+    };
+    let canonical = resolved.canonicalize().unwrap_or(resolved.clone());
+    let canonical_cwd = cwd.canonicalize().unwrap_or(cwd);
+    if !canonical.starts_with(&canonical_cwd) {
+        return Err(anyhow::anyhow!(
+            "Path escapes working directory: {}",
+            path.display()
+        ));
+    }
+    Ok(resolved)
+}
 
 #[derive(Debug, Deserialize)]
 struct ReadFileArgs {
@@ -77,7 +100,7 @@ pub fn write_file_tool() -> BuiltinTool {
 
 pub fn read_file(args: Value) -> Result<String> {
     let args: ReadFileArgs = serde_json::from_value(args)?;
-    let path = Path::new(&args.path);
+    let path = verify_sandbox(Path::new(&args.path))?;
 
     if !path.exists() {
         return Err(anyhow::anyhow!("File not found: {}", args.path));
@@ -88,7 +111,7 @@ pub fn read_file(args: Value) -> Result<String> {
     }
 
     let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", args.path))?;
+        fs::read_to_string(&path).with_context(|| format!("Failed to read file: {}", args.path))?;
 
     let lines: Vec<&str> = content.lines().collect();
 
@@ -107,18 +130,18 @@ pub fn read_file(args: Value) -> Result<String> {
 
 pub fn write_file(args: Value) -> Result<String> {
     let args: WriteFileArgs = serde_json::from_value(args)?;
-    let path = Path::new(&args.path);
+    let path = verify_sandbox(Path::new(&args.path))?;
 
     if args.append {
         fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(path)
+            .open(&path)
             .with_context(|| format!("Failed to open file for append: {}", args.path))?
             .write_all(args.content.as_bytes())
             .with_context(|| format!("Failed to append to file: {}", args.path))?;
     } else {
-        fs::write(path, &args.content)
+        fs::write(&path, &args.content)
             .with_context(|| format!("Failed to write file: {}", args.path))?;
     }
 
@@ -198,8 +221,12 @@ mod tests {
 
     #[test]
     fn read_file_reads_content() {
-        let result = read_file(serde_json::json!({"path": "/etc/passwd"}));
+        let temp_path = "test_read_file_tmp.txt";
+        std::fs::write(temp_path, "hello world").unwrap();
+        let result = read_file(serde_json::json!({"path": temp_path}));
         assert!(result.is_ok());
+        assert!(result.unwrap().contains("hello world"));
+        let _ = std::fs::remove_file(temp_path);
     }
 
     #[test]

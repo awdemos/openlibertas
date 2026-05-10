@@ -1,9 +1,26 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
+use std::path::Path;
 use std::process::Stdio;
 
 use crate::tools::BuiltinTool;
+
+const ALLOWED_GIT_COMMANDS: &[&str] = &[
+    "status", "diff", "log", "branch", "show", "blame", "stash", "remote",
+    "add", "commit", "push", "pull", "fetch", "merge", "rebase", "checkout",
+    "init", "clone", "reset", "clean", "tag", "config", "grep", "bisect",
+];
+
+fn validate_git_command(subcommand: &str) -> Result<()> {
+    if !ALLOWED_GIT_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
+        return Err(anyhow::anyhow!(
+            "Git subcommand '{}' is not in the allowlist",
+            subcommand
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Deserialize)]
 struct GitArgs {
@@ -43,6 +60,8 @@ pub fn git_tool() -> BuiltinTool {
 pub fn git(args: Value) -> Result<String> {
     let args: GitArgs = serde_json::from_value(args)?;
 
+    validate_git_command(&args.subcommand)?;
+
     let mut cmd = std::process::Command::new("git");
     cmd.arg(&args.subcommand);
 
@@ -53,7 +72,24 @@ pub fn git(args: Value) -> Result<String> {
     }
 
     if let Some(path) = args.path {
-        cmd.current_dir(path);
+        let sandbox = std::env::current_dir().context("Failed to get working directory")?;
+        let target = Path::new(&path);
+        if target.is_absolute() {
+            return Err(anyhow::anyhow!(
+                "Absolute paths are not allowed: {}. Use a relative path.",
+                path
+            ));
+        }
+        let resolved = sandbox.join(target);
+        let canonical = resolved.canonicalize().unwrap_or(resolved.clone());
+        let canonical_sandbox = sandbox.canonicalize().unwrap_or(sandbox);
+        if !canonical.starts_with(&canonical_sandbox) {
+            return Err(anyhow::anyhow!(
+                "Path escapes working directory: {}",
+                path
+            ));
+        }
+        cmd.current_dir(resolved);
     }
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

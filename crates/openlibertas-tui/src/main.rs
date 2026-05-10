@@ -39,9 +39,9 @@ fn attach_chat_stream(
     event_stream: &mut EventStream,
 ) {
     use openlibertas_core::engine::AgentStatus;
-    let messages = app.engine.chat.messages.clone();
-    let messages = if app.engine.agents.status == AgentStatus::Active {
-        let compacted = app.engine.chat.compactor.compact(&messages);
+    let messages = app.engine.chat_mut().messages.clone();
+    let messages = if app.engine.agents_mut().status == AgentStatus::Active {
+        let compacted = app.engine.chat_mut().compactor.compact(&messages);
         if compacted.len() < messages.len() {
             app.engine.add_system_message(format!(
                 "[Context compacted: {} → {} messages]",
@@ -66,14 +66,14 @@ fn attach_chat_stream(
                 openlibertas_core::config::SecretString::new("".to_string()),
             ))
         });
-    app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
-    app.engine.tools.pending_tool_calls.clear();
+    app.engine.chat_mut().cancel_token = tokio_util::sync::CancellationToken::new();
+    app.engine.tools_mut().clear_pending_tool_calls();
     let stream_rx = backend.chat(
         model,
         messages,
         max_tokens,
         tools,
-        app.engine.chat.cancel_token.clone(),
+        app.engine.chat_mut().cancel_token.clone(),
     );
     event_stream.attach_chat_stream(stream_rx);
 }
@@ -155,15 +155,15 @@ async fn main() -> Result<()> {
         });
     }
 
-    app.engine.tools.client = match openlibertas_core::mcp::McpClient::from_opencode_config() {
+    app.engine.tools_mut().set_client(match openlibertas_core::mcp::McpClient::from_opencode_config() {
         Ok(client) => Some(std::sync::Arc::new(client)),
         Err(e) => {
             eprintln!("[MCP] Failed to initialize MCP client: {}", e);
             None
         }
-    };
+    });
 
-    if let Some(client) = app.engine.tools.client.clone() {
+    if let Some(client) = app.engine.tools_mut().client() {
         let sender = event_stream.sender();
         tokio::spawn(async move {
             match client.discover_tools().await {
@@ -294,7 +294,7 @@ async fn main() -> Result<()> {
                                 if let Some(msg_idx) =
                                     app.engine.message_at_y(y_in_messages, messages_area_width)
                                 {
-                                    if let Some(msg) = app.engine.chat.messages.get(msg_idx) {
+                                    if let Some(msg) = app.engine.chat_mut().messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
                                             base64::engine::general_purpose::STANDARD.encode(&text);
@@ -311,8 +311,8 @@ async fn main() -> Result<()> {
                                 let prompt_width = prompt_symbol.width();
                                 app.engine
                                     .set_cursor_from_click(mouse.column as usize, prompt_width);
-                                app.engine.input.selection_anchor =
-                                    Some(app.engine.input.cursor_pos);
+                                app.engine.input_mut().selection_anchor =
+                                    Some(app.engine.input_mut().cursor_pos);
                             }
                         }
                         MouseEventKind::Drag(MouseButton::Left) if app.screen == Screen::Chat => {
@@ -334,12 +334,13 @@ async fn main() -> Result<()> {
                                     .set_cursor_from_click(mouse.column as usize, prompt_width);
                             }
                         }
-                        MouseEventKind::Up(MouseButton::Left) if app.screen == Screen::Chat
-                            && app.engine.input.selection_anchor
-                                == Some(app.engine.input.cursor_pos)
-                            => {
-                                app.engine.input.selection_anchor = None;
+                        MouseEventKind::Up(MouseButton::Left) if app.screen == Screen::Chat => {
+                            let anchor = app.engine.input_mut().selection_anchor;
+                            let cursor = app.engine.input_mut().cursor_pos;
+                            if anchor == Some(cursor) {
+                                app.engine.input_mut().selection_anchor = None;
                             }
+                        }
                         MouseEventKind::Down(MouseButton::Right) if app.screen == Screen::Chat => {
                             let input_area_y = terminal
                                 .size()
@@ -356,7 +357,7 @@ async fn main() -> Result<()> {
                                 if let Some(msg_idx) =
                                     app.engine.message_at_y(y_in_messages, messages_area_width)
                                 {
-                                    if let Some(msg) = app.engine.chat.messages.get(msg_idx) {
+                                    if let Some(msg) = app.engine.chat_mut().messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
                                             base64::engine::general_purpose::STANDARD.encode(&text);
@@ -494,8 +495,8 @@ async fn main() -> Result<()> {
                         },
                         Screen::Chat => match key.code {
                             KeyCode::Esc => {
-                                if app.engine.chat.streaming {
-                                    app.engine.chat.cancel_token.cancel();
+                                if app.engine.chat_mut().streaming {
+                                    app.engine.chat_mut().cancel_token.cancel();
                                     app.finish_stream();
                                     app.engine.add_system_message("[Request cancelled]".to_string());
                                 } else if matches!(
@@ -518,19 +519,19 @@ async fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::F(1) | KeyCode::Char('?')
-                                if app.engine.input.buffer.is_empty() =>
+                                if app.engine.input_mut().buffer.is_empty() =>
                             {
                                 app.overlay = Overlay::Help;
                             }
-                            KeyCode::Tab if app.engine.input.buffer.is_empty() => {
-                                if app.engine.agents.status
+                            KeyCode::Tab if app.engine.input_mut().buffer.is_empty() => {
+                                if app.engine.agents_mut().status
                                     == openlibertas_core::engine::AgentStatus::Disabled
                                 {
                                     let personas = app.agent_personas();
                                     if let Some((name, _)) = personas.first() {
-                                        app.engine.agents.status =
+                                        app.engine.agents_mut().status =
                                             openlibertas_core::engine::AgentStatus::Idle;
-                                        app.engine.agents.persona = name.clone();
+                                        app.engine.agents_mut().persona = name.clone();
                                         app.engine.add_system_message(format!(
                                         "Agents enabled with '{}' persona. Press Tab to cycle, Enter to chat with agent.",
                                         name
@@ -540,14 +541,14 @@ async fn main() -> Result<()> {
                                     app.cycle_agent_persona();
                                 }
                             }
-                            KeyCode::Tab if app.engine.input.buffer.starts_with('/') => {
+                            KeyCode::Tab if app.engine.input_mut().buffer.starts_with('/') => {
                                 if app.overlay != Overlay::Palette {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
                                 }
                                 if let Some(cmd) = app.select_palette_command() {
-                                    app.engine.input.buffer = cmd;
-                                    app.engine.input.cursor_pos = app.engine.input.buffer.len();
+                                    app.engine.input_mut().buffer = cmd;
+                                    app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
                                     app.palette_next();
                                 } else {
                                     app.overlay = Overlay::None;
@@ -559,9 +560,9 @@ async fn main() -> Result<()> {
                                     Overlay::Themes => app.select_theme(),
                                     Overlay::Palette => {
                                         if let Some(cmd) = app.select_palette_command() {
-                                            app.engine.input.buffer = cmd;
-                                            app.engine.input.cursor_pos =
-                                                app.engine.input.buffer.len();
+                                            app.engine.input_mut().buffer = cmd;
+                                            app.engine.input_mut().cursor_pos =
+                                                app.engine.input_mut().buffer.len();
                                         }
                                         app.overlay = Overlay::None;
                                     }
@@ -572,19 +573,19 @@ async fn main() -> Result<()> {
                                         app.voice.state(),
                                         openlibertas_core::voice::VoiceState::Recording
                                     );
-                                if !app.engine.input.buffer.trim().is_empty()
-                                    && !app.engine.chat.streaming
+                                if !app.engine.input_mut().buffer.trim().is_empty()
+                                    && !app.engine.chat_mut().streaming
                                     && !voice_recording
                                 {
                                     app.voice_status = None;
-                                    app.engine.input.show_autocomplete = false;
-                                    let input = app.engine.input.buffer.trim().to_string();
+                                    app.engine.input_mut().show_autocomplete = false;
+                                    let input = app.engine.input_mut().buffer.trim().to_string();
                                     app.engine.push_to_history(input.clone());
 
                                     if let Some(cmd) = App::parse_slash_command(&input) {
                                         let is_quit = matches!(cmd, SlashCommand::Quit);
-                                        app.engine.input.buffer.clear();
-                                        app.engine.input.cursor_pos = 0;
+                                        app.engine.input_mut().buffer.clear();
+                                        app.engine.input_mut().cursor_pos = 0;
                                         if let Some(response) = app.execute_slash_command(cmd) {
                                             app.engine.add_system_message(response);
                                         }
@@ -600,7 +601,7 @@ async fn main() -> Result<()> {
                                             let _ = state.save();
                                         }
                                     } else {
-                                        if app.engine.agents.status
+                                        if app.engine.agents_mut().status
                                             == openlibertas_core::engine::AgentStatus::Idle
                                         {
                                             app.engine.start_agent_loop();
@@ -608,34 +609,29 @@ async fn main() -> Result<()> {
                         let _ = app.push_user_message();
                         let _ = app.autosave();
                         attach_chat_stream(&mut app, &registry, &mut event_stream);
-                        app.engine.input.buffer.clear();
-                        app.engine.input.cursor_pos = 0;
-                        app.engine.input.selection_anchor = None;
+                        app.engine.input_mut().buffer.clear();
+                        app.engine.input_mut().cursor_pos = 0;
+                        app.engine.input_mut().selection_anchor = None;
                                     }
                                 }
                             }
                             KeyCode::Char('n') if app.search.active => app.search_next(),
                             KeyCode::Char('N') if app.search.active => app.search_prev(),
                             KeyCode::Char(c) => {
-                                if app.engine.input.selection_anchor.is_some() {
+                                if app.engine.input_mut().selection_anchor.is_some() {
                                     app.engine.delete_selection();
                                 }
-                                let pos = app
-                                    .engine
-                                    .input
-                                    .cursor_pos
-                                    .min(app.engine.input.buffer.len());
-                                app.engine.input.cursor_pos = pos;
-                                app.engine
-                                    .input
-                                    .buffer
-                                    .insert(app.engine.input.cursor_pos, c);
-                                app.engine.input.cursor_pos += c.len_utf8();
-                                app.engine.input.show_autocomplete = false;
-                                app.engine.input.autocomplete_index = 0;
-                                app.engine.input.history_index = None;
-                                if app.engine.input.buffer.starts_with('/')
-                                    && !app.engine.input.buffer.contains(' ')
+                                let pos = app.engine.input_mut().cursor_pos
+                                    .min(app.engine.input_mut().buffer.len());
+                                app.engine.input_mut().cursor_pos = pos;
+                                let cursor_pos = app.engine.input_mut().cursor_pos;
+                                app.engine.input_mut().buffer.insert(cursor_pos, c);
+                                app.engine.input_mut().cursor_pos += c.len_utf8();
+                                app.engine.input_mut().show_autocomplete = false;
+                                app.engine.input_mut().autocomplete_index = 0;
+                                app.engine.input_mut().history_index = None;
+                                if app.engine.input_mut().buffer.starts_with('/')
+                                    && !app.engine.input_mut().buffer.contains(' ')
                                 {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
@@ -644,27 +640,24 @@ async fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::Backspace => {
-                                if app.engine.input.selection_anchor.is_some() {
+                                if app.engine.input_mut().selection_anchor.is_some() {
                                     app.engine.delete_selection();
-                                } else if app.engine.input.cursor_pos > 0 {
-                                    let pos = app
-                                        .engine
-                                        .input
-                                        .cursor_pos
-                                        .min(app.engine.input.buffer.len());
+                                } else if app.engine.input_mut().cursor_pos > 0 {
+                                    let pos = app.engine.input_mut().cursor_pos
+                                        .min(app.engine.input_mut().buffer.len());
                                     let safe_pos = pos;
-                                    let prev = app.engine.input.buffer[..safe_pos]
+                                    let prev = app.engine.input_mut().buffer[..safe_pos]
                                         .char_indices()
                                         .next_back()
                                         .map(|(i, _)| i)
                                         .unwrap_or(0);
-                                    app.engine.input.buffer.remove(prev);
-                                    app.engine.input.cursor_pos = prev;
+                                    app.engine.input_mut().buffer.remove(prev);
+                                    app.engine.input_mut().cursor_pos = prev;
                                 }
-                                app.engine.input.show_autocomplete = false;
-                                app.engine.input.autocomplete_index = 0;
-                                if app.engine.input.buffer.starts_with('/')
-                                    && !app.engine.input.buffer.contains(' ')
+                                app.engine.input_mut().show_autocomplete = false;
+                                app.engine.input_mut().autocomplete_index = 0;
+                                if app.engine.input_mut().buffer.starts_with('/')
+                                    && !app.engine.input_mut().buffer.contains(' ')
                                 {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
@@ -761,8 +754,8 @@ async fn main() -> Result<()> {
                     app.connection_status = app::ConnectionStatus::Disconnected;
                 }
                 Event::McpToolsLoaded(Ok((tools, statuses))) => {
-                    app.engine.tools.available_tools = tools;
-                    app.engine.tools.server_statuses = statuses;
+                    app.engine.tools_mut().set_available_tools(tools);
+                    app.engine.tools_mut().set_server_statuses(statuses);
                 }
                 Event::McpToolsLoaded(Err(e)) => {
                     app.error = Some(format!("MCP discovery failed: {}", e));
@@ -775,12 +768,12 @@ async fn main() -> Result<()> {
                     } else {
                         app.voice_status = None;
                         app.voice.state = openlibertas_core::voice::VoiceState::Ready;
-                        app.engine.input.buffer = text;
-                        app.engine.input.cursor_pos = app.engine.input.buffer.len();
-                        app.engine.input.selection_anchor = None;
-                        let input = app.engine.input.buffer.trim().to_string();
+                        app.engine.input_mut().buffer = text;
+                        app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
+                        app.engine.input_mut().selection_anchor = None;
+                        let input = app.engine.input_mut().buffer.trim().to_string();
                         app.engine.push_to_history(input.clone());
-                        if app.engine.agents.status == openlibertas_core::engine::AgentStatus::Idle
+                        if app.engine.agents_mut().status == openlibertas_core::engine::AgentStatus::Idle
                         {
                             app.engine.start_agent_loop();
                         }
@@ -868,13 +861,13 @@ async fn main() -> Result<()> {
 
                     if app.engine.agent_iteration_exceeded() {
                         app.engine.finish_agent_loop();
-                        let max_iterations = app.engine.agents.max_iterations;
+                        let max_iterations = app.engine.agents_mut().max_iterations;
                         app.engine.add_system_message(format!(
                         "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
                         max_iterations
                     ));
-                        app.engine.tools.pending_tool_calls.clear();
-                    } else if !app.engine.tools.pending_tool_calls.is_empty() {
+                        app.engine.tools_mut().clear_pending_tool_calls();
+                    } else if app.engine.tools_mut().has_pending_tool_calls() {
                         let results = app.engine.execute_pending_tools().await;
 
                         for result in &results {
@@ -912,7 +905,7 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        let switch_requests: Vec<String> = app.engine.tools.pending_tool_calls.iter().filter_map(|tc| {
+                        let switch_requests: Vec<String> = app.engine.tools_mut().pending_tool_calls().iter().filter_map(|tc| {
                             if tc.function.name == "switch_persona" {
                                 serde_json::from_str::<serde_json::Value>(&tc.function.arguments).ok()
                                     .and_then(|args| args.get("persona").and_then(|v| v.as_str()).map(String::from))
@@ -922,7 +915,7 @@ async fn main() -> Result<()> {
                         }).collect();
 
                         for persona in switch_requests {
-                            let current_persona = app.engine.agents.persona.clone();
+                            let current_persona = app.engine.agents_mut().persona.clone();
                             if persona.eq_ignore_ascii_case(&current_persona) {
                                 continue;
                             }
@@ -938,10 +931,10 @@ async fn main() -> Result<()> {
 
                         let tool_messages = app.engine.assemble_tool_result_messages();
 
-                        let tool_messages = if app.engine.agents.status
+                        let tool_messages = if app.engine.agents_mut().status
                             == openlibertas_core::engine::AgentStatus::Active
                         {
-                            let compacted = app.engine.chat.compactor.compact(&tool_messages);
+                            let compacted = app.engine.chat_mut().compactor.compact(&tool_messages);
                             if compacted.len() < tool_messages.len() {
                                 app.engine.add_system_message(format!(
                                     "[Context compacted: {} → {} messages]",
@@ -958,9 +951,9 @@ async fn main() -> Result<()> {
                         let max_tokens = app.config.max_tokens;
                         let tools = app.engine.get_tools_for_request();
 
-                        app.engine.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
-                        app.engine.chat.streaming = true;
-                        app.engine.tools.pending_tool_calls.clear();
+                        app.engine.chat_mut().messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+                        app.engine.chat_mut().streaming = true;
+                        app.engine.tools_mut().clear_pending_tool_calls();
 
                         let backend = registry
                             .get(&app.models.provider)
@@ -972,21 +965,21 @@ async fn main() -> Result<()> {
                                     openlibertas_core::config::SecretString::new("".to_string()),
                                 ))
                             });
-                        app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
+                        app.engine.chat_mut().cancel_token = tokio_util::sync::CancellationToken::new();
                         let stream_rx = backend.chat(
                             model,
                             tool_messages,
                             max_tokens,
                             tools,
-        app.engine.chat.cancel_token.clone(),
+        app.engine.chat_mut().cancel_token.clone(),
                         );
                         event_stream.attach_chat_stream(stream_rx);
                     } else {
                         app.engine.finish_agent_loop();
-                        app.engine.tools.pending_tool_calls.clear();
+                        app.engine.tools_mut().clear_pending_tool_calls();
 
                         if app.voice.is_enabled() {
-                            if let Some(last_msg) = app.engine.chat.messages.last() {
+                            if let Some(last_msg) = app.engine.chat_mut().messages.last() {
                                 if last_msg.role == Role::Assistant && !last_msg.content.is_empty()
                                 {
                                     let text = last_msg.content.clone();
@@ -1031,12 +1024,12 @@ async fn main() -> Result<()> {
                 Event::ChatEvent(ChatEvent::Cancelled) => {
                     app.finish_stream();
                     app.engine.finish_agent_loop();
-                    app.engine.tools.pending_tool_calls.clear();
+                    app.engine.tools_mut().clear_pending_tool_calls();
                 }
                 Event::ChatEvent(ChatEvent::Error(err)) => {
                     app.finish_stream();
                     app.engine.finish_agent_loop();
-                    app.engine.tools.pending_tool_calls.clear();
+                    app.engine.tools_mut().clear_pending_tool_calls();
                     app.engine.add_error_message(err);
                 }
                 Event::Input(CEvent::Resize(_, _)) => {}

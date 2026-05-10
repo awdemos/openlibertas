@@ -141,13 +141,13 @@ impl App {
     pub fn set_provider(&mut self, provider: impl Into<ProviderId>) {
         let provider = provider.into();
         let prompt = self.prompt_manager.get_prompt(provider.as_str());
-        self.engine.system_prompt = Some(prompt.to_string());
+        self.engine.set_system_prompt(prompt.to_string());
         self.models.provider = provider;
     }
 
     #[cfg(test)]
     fn get_autocomplete_suggestions(&self) -> Vec<&'static str> {
-        SlashCommand::autocomplete(&self.engine.input.buffer)
+        SlashCommand::autocomplete(&self.engine.input().buffer)
     }
 
     pub fn parse_slash_command(input: &str) -> Option<SlashCommand> {
@@ -168,12 +168,12 @@ impl App {
                     Overlay::Tools
                 };
                 if self.overlay == Overlay::Tools {
-                    let tool_list = if self.engine.tools.available_tools.is_empty() {
+                    let tool_list = if self.engine.tools().available_tools().is_empty() {
                         "No tools available. Check MCP server configuration.".to_string()
                     } else {
                         self.engine
-                            .tools
-                            .available_tools
+                            .tools()
+                            .available_tools()
                             .iter()
                             .map(|t| format!("  {}: {}", t.name, t.description))
                             .collect::<Vec<_>>()
@@ -181,7 +181,7 @@ impl App {
                     };
                     Some(format!(
                         "Available Tools ({}\n{}",
-                        self.engine.tools.available_tools.len(),
+                        self.engine.tools().available_tools().len(),
                         tool_list
                     ))
                 } else {
@@ -232,11 +232,11 @@ impl App {
             }
             SlashCommand::Quit => None,
             SlashCommand::Agents => {
-                if self.engine.agents.status == AgentStatus::Disabled {
-                    self.engine.agents.status = AgentStatus::Idle;
+                if self.engine.agents_mut().status == AgentStatus::Disabled {
+                    self.engine.agents_mut().status = AgentStatus::Idle;
                     return Some(format!(
                         "Agents enabled (Persona: {})",
-                        self.engine.agents.persona
+                        self.engine.agents_mut().persona
                     ));
                 }
                 self.overlay = Overlay::Agents;
@@ -244,8 +244,8 @@ impl App {
                 None
             }
             SlashCommand::Yolo => {
-                self.engine.agents.yolo_mode = !self.engine.agents.yolo_mode;
-                if self.engine.agents.yolo_mode {
+                self.engine.agents_mut().yolo_mode = !self.engine.agents_mut().yolo_mode;
+                if self.engine.agents_mut().yolo_mode {
                     Some(
                         "YOLO mode enabled. Destructive tools will execute without confirmation."
                             .to_string(),
@@ -269,13 +269,14 @@ impl App {
                 }
             }
             SlashCommand::Edit(n) => {
-                let user_msgs: Vec<(usize, &Message)> = self
+                let user_msgs: Vec<(usize, String)> = self
                     .engine
-                    .chat
+                    .chat()
                     .messages
                     .iter()
                     .enumerate()
                     .filter(|(_, m)| m.role == Role::User)
+                    .map(|(i, m)| (i, m.content.clone()))
                     .collect();
                 if n == 0 || n > user_msgs.len() {
                     Some(format!(
@@ -284,22 +285,23 @@ impl App {
                         user_msgs.len()
                     ))
                 } else {
-                    let (idx, msg) = user_msgs[n - 1];
-                    self.engine.input.buffer = msg.content.clone();
-                    self.engine.input.cursor_pos = msg.content.len();
-                    self.engine.chat.messages.truncate(idx);
+                    let (idx, content) = &user_msgs[n - 1];
+                    let content_len = content.len();
+                    self.engine.input_mut().buffer = content.clone();
+                    self.engine.input_mut().cursor_pos = content_len;
+                    self.engine.chat_mut().messages.truncate(*idx);
                     Some(format!("Editing message {}. Press Enter to resend.", n))
                 }
             }
             SlashCommand::Remove(n) => {
-                if n == 0 || n > self.engine.chat.messages.len() {
+                if n == 0 || n > self.engine.chat_mut().messages.len() {
                     Some(format!(
                         "Invalid message number. There are {} messages. Use /remove 1..{}",
-                        self.engine.chat.messages.len(),
-                        self.engine.chat.messages.len()
+                        self.engine.chat_mut().messages.len(),
+                        self.engine.chat_mut().messages.len()
                     ))
                 } else {
-                    let removed = self.engine.chat.messages.remove(n - 1);
+                    let removed = self.engine.chat_mut().messages.remove(n - 1);
                     let preview = if removed.content.len() > 40 {
                         format!("{}...", &removed.content[..40])
                     } else {
@@ -318,7 +320,7 @@ impl App {
                     Overlay::Mcp
                 };
                 if self.overlay == Overlay::Mcp {
-                    if let Some(client) = &self.engine.tools.client {
+                    if let Some(client) = self.engine.tools().client() {
                         let servers = client.server_names();
                         if servers.is_empty() {
                             Some("No MCP servers configured".to_string())
@@ -349,7 +351,7 @@ impl App {
                     match store.save_markdown(
                         &id,
                         self.models.current.as_deref(),
-                        &self.engine.chat.messages,
+                &self.engine.chat().messages,
                     ) {
                         Ok(_) => Some(format!("Session '{}' saved", id)),
                         Err(e) => Some(format!("Failed to save: {}", e)),
@@ -365,8 +367,8 @@ impl App {
                 } else if let Some(ref store) = self.store {
                     match openlibertas_core::commands::load_session(store, &name) {
                         Ok(session) => {
-                            self.engine.chat.messages = session.messages;
-                            self.engine.chat.scroll = 0;
+                            self.engine.chat_mut().messages = session.messages;
+                            self.engine.chat_mut().scroll = 0;
                             if let Some(ref model) = session.model {
                                 self.models.current = Some(model.clone());
                                 if let Some((idx, _)) = find_model(&self.models.models, model) {
@@ -429,7 +431,7 @@ impl App {
                     Some("Search cleared".to_string())
                 } else {
                     self.search.matches =
-                        search::search_messages(&self.engine.chat.messages, &query);
+                        search::search_messages(&self.engine.chat_mut().messages, &query);
                     self.search.index = 0;
                     self.search.active = !self.search.matches.is_empty();
                     let count = self.search.matches.len();
@@ -462,9 +464,9 @@ impl App {
             }
             SlashCommand::New => {
                 self.engine.clear_messages();
-                self.engine.input.buffer.clear();
-                self.engine.tools.pending_tool_calls.clear();
-                self.engine.tools.tool_results.clear();
+                self.engine.input_mut().buffer.clear();
+                self.engine.tools_mut().clear_pending_tool_calls();
+                self.engine.tools_mut().clear_tool_results();
                 let loaded = self.load_context_files();
                 if loaded.is_empty() {
                     Some("New session started".to_string())
@@ -476,9 +478,9 @@ impl App {
                 }
             }
             SlashCommand::Undo => {
-                if self.engine.chat.messages.len() >= 2 {
-                    self.engine.chat.messages.pop();
-                    self.engine.chat.messages.pop();
+                if self.engine.chat_mut().messages.len() >= 2 {
+                    self.engine.chat_mut().messages.pop();
+                    self.engine.chat_mut().messages.pop();
                     Some("Undid last turn".to_string())
                 } else {
                     Some("Nothing to undo".to_string())
@@ -582,9 +584,9 @@ impl App {
 
     pub fn push_user_message(&mut self) -> Vec<Message> {
         let content =
-            openlibertas_core::conversation::parse_file_context(&self.engine.input.buffer);
-        if self.engine.agents.status == AgentStatus::Active {
-            self.engine.agent_prompt = Some(self.agent_system_prompt());
+            openlibertas_core::conversation::parse_file_context(&self.engine.input_mut().buffer);
+        if self.engine.agents_mut().status == AgentStatus::Active {
+            self.engine.set_agent_prompt(self.agent_system_prompt());
         }
         self.engine.push_user_message(content)
     }
@@ -592,7 +594,7 @@ impl App {
     pub fn load_context_files(&mut self) -> Vec<String> {
         let loaded = openlibertas_core::conversation::read_context_files();
         for (filename, content) in &loaded {
-            self.engine.chat.messages.push(Message { role: Role::System, content: format!("--- {} ---\n{}", filename, content), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+            self.engine.chat_mut().messages.push(Message { role: Role::System, content: format!("--- {} ---\n{}", filename, content), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
         }
         loaded.into_iter().map(|(name, _)| name).collect()
     }
@@ -617,7 +619,7 @@ impl App {
             match store.save_markdown(
                 &id,
                 self.models.current.as_deref(),
-                &self.engine.chat.messages,
+                &self.engine.chat().messages,
             ) {
                 Ok(_) => None,
                 Err(e) => Some(format!("Auto-save failed: {}", e)),
@@ -701,7 +703,7 @@ available tools to refine and polish your work."
         let personas = self.agent_personas();
         personas
             .iter()
-            .find(|(name, _)| name == &self.engine.agents.persona)
+            .find(|(name, _)| name == &self.engine.agents().persona)
             .map(|(_, prompt)| prompt.clone())
             .unwrap_or_else(|| personas[0].1.clone())
     }
@@ -718,16 +720,16 @@ available tools to refine and polish your work."
         let personas = self.agent_personas();
         let current = personas
             .iter()
-            .position(|(n, _)| *n == self.engine.agents.persona)
+            .position(|(n, _)| *n == self.engine.agents_mut().persona)
             .unwrap_or(0);
         let next = (current + 1) % personas.len();
-        self.engine.agents.persona = personas[next].0.to_string();
-        self.engine.agents.persona.clone()
+        self.engine.agents_mut().persona = personas[next].0.to_string();
+        self.engine.agents_mut().persona.clone()
     }
 
     pub fn export_conversation(&self, format: ExportFormat) -> String {
         export::export_messages(
-            &self.engine.chat.messages,
+            &self.engine.chat().messages,
             self.models.current.as_deref(),
             format,
         )
@@ -757,10 +759,10 @@ available tools to refine and polish your work."
         if let Some(m) = self.search.matches.get(self.search.index) {
             let target = m.message_index;
             let mut line_count = 0;
-            for (i, msg) in self.engine.chat.messages.iter().enumerate() {
+            for (i, msg) in self.engine.chat_mut().messages.iter().enumerate() {
                 if i == target {
-                    self.engine.chat.scroll = line_count;
-                    self.engine.chat.auto_scroll = false;
+                    self.engine.chat_mut().scroll = line_count;
+                    self.engine.chat_mut().auto_scroll = false;
                     break;
                 }
                 line_count += 3;
@@ -812,7 +814,7 @@ available tools to refine and polish your work."
     pub fn select_agent_option(&mut self) {
         match self.agent_selected {
             0 => {
-                self.engine.agents.status = if self.engine.agents.status == AgentStatus::Disabled {
+                self.engine.agents_mut().status = if self.engine.agents_mut().status == AgentStatus::Disabled {
                     AgentStatus::Idle
                 } else {
                     AgentStatus::Disabled
@@ -822,10 +824,10 @@ available tools to refine and polish your work."
                 self.cycle_agent_persona();
             }
             2 => {
-                self.engine.agents.max_iterations = if self.engine.agents.max_iterations >= 50 {
+                self.engine.agents_mut().max_iterations = if self.engine.agents_mut().max_iterations >= 50 {
                     5
                 } else {
-                    (self.engine.agents.max_iterations + 5).min(50)
+                    (self.engine.agents_mut().max_iterations + 5).min(50)
                 };
             }
             _ => {}
@@ -833,7 +835,7 @@ available tools to refine and polish your work."
     }
 
     pub fn update_command_palette(&mut self) {
-        let prefix = self.engine.input.buffer.to_lowercase();
+        let prefix = self.engine.input_mut().buffer.to_lowercase();
         self.palette_commands = SLASH_COMMANDS
             .iter()
             .filter(|cmd| cmd.starts_with(&prefix))
@@ -868,7 +870,7 @@ available tools to refine and polish your work."
 
     pub fn go_to_models(&mut self) {
         self.screen = Screen::Models;
-        self.engine.chat.streaming = false;
+        self.engine.chat_mut().streaming = false;
         self.overlay = Overlay::None;
     }
 
@@ -912,7 +914,7 @@ mod tests {
     fn autocomplete_suggestions_for_prefix() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.buffer = "/s".to_string();
+        app.engine.input_mut().buffer = "/s".to_string();
         let suggestions = app.get_autocomplete_suggestions();
         assert!(suggestions.contains(&"/save"));
         assert!(suggestions.contains(&"/sessions"));
@@ -930,29 +932,29 @@ mod tests {
     fn history_navigation() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.history = vec!["first".to_string(), "second".to_string()];
+        app.engine.input_mut().history = vec!["first".to_string(), "second".to_string()];
 
         app.engine.history_prev();
-        assert_eq!(app.engine.input.buffer, "second");
+        assert_eq!(app.engine.input_mut().buffer, "second");
 
         app.engine.history_prev();
-        assert_eq!(app.engine.input.buffer, "first");
+        assert_eq!(app.engine.input_mut().buffer, "first");
 
         app.engine.history_next();
-        assert_eq!(app.engine.input.buffer, "second");
+        assert_eq!(app.engine.input_mut().buffer, "second");
     }
 
     #[test]
     fn history_wraps_around() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.input.history = vec!["only".to_string()];
+        app.engine.input_mut().history = vec!["only".to_string()];
 
         app.engine.history_prev();
-        assert_eq!(app.engine.input.buffer, "only");
+        assert_eq!(app.engine.input_mut().buffer, "only");
 
         app.engine.history_next();
-        assert_eq!(app.engine.input.buffer, "");
+        assert_eq!(app.engine.input_mut().buffer, "");
     }
 
     #[test]
@@ -1076,38 +1078,38 @@ mod tests {
     fn agent_starts_disabled() {
         let config = Config::default();
         let app = App::new(config);
-        assert_eq!(app.engine.agents.status, AgentStatus::Disabled);
-        assert_eq!(app.engine.agents.max_iterations, 10);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.engine.agents().status, AgentStatus::Disabled);
+        assert_eq!(app.engine.agents().max_iterations, 10);
+        assert_eq!(app.engine.agents().current_iteration, 0);
     }
 
     #[test]
     fn agent_status_transitions() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents.status = AgentStatus::Idle;
+        app.engine.agents_mut().status = AgentStatus::Idle;
         app.engine.start_agent_loop();
-        assert_eq!(app.engine.agents.status, AgentStatus::Active);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.engine.agents_mut().status, AgentStatus::Active);
+        assert_eq!(app.engine.agents().current_iteration, 0);
 
         app.engine.finish_agent_loop();
-        assert_eq!(app.engine.agents.status, AgentStatus::Idle);
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.engine.agents_mut().status, AgentStatus::Idle);
+        assert_eq!(app.engine.agents().current_iteration, 0);
     }
 
     #[test]
     fn agent_iteration_tracking() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents.status = AgentStatus::Idle;
+        app.engine.agents_mut().status = AgentStatus::Idle;
         app.engine.start_agent_loop();
-        assert_eq!(app.engine.agents.current_iteration, 0);
+        assert_eq!(app.engine.agents().current_iteration, 0);
 
         app.engine.increment_agent_iteration();
-        assert_eq!(app.engine.agents.current_iteration, 1);
+        assert_eq!(app.engine.agents().current_iteration, 1);
         assert!(!app.engine.agent_iteration_exceeded());
 
-        app.engine.agents.current_iteration = 10;
+        app.engine.agents_mut().current_iteration = 10;
         assert!(app.engine.agent_iteration_exceeded());
     }
 
@@ -1115,10 +1117,10 @@ mod tests {
     fn agent_persona_cycles() {
         let config = Config::default();
         let mut app = App::new(config);
-        let initial = app.engine.agents.persona.clone();
+        let initial = app.engine.agents().persona.clone();
 
         app.cycle_agent_persona();
-        assert_ne!(app.engine.agents.persona, initial);
+        assert_ne!(app.engine.agents().persona, initial);
     }
 
     #[test]

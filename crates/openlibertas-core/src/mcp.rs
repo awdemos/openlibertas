@@ -17,6 +17,11 @@ pub struct McpServerConfig {
     pub url: Option<String>,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Optional API key for remote MCP server authentication.
+    pub api_key: Option<String>,
+    /// Optional additional headers for remote MCP requests.
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
 }
 
 fn default_enabled() -> bool {
@@ -259,10 +264,14 @@ impl McpClient {
             .as_ref()
             .context("Remote MCP server missing URL")?;
         let client = reqwest::Client::new();
-        let resp = client
-            .get(format!("{}/tools", url.trim_end_matches("/mcp")))
-            .send()
-            .await;
+        let mut req = client.get(format!("{}/tools", url.trim_end_matches("/mcp")));
+        if let Some(key) = &config.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        for (k, v) in &config.headers {
+            req = req.header(k, v);
+        }
+        let resp = req.send().await;
 
         match resp {
             Ok(resp) => {
@@ -369,14 +378,19 @@ impl McpClient {
             .as_ref()
             .context("Remote MCP server missing URL")?;
         let client = reqwest::Client::new();
-        let resp = client
+        let mut req = client
             .post(format!("{}/call", url.trim_end_matches("/mcp")))
             .json(&serde_json::json!({
                 "name": tool_name,
                 "arguments": arguments,
-            }))
-            .send()
-            .await?;
+            }));
+        if let Some(key) = &config.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        for (k, v) in &config.headers {
+            req = req.header(k, v);
+        }
+        let resp = req.send().await?;
 
         if resp.status().is_success() {
             let result: ToolCallResult = resp.json().await?;
