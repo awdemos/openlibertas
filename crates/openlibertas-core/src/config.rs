@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tracing::{info, warn};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
@@ -134,43 +135,58 @@ impl Config {
 
         if let Some(config_path) = Self::config_path() {
             if config_path.exists() {
+                info!("Loading config from {:?}", config_path);
                 let contents = std::fs::read_to_string(&config_path)
                     .with_context(|| format!("Failed to read config from {:?}", config_path))?;
                 let file_config: Config = toml::from_str(&contents)
                     .with_context(|| format!("Failed to parse config from {:?}", config_path))?;
                 config = file_config;
+            } else {
+                info!("Config file not found at {:?}, using defaults", config_path);
             }
+        } else {
+            warn!("Could not determine config path");
         }
 
         if config.providers.is_empty() {
+            info!("No providers configured, adding local default");
             config.providers.push(Provider::local_default());
         }
 
         if let Ok(url) = std::env::var("OPENLIBERTAS_URL") {
+            info!("Overriding base URL from environment");
             if let Some(first) = config.providers.first_mut() {
                 first.base_url = url;
             }
         }
         if let Ok(key) = std::env::var("OPENLIBERTAS_API_KEY") {
+            info!("Overriding API key from environment");
             if let Some(first) = config.providers.first_mut() {
                 first.api_key = SecretString::new(key);
             }
         }
         if let Ok(model) = std::env::var("OPENLIBERTAS_MODEL") {
+            info!("Overriding model from environment: {}", model);
             config.model = Some(model);
         }
         if let Ok(tokens) = std::env::var("OPENLIBERTAS_MAX_TOKENS") {
             if let Ok(tokens) = tokens.parse() {
+                info!("Overriding max tokens from environment: {}", tokens);
                 config.max_tokens = tokens;
+            } else {
+                warn!("Invalid OPENLIBERTAS_MAX_TOKENS value, using default");
             }
         }
         if let Ok(key) = std::env::var("ELEVENLABS_API_KEY") {
+            info!("Loading ElevenLabs API key from environment");
             config.elevenlabs_api_key = Some(SecretString::new(key));
         }
         if let Ok(voice_id) = std::env::var("ELEVENLABS_VOICE_ID") {
+            info!("Loading ElevenLabs voice ID from environment: {}", voice_id);
             config.elevenlabs_voice_id = Some(voice_id);
         }
 
+        info!("Config loaded: {} providers", config.providers.len());
         Ok(config)
     }
 

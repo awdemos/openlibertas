@@ -5,6 +5,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tracing::{error, info, warn};
 
 use crate::domain::*;
 
@@ -118,8 +119,8 @@ impl OpenAiBackend {
         cancel_token: tokio_util::sync::CancellationToken,
     ) -> mpsc::UnboundedReceiver<ChatEvent> {
         let req = ChatRequest {
-            model,
-            messages,
+            model: model.clone(),
+            messages: messages.clone(),
             stream: true,
             max_tokens: Some(max_tokens),
             tools: if self.supports_tools { tools } else { None },
@@ -130,6 +131,9 @@ impl OpenAiBackend {
         let client = self.client.clone();
         let base_url = self.base_url.clone();
         let api_key = self.api_key.clone();
+
+        info!("Chat request: model={}, messages={}, max_tokens={}, tools={}",
+            model, messages.len(), max_tokens, req.tools.is_some());
 
         tokio::spawn(async move {
             let url = format!("{}/chat/completions", base_url);
@@ -147,6 +151,7 @@ impl OpenAiBackend {
                 {
                     Ok(r) => {
                         if r.status().is_success() {
+                            info!("Chat response: HTTP {}", r.status());
                             resp = Some(r);
                             break;
                         }
@@ -156,6 +161,7 @@ impl OpenAiBackend {
                         if is_transient && retries < MAX_RETRIES {
                             retries += 1;
                             let delay = std::time::Duration::from_secs(2_u64.pow(retries));
+                            warn!("Chat HTTP {} — retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
                             let _ = tx.send(ChatEvent::Error(format!(
                                 "[HTTP {} — retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
@@ -164,6 +170,7 @@ impl OpenAiBackend {
                             continue;
                         }
                         let body = r.text().await.unwrap_or_default();
+                        error!("Chat HTTP error: {} — {}", status, body);
                         let _ = tx.send(ChatEvent::Error(format!(
                             "[HTTP {}: {}]",
                             status,
@@ -179,6 +186,7 @@ impl OpenAiBackend {
                         if retries < MAX_RETRIES {
                             retries += 1;
                             let delay = std::time::Duration::from_secs(2_u64.pow(retries));
+                            warn!("Chat connection error — retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
                             let _ = tx.send(ChatEvent::Error(format!(
                                 "[Connection error — retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
@@ -186,6 +194,7 @@ impl OpenAiBackend {
                             tokio::time::sleep(delay).await;
                             continue;
                         }
+                        error!("Chat connection failed after {} retries: {}", MAX_RETRIES, e);
                         let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
@@ -281,12 +290,19 @@ impl OpenAiBackend {
                         }
                     }
                     Err(e) => {
+                        error!("Chat stream error: {}", e);
                         let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
                         return;
                     }
                 }
             }
 
+            let tool_count = accumulated_tool_calls.len();
+            if tool_count > 0 {
+                info!("Chat complete: {} tool calls", tool_count);
+            } else {
+                info!("Chat complete");
+            }
             for (_, tool_call) in accumulated_tool_calls {
                 let _ = tx.send(ChatEvent::ToolCall(tool_call));
             }

@@ -115,7 +115,8 @@ impl VoiceManager {
 
     pub fn start_recording(&mut self, push_to_talk: bool) -> Result<(), VoiceError> {
         self.reset_cancel();
-        let mut recorder = match &self.config.input_device {
+        let device_name = self.config.input_device.clone();
+        let mut recorder = match &device_name {
             Some(name) => AudioRecorder::with_device(name.clone()),
             None => AudioRecorder::new(),
         };
@@ -125,12 +126,15 @@ impl VoiceManager {
         self.stream = Some(stream);
         self.recording_start = Some(std::time::Instant::now());
         self.state = VoiceState::Recording;
+        tracing::info!(
+            device = ?device_name,
+            push_to_talk,
+            "Voice recording started"
+        );
         Ok(())
     }
 
     pub fn stop_recording(&mut self) -> Result<Vec<u8>, VoiceError> {
-        // Drop the stream FIRST to stop the hardware callback, THEN take the recorder
-        // and clone the buffer. This ensures no new samples arrive while we're reading.
         self.stream = None;
         let recorder = self.recorder.take();
         let _elapsed = self.recording_start.map(|s| s.elapsed());
@@ -143,15 +147,31 @@ impl VoiceManager {
                 .stop()
                 .map_err(|e| VoiceError::AudioError(format!("Failed to stop recording: {e}")))?,
             None => {
+                tracing::warn!("stop_recording called with no active recorder");
                 return Ok(Vec::new());
             }
         };
+
+        let stats = compute_stats(
+            &recording.samples,
+            recording.sample_rate,
+            recording.channels,
+        );
+        tracing::info!(
+            duration_ms = stats.duration_ms,
+            peak = stats.peak_amplitude,
+            rms = stats.rms_amplitude,
+            samples = recording.samples.len(),
+            silence = stats.is_silence,
+            "Recording stopped"
+        );
 
         if recording.samples.is_empty() {
             return Ok(Vec::new());
         }
 
         if audio::is_silence(&recording.samples, SILENCE_THRESHOLD) {
+            tracing::info!("Recording rejected: silence detected");
             return Ok(Vec::new());
         }
 

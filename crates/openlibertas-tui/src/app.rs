@@ -86,11 +86,14 @@ pub struct App {
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
+    pub last_voice_key_at: Option<Instant>,
 }
 
 impl App {
     pub fn new(config: Config) -> Self {
-        let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
+        let store = std::env::current_dir()
+            .ok()
+            .and_then(|d| ConversationStore::new(d).ok());
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
         let local_models = openlibertas_core::model_scanner::scan_local_models(&config.models_dir);
@@ -135,7 +138,14 @@ impl App {
             mouse_enabled: true,
             last_click_time: None,
             last_click_pos: None,
+            last_voice_key_at: None,
         }
+    }
+
+    pub fn voice_key_debounce(&self) -> bool {
+        const DEBOUNCE_MS: u128 = 1000;
+        self.last_voice_key_at
+            .is_some_and(|t| t.elapsed().as_millis() < DEBOUNCE_MS)
     }
 
     pub fn set_provider(&mut self, provider: impl Into<ProviderId>) {

@@ -1,4 +1,5 @@
 use reqwest::multipart;
+use tracing::{error, info};
 
 const ELEVENLABS_API_BASE: &str = "https://api.elevenlabs.io/v1";
 const DEFAULT_TTS_MODEL: &str = "eleven_multilingual_v2";
@@ -28,11 +29,16 @@ impl ElevenLabsClient {
     /// Audio should be in WAV, MP3, or other supported format.
     pub async fn transcribe(&self, audio_bytes: Vec<u8>) -> Result<String, crate::voice::error::VoiceError> {
         let url = format!("{}/speech-to-text", ELEVENLABS_API_BASE);
+        let audio_len = audio_bytes.len();
+        info!("STT request: {} bytes", audio_len);
 
         let file_part = multipart::Part::bytes(audio_bytes)
             .file_name("audio.wav")
             .mime_str("audio/wav")
-            .map_err(|e| crate::voice::error::VoiceError::SerializationError(e.to_string()))?;
+            .map_err(|e| {
+                error!("STT multipart error: {}", e);
+                crate::voice::error::VoiceError::SerializationError(e.to_string())
+            })?;
 
         let model_part = multipart::Part::text(DEFAULT_STT_MODEL.to_string());
 
@@ -47,14 +53,18 @@ impl ElevenLabsClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| {
+                error!("STT network error: {}", e);
+                crate::voice::error::VoiceError::NetworkError(e.to_string())
+            })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            error!("STT HTTP error: {} - {}", status, body);
             return Err(crate::voice::error::VoiceError::SttError(format!(
                 "HTTP {}: {}",
                 status, body
@@ -64,12 +74,17 @@ impl ElevenLabsClient {
         let json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| crate::voice::error::VoiceError::SerializationError(e.to_string()))?;
+            .map_err(|e| {
+                error!("STT JSON parse error: {}", e);
+                crate::voice::error::VoiceError::SerializationError(e.to_string())
+            })?;
 
         let text = json.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
+            error!("STT response missing 'text' field: {:?}", json);
             crate::voice::error::VoiceError::SttError("Missing 'text' in STT response".to_string())
         })?;
 
+        info!("STT success: '{}'", text);
         Ok(text.to_string())
     }
 
@@ -78,6 +93,7 @@ impl ElevenLabsClient {
             "{}/text-to-speech/{}/stream?output_format=mp3_44100_128",
             ELEVENLABS_API_BASE, self.voice_id
         );
+        info!("TTS request: voice_id={}, text_len={}", self.voice_id, text.len());
 
         let body = serde_json::json!({
             "text": text,
@@ -92,14 +108,18 @@ impl ElevenLabsClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| {
+                error!("TTS network error: {}", e);
+                crate::voice::error::VoiceError::NetworkError(e.to_string())
+            })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            error!("TTS HTTP error: {} - {}", status, body);
             return Err(crate::voice::error::VoiceError::TtsError(format!(
                 "HTTP {}: {}",
                 status, body
@@ -109,8 +129,12 @@ impl ElevenLabsClient {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| {
+                error!("TTS body read error: {}", e);
+                crate::voice::error::VoiceError::NetworkError(e.to_string())
+            })?;
 
+        info!("TTS success: {} bytes", bytes.len());
         Ok(bytes.to_vec())
     }
 }

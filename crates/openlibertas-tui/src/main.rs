@@ -13,6 +13,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::{stdout, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tracing::{debug, info, warn};
 
 mod app;
 mod event;
@@ -105,6 +106,10 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
     let mut state = State::load();
     let mut app = App::new(config.clone());
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let registry = BackendRegistry::new(&config.providers);
 
     let (mut event_stream, mut event_rx) = EventStream::new();
@@ -225,6 +230,13 @@ async fn main() -> Result<()> {
             Ok(Some(event)) => match event {
                 Event::Input(CEvent::Key(key)) if key.kind == KeyEventKind::Release => {
                     let is_space = key.code == KeyCode::Char(' ') || key.code == KeyCode::Null;
+                    debug!(
+                        "KeyRelease: code={:?}, is_space={}, push_to_talk={}, state={:?}",
+                        key.code,
+                        is_space,
+                        app.voice.push_to_talk_active,
+                        app.voice.state()
+                    );
                     if is_space
                         && app.voice.push_to_talk_active
                         && matches!(
@@ -232,6 +244,7 @@ async fn main() -> Result<()> {
                             openlibertas_core::voice::VoiceState::Recording
                         )
                     {
+                        info!("Ctrl+Space release: stopping recording");
                         app.voice_status = None;
                         if !app.voice.has_min_recording_duration() {
                             app.voice_status = Some(
@@ -429,39 +442,20 @@ async fn main() -> Result<()> {
                             KeyCode::Char(' ') | KeyCode::Null
                                 if app.screen == Screen::Chat
                                     && app.voice.is_enabled()
-                                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                                    && key.kind != KeyEventKind::Repeat =>
                             {
-                                if app.voice.push_to_talk_active
-                                    && matches!(
-                                        app.voice.state(),
-                                        openlibertas_core::voice::VoiceState::Recording
-                                    )
-                                {
-                                    app.voice_status = None;
-                                    match app.voice.stop_recording() {
-                                        Ok(audio_bytes) => {
-                                            if audio_bytes.len() <= 44 {
-                                                app.voice_status = Some(
-                                                    "No audio captured — check microphone"
-                                                        .to_string(),
-                                                );
-                                                app.voice.cancel();
-                                            } else {
-                                                let sender = event_stream.sender();
-                                                let api_key = app.voice.config.api_key.clone();
-                                                spawn_voice_transcription(api_key, audio_bytes, sender);
-                                            }
-                                        }
-                                        Err(e) => {
-                                            app.voice_status =
-                                                Some(format!("Recording failed: {}", e));
-                                            app.voice.cancel();
-                                        }
-                                    }
+                                if app.voice_key_debounce() {
+                                    debug!("Ctrl+Space debounced");
                                     continue;
                                 }
+                                app.last_voice_key_at = Some(Instant::now());
 
+                                // Intentionally no toggle-off on press: avoids terminal
+                                // autorepeat stopping the recording prematurely.
+                                info!("Ctrl+Space: starting recording");
                                 if let Err(e) = app.voice.start_recording(true) {
+                                    warn!("Failed to start recording: {}", e);
                                     app.voice_status =
                                         Some(format!("Failed to start recording: {}", e));
                                 } else {

@@ -8,6 +8,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info, warn};
 
 /// Information about an available audio input device.
 #[derive(Debug, Clone)]
@@ -24,6 +25,7 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
     let host = cpal::default_host();
     let default_device = host.default_input_device();
     let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+    info!("Enumerating audio input devices, default: {:?}", default_name);
 
     let mut devices = Vec::new();
     match host.input_devices() {
@@ -31,13 +33,27 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
             for device in device_iter {
                 let name = match device.name() {
                     Ok(n) => n,
-                    Err(_) => continue,
+                    Err(e) => {
+                        warn!("Failed to get device name: {}", e);
+                        continue;
+                    }
                 };
                 let is_default = Some(name.as_str()) == default_name.as_deref();
                 let config = match device.default_input_config() {
                     Ok(c) => c,
-                    Err(_) => continue,
+                    Err(e) => {
+                        warn!("Failed to get config for '{}': {}", name, e);
+                        continue;
+                    }
                 };
+                debug!(
+                    "Input device: {} (default={}, sr={}, ch={}, fmt={:?})",
+                    name,
+                    is_default,
+                    config.sample_rate().0,
+                    config.channels(),
+                    config.sample_format()
+                );
                 devices.push(InputDeviceInfo {
                     name,
                     is_default,
@@ -48,6 +64,7 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
             }
         }
         Err(e) => {
+            error!("Failed to enumerate input devices: {}", e);
             return Err(crate::voice::VoiceError::AudioError(format!(
                 "Failed to enumerate input devices: {e}"
             )))
@@ -65,17 +82,21 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
         }
     });
 
+    info!("Found {} input devices", devices.len());
     Ok(devices)
 }
 
 /// Get the name of the default input device.
 pub fn default_input_device_name() -> Result<String, crate::voice::VoiceError> {
     let host = cpal::default_host();
-    host.default_input_device()
+    let name = host.default_input_device()
         .and_then(|d| d.name().ok())
         .ok_or_else(|| {
+            error!("No default input device available");
             crate::voice::VoiceError::AudioError("No default input device available".to_string())
-        })
+        })?;
+    info!("Default input device: {}", name);
+    Ok(name)
 }
 
 /// Audio statistics for diagnostics.
@@ -206,6 +227,7 @@ impl AudioRecorder {
         let host = cpal::default_host();
         let device = match &self.device_name {
             Some(name) => {
+                info!("Looking for input device: {}", name);
                 let mut found = None;
                 if let Ok(devices) = host.input_devices() {
                     for d in devices {
@@ -218,26 +240,43 @@ impl AudioRecorder {
                     }
                 }
                 found.ok_or_else(|| {
+                    error!("Input device '{}' not found", name);
                     crate::voice::VoiceError::AudioError(format!(
                         "Input device '{}' not found. Use /voice_device to list available devices.",
                         name
                     ))
                 })?
             }
-            None => host.default_input_device().ok_or_else(|| {
-                crate::voice::VoiceError::AudioError("No input device available".to_string())
-            })?,
+            None => {
+                let dev = host.default_input_device().ok_or_else(|| {
+                    error!("No default input device available");
+                    crate::voice::VoiceError::AudioError("No input device available".to_string())
+                })?;
+                if let Ok(name) = dev.name() {
+                    info!("Using default input device: {}", name);
+                }
+                dev
+            }
         };
 
         let config = device.default_input_config().map_err(|e| {
+            error!("Failed to get input config: {}", e);
             crate::voice::VoiceError::AudioError(format!("Failed to get input config: {e}"))
         })?;
 
         self.sample_rate = config.sample_rate().0;
         self.channels = config.channels();
+        info!(
+            "Recording: sr={}, ch={}, fmt={:?}",
+            self.sample_rate,
+            self.channels,
+            config.sample_format()
+        );
 
         let buffer = Arc::clone(&self.buffer);
-        let err_fn = |_err| {};
+        let err_fn = |err| {
+            warn!("Audio input stream error: {}", err);
+        };
 
         let stream = match config.sample_format() {
             cpal::SampleFormat::F32 => device.build_input_stream(
@@ -274,18 +313,24 @@ impl AudioRecorder {
                 None,
             ),
             _ => {
+                error!("Unsupported sample format: {:?}", config.sample_format());
                 return Err(crate::voice::VoiceError::AudioError(format!(
                     "Unsupported sample format: {:?}",
                     config.sample_format()
                 )))
             }
         }
-        .map_err(|e| crate::voice::VoiceError::AudioError(format!("Failed to build input stream: {e}")))?;
+        .map_err(|e| {
+            error!("Failed to build input stream: {}", e);
+            crate::voice::VoiceError::AudioError(format!("Failed to build input stream: {e}"))
+        })?;
 
         stream.play().map_err(|e| {
+            error!("Failed to start recording: {}", e);
             crate::voice::VoiceError::AudioError(format!("Failed to start recording: {e}"))
         })?;
 
+        info!("Recording started");
         Ok(stream)
     }
 
@@ -294,8 +339,16 @@ impl AudioRecorder {
         let samples = self
             .buffer
             .lock()
-            .map_err(|e| crate::voice::VoiceError::AudioError(format!("Mutex poisoned: {e}")))?
+            .map_err(|e| {
+                error!("Mutex poisoned: {}", e);
+                crate::voice::VoiceError::AudioError(format!("Mutex poisoned: {e}"))
+            })?
             .clone();
+        let stats = compute_stats(&samples, self.sample_rate, self.channels);
+        info!(
+            "Recording stopped: {} samples, {} ms, peak={:.3}, rms={:.3}, silence={}",
+            stats.sample_count, stats.duration_ms, stats.peak_amplitude, stats.rms_amplitude, stats.is_silence
+        );
         Ok(Recording {
             samples,
             sample_rate: self.sample_rate,
@@ -321,10 +374,15 @@ impl AudioPlayer {
     /// Create a new audio player with a shared output stream.
     pub fn new() -> Result<Self, crate::voice::VoiceError> {
         let (_stream, stream_handle) = rodio::OutputStream::try_default()
-            .map_err(|e| crate::voice::VoiceError::AudioError(format!("No audio output device: {e}")))?;
+            .map_err(|e| {
+                error!("No audio output device: {}", e);
+                crate::voice::VoiceError::AudioError(format!("No audio output device: {e}"))
+            })?;
         let sink = rodio::Sink::try_new(&stream_handle).map_err(|e| {
+            error!("Failed to create audio sink: {}", e);
             crate::voice::VoiceError::AudioError(format!("Failed to create audio sink: {e}"))
         })?;
+        info!("AudioPlayer created");
         Ok(Self {
             _stream,
             _stream_handle: stream_handle,
@@ -334,11 +392,16 @@ impl AudioPlayer {
 
     /// Play audio bytes, replacing any currently playing audio.
     pub fn play(&self, audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
+        let len = audio_bytes.len();
         self.sink.stop();
         let cursor = Cursor::new(audio_bytes);
         let source = rodio::Decoder::new(cursor)
-            .map_err(|e| crate::voice::VoiceError::AudioError(format!("Failed to decode audio: {e}")))?;
+            .map_err(|e| {
+                error!("Failed to decode audio: {}", e);
+                crate::voice::VoiceError::AudioError(format!("Failed to decode audio: {e}"))
+            })?;
         self.sink.append(source);
+        info!("Audio playback started: {} bytes", len);
         Ok(())
     }
 
@@ -356,7 +419,9 @@ impl AudioPlayer {
     pub fn play_blocking(audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
         let player = Self::new()?;
         player.play(audio_bytes)?;
+        info!("Audio playback blocking...");
         player.sink.sleep_until_end();
+        info!("Audio playback complete");
         Ok(())
     }
 }

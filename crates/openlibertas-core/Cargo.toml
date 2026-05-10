@@ -21,6 +21,7 @@ time = { version = "0.3", features = ["formatting"] }
 regex = "1"
 
 thiserror = "2"
+tracing = "0.1"
 cpal = "0.15"
 rodio = { version = "0.19", features = ["symphonia"] }
 hound = "3.5"
