@@ -1,5 +1,6 @@
 use crate::domain::{Message, Model, ProviderId};
 use crate::store::ConversationStore;
+use anyhow::Context;
 
 /// All available slash commands organized by category
 pub const SLASH_COMMANDS: &[&str] = &[
@@ -352,12 +353,12 @@ pub struct LoadedSession {
 }
 
 /// Load a session including model information
-pub fn load_session(store: &ConversationStore, name: &str) -> Result<LoadedSession, String> {
+pub fn load_session(store: &ConversationStore, name: &str) -> anyhow::Result<LoadedSession> {
     let path = store.conversation_path(name);
     let contents = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read conversation: {}", e))?;
+        .with_context(|| format!("Failed to read conversation: {}", name))?;
     let conversation: crate::store::Conversation = serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse conversation: {}", e))?;
+        .with_context(|| format!("Failed to parse conversation: {}", name))?;
 
     Ok(LoadedSession {
         messages: conversation.messages,

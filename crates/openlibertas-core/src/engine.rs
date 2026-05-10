@@ -314,8 +314,8 @@ impl ChatEngine {
 
     // -- Tool execution --
 
-    pub fn get_tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
-        self.tools.get_tools_for_request()
+    pub fn tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
+        self.tools.tools_for_request()
     }
 
     /// Assemble tool result messages with agent context.
@@ -534,7 +534,7 @@ impl ChatEngine {
         self.move_cursor_right();
     }
 
-    pub fn get_selected_text(&self) -> Option<String> {
+    pub fn selected_text(&self) -> Option<String> {
         self.selection()
             .map(|(start, end)| self.input.buffer[start..end].to_string())
     }
@@ -594,7 +594,7 @@ impl ChatEngine {
     // -- Clipboard --
 
     pub fn copy_selection(&mut self) -> Option<String> {
-        self.get_selected_text()
+        self.selected_text()
     }
 
     pub fn cut_selection(&mut self) -> Option<String> {

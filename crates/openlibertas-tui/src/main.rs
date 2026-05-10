@@ -55,7 +55,7 @@ fn attach_chat_stream(
     };
     let model = app.models.current.clone().unwrap_or_default();
     let max_tokens = app.config.max_tokens;
-    let tools = app.engine.get_tools_for_request();
+    let tools = app.engine.tools_for_request();
     let backend = registry
         .get(&app.models.provider)
         .or_else(|| registry.default_backend())
@@ -949,7 +949,7 @@ async fn main() -> Result<()> {
 
                         let model = app.models.current.clone().unwrap_or_default();
                         let max_tokens = app.config.max_tokens;
-                        let tools = app.engine.get_tools_for_request();
+                        let tools = app.engine.tools_for_request();
 
                         app.engine.chat_mut().messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
                         app.engine.chat_mut().streaming = true;
