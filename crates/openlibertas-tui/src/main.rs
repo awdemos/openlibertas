@@ -774,6 +774,7 @@ async fn main() -> Result<()> {
                         app.voice.cancel();
                     } else {
                         app.voice_status = None;
+                        app.voice.state = openlibertas_core::voice::VoiceState::Ready;
                         app.engine.input.buffer = text;
                         app.engine.input.cursor_pos = app.engine.input.buffer.len();
                         app.engine.input.selection_anchor = None;

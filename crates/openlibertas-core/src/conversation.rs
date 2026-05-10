@@ -1,8 +1,7 @@
 pub mod tool_parser;
 
-use crate::domain::{FunctionDefinition, Message, ToolCall, ToolDefinition};
+use crate::domain::{Message, ToolCall};
 use crate::domain::Role;
-use crate::mcp::McpTool;
 
 const MAX_TOOL_RESULT_CHARS: usize = 4000;
 
@@ -218,27 +217,6 @@ reasoning_content: None,
     result
 }
 
-/// Convert available MCP tools to ToolDefinitions for API requests
-pub fn get_tools_for_request(available_tools: &[McpTool]) -> Option<Vec<ToolDefinition>> {
-    if available_tools.is_empty() {
-        return None;
-    }
-
-    let tools: Vec<ToolDefinition> = available_tools
-        .iter()
-        .map(|t| ToolDefinition {
-            tool_type: "function".to_string(),
-            function: FunctionDefinition {
-                name: t.name.clone(),
-                description: t.description.clone(),
-                parameters: t.input_schema.clone(),
-            },
-        })
-        .collect();
-
-    Some(tools)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,23 +254,6 @@ reasoning_content: None,
         let (result, _) = build_chat_request(&messages, "hello", Some("new prompt"));
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].content, "existing");
-    }
-
-    #[test]
-    fn get_tools_for_request_returns_none_for_empty() {
-        assert!(get_tools_for_request(&[]).is_none());
-    }
-
-    #[test]
-    fn get_tools_for_request_converts_tools() {
-        let tools = vec![McpTool {
-            name: "test_tool".to_string(),
-            description: "A test tool".to_string(),
-            input_schema: serde_json::json!({}),
-        }];
-        let result = get_tools_for_request(&tools).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].function.name, "test_tool");
     }
 
     #[test]

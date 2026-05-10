@@ -299,6 +299,27 @@ mod tests {
     }
 
     #[test]
+    fn get_tools_for_request_includes_builtins() {
+        let registry = ToolRegistry::default();
+        let result = registry.get_tools_for_request().unwrap();
+        assert!(!result.is_empty(), "builtin tools should be present");
+    }
+
+    #[test]
+    fn get_tools_for_request_converts_available_tools() {
+        let mut registry = ToolRegistry::default();
+        let builtin_count = registry.get_tools_for_request().unwrap().len();
+        registry.available_tools.push(crate::mcp::McpTool {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: serde_json::json!({}),
+        });
+        let result = registry.get_tools_for_request().unwrap();
+        assert_eq!(result.len(), builtin_count + 1);
+        assert!(result.iter().any(|t| t.function.name == "test_tool"));
+    }
+
+    #[test]
     fn clear_pending_removes_calls() {
         let mut registry = ToolRegistry::default();
         registry.add_tool_call(ToolCall {
