@@ -309,6 +309,7 @@ mod tests {
             models_dir: default_models_dir(),
             auto_save: default_auto_save(),
             filter_require_voice_and_tools: default_filter_voice_tools(),
+            input_device: None,
         };
         let toml_str = toml::to_string(&config).unwrap();
         let deserialized: Config = toml::from_str(&toml_str).unwrap();

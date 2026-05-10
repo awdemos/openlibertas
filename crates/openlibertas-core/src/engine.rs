@@ -94,6 +94,7 @@ pub struct ChatEngine {
     system_prompt: Option<String>,
     agent_prompt: Option<String>,
     env_context: Option<EnvContext>,
+    supports_native_tools: bool,
 }
 
 impl ChatEngine {
@@ -164,6 +165,10 @@ impl ChatEngine {
         self.agent_prompt = Some(prompt.into());
     }
 
+    pub fn set_supports_native_tools(&mut self, supports: bool) {
+        self.supports_native_tools = supports;
+    }
+
     pub fn env_context(&self) -> Option<&EnvContext> {
         self.env_context.as_ref()
     }
@@ -200,7 +205,11 @@ impl ChatEngine {
             }
         }
 
-        let tool_instructions = self.tools.tool_instructions();
+        let tool_instructions = if self.supports_native_tools {
+            None
+        } else {
+            self.tools.tool_instructions()
+        };
         let env_section = self.env_context.as_ref().map(|ctx| ctx.to_prompt_section());
 
         if let Some(prompt) = &self.system_prompt {
@@ -826,7 +835,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_detects_destructive() {
         assert!(crate::tool_registry::tool_needs_approval("write_file"));
-        assert!(crate::tool_registry::tool_needs_approval("shell"));
+        assert!(!crate::tool_registry::tool_needs_approval("shell"));
         assert!(!crate::tool_registry::tool_needs_approval("read_file"));
     }
 

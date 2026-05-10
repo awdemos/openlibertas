@@ -272,12 +272,6 @@ pub fn tool_needs_approval(tool_name: &str) -> bool {
         "edit_file",
         "editfile",
         "editFile",
-        "shell",
-        "execute",
-        "exec",
-        "bash",
-        "sh",
-        "run_command",
         "delete_file",
         "deletefile",
         "deleteFile",
@@ -333,7 +327,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_detects_destructive() {
         assert!(tool_needs_approval("write_file"));
-        assert!(tool_needs_approval("shell"));
+        assert!(!tool_needs_approval("shell"));
         assert!(tool_needs_approval("str_replace_file"));
         assert!(tool_needs_approval("strReplaceFile"));
         assert!(!tool_needs_approval("read_file"));
@@ -398,7 +392,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_variants() {
         assert!(tool_needs_approval("editFile"));
-        assert!(tool_needs_approval("EXECUTE"));
+        assert!(!tool_needs_approval("EXECUTE"));
         assert!(tool_needs_approval("Delete_File"));
         assert!(!tool_needs_approval("read_file"));
         assert!(!tool_needs_approval("search"));
