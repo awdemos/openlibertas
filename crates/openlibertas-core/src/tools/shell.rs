@@ -12,7 +12,7 @@ struct ShellArgs {
     timeout: Option<u64>,
 }
 
-pub fn tool_definition() -> BuiltinTool {
+pub fn shell_tool() -> BuiltinTool {
     crate::define_tool!(
         "shell",
         "Execute a shell command and return its output. Use with caution.",
@@ -32,11 +32,11 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["command"]
         }),
-        run
+        shell
     )
 }
 
-pub fn run(args: Value) -> Result<String> {
+pub fn shell(args: Value) -> Result<String> {
     let args: ShellArgs = serde_json::from_value(args)?;
     let _timeout = args.timeout.unwrap_or(30);
 

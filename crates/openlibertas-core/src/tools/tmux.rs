@@ -14,7 +14,7 @@ struct TmuxArgs {
     keys: Option<String>,
 }
 
-pub fn tool_definition() -> BuiltinTool {
+pub fn tmux_tool() -> BuiltinTool {
     crate::define_tool!(
         "tmux",
         "Interact with tmux sessions (list, capture pane, send keys).",
@@ -36,11 +36,11 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["subcommand"]
         }),
-        run
+        tmux
     )
 }
 
-pub fn run(args: Value) -> Result<String> {
+pub fn tmux(args: Value) -> Result<String> {
     let args: TmuxArgs = serde_json::from_value(args)?;
 
     let mut cmd = std::process::Command::new("tmux");

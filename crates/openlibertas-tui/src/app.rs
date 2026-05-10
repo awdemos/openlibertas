@@ -21,6 +21,7 @@ use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
 use openlibertas_core::store::ConversationStore;
 use openlibertas_core::voice::{VoiceManager, VoiceState};
+use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -71,21 +72,34 @@ pub struct App {
     pub connection_status: ConnectionStatus,
     pub models: ModelState,
     pub overlay: Overlay,
-    pub search: SearchState,
+    search: SearchState,
     pub store: Option<ConversationStore>,
-    pub engine: ChatEngine,
+    engine: ChatEngine,
     prompt_manager: PromptManager,
     pub palette_commands: Vec<(String, String)>,
     pub palette_selected: usize,
     pub markdown_renderer: MarkdownRenderer,
-    pub theme: Theme,
+    theme: Theme,
     pub theme_selected: usize,
     pub agent_selected: usize,
-    pub voice: VoiceManager,
+    voice: VoiceManager,
     pub voice_status: Option<String>,
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
+}
+
+impl Deref for App {
+    type Target = ChatEngine;
+    fn deref(&self) -> &Self::Target {
+        &self.engine
+    }
+}
+
+impl DerefMut for App {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.engine
+    }
 }
 
 impl App {

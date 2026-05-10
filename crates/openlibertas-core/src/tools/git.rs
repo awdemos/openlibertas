@@ -14,7 +14,7 @@ struct GitArgs {
     args: Option<String>,
 }
 
-pub fn tool_definition() -> BuiltinTool {
+pub fn git_tool() -> BuiltinTool {
     crate::define_tool!(
         "git",
         "Run git commands (status, diff, log, branch, add, commit, etc.).",
@@ -36,11 +36,11 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["subcommand"]
         }),
-        run
+        git
     )
 }
 
-pub fn run(args: Value) -> Result<String> {
+pub fn git(args: Value) -> Result<String> {
     let args: GitArgs = serde_json::from_value(args)?;
 
     let mut cmd = std::process::Command::new("git");
