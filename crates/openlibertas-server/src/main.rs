@@ -1,6 +1,12 @@
+//! OpenLibertas HTTP server — Axum-based REST API for remote access.
+
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+#![cfg_attr(not(test), warn(clippy::expect_used))]
+#![cfg_attr(not(test), warn(clippy::panic))]
+
 use anyhow::Result;
 use axum::{
-    extract::{State, Json},
+    extract::{Json, State},
     http::StatusCode,
     response::{IntoResponse, Sse},
     routing::{get, post},
@@ -26,6 +32,7 @@ struct AppState {
     current_model: Arc<RwLock<Option<String>>>,
     current_provider: Arc<RwLock<ProviderId>>,
     store: Option<ConversationStore>,
+    http_client: reqwest::Client,
 }
 
 #[derive(Serialize)]
@@ -65,6 +72,22 @@ struct SessionRequest {
     name: String,
 }
 
+#[derive(Deserialize)]
+struct TtsRequest {
+    text: String,
+    voice_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TtsResponse {
+    audio: String,
+}
+
+#[derive(Serialize)]
+struct SttResponse {
+    text: String,
+}
+
 #[derive(Serialize)]
 struct SessionListResponse {
     sessions: Vec<String>,
@@ -80,19 +103,28 @@ struct StatusResponse {
 
 fn ok<T: Serialize>(data: T) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     let value = serde_json::to_value(data).unwrap_or(serde_json::Value::Null);
-    (StatusCode::OK, Json(ApiResponse {
-        success: true,
-        data: Some(value),
-        error: None,
-    }))
+    (
+        StatusCode::OK,
+        Json(ApiResponse {
+            success: true,
+            data: Some(value),
+            error: None,
+        }),
+    )
 }
 
-fn err(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
-    (status, Json(ApiResponse {
-        success: false,
-        data: None,
-        error: Some(msg.into()),
-    }))
+fn err(
+    status: StatusCode,
+    msg: impl Into<String>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    (
+        status,
+        Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(msg.into()),
+        }),
+    )
 }
 
 async fn health_check() -> impl IntoResponse {
@@ -103,7 +135,7 @@ async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
     let messages = state.conversation.read().await;
     let model = state.current_model.read().await.clone();
     let provider = state.current_provider.read().await.clone();
-    
+
     ok(StatusResponse {
         status: "running".to_string(),
         model,
@@ -114,21 +146,28 @@ async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn get_history(State(state): State<AppState>) -> impl IntoResponse {
     let messages = state.conversation.read().await;
-    let views: Vec<MessageView> = messages.iter().map(|m| MessageView {
-        role: m.role.to_string(),
-        content: m.content.clone(),
-        tool_calls: m.tool_calls.as_ref().map(|tc| {
-            tc.iter().map(|t| serde_json::json!({
-                "id": t.id,
-                "type": t.call_type,
-                "function": {
-                    "name": t.function.name,
-                    "arguments": t.function.arguments,
-                }
-            })).collect()
-        }),
-    }).collect();
-    
+    let views: Vec<MessageView> = messages
+        .iter()
+        .map(|m| MessageView {
+            role: m.role.to_string(),
+            content: m.content.clone(),
+            tool_calls: m.tool_calls.as_ref().map(|tc| {
+                tc.iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "id": t.id,
+                            "type": t.call_type,
+                            "function": {
+                                "name": t.function.name,
+                                "arguments": t.function.arguments,
+                            }
+                        })
+                    })
+                    .collect()
+            }),
+        })
+        .collect();
+
     ok(HistoryResponse { messages: views })
 }
 
@@ -143,50 +182,47 @@ async fn post_chat(
     Json(req): Json<ChatRequest>,
 ) -> impl IntoResponse {
     let default_provider = state.current_provider.read().await.clone();
-    let provider_id = req.provider
+    let provider_id = req
+        .provider
         .map(|p| ProviderId::new(&p))
         .unwrap_or(default_provider);
-    
-    let backend = match state.registry.get(&provider_id)
+
+    let backend = match state
+        .registry
+        .get(&provider_id)
         .or_else(|| state.registry.default_backend())
-        .cloned() {
+        .cloned()
+    {
         Some(b) => b,
         None => return err(StatusCode::SERVICE_UNAVAILABLE, "No backend available"),
     };
-    
+
     let current_model = state.current_model.read().await.clone();
-    let model = req.model.or(current_model).unwrap_or_else(|| "default".to_string());
-    
+    let model = req
+        .model
+        .or(current_model)
+        .unwrap_or_else(|| "default".to_string());
+
     {
         let mut messages = state.conversation.write().await;
-        messages.push(Message {
-            role: Role::User,
-            content: req.message.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-        });
+        messages.push(Message { role: Role::User, content: req.message.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
     }
-    
+
     let messages = {
         let msgs = state.conversation.read().await.clone();
         msgs
     };
-    
+
     let cancel_token = CancellationToken::new();
-    let mut stream = backend.chat(
-        model,
-        messages,
-        state.config.max_tokens,
-        None,
-        cancel_token,
-    );
-    
+    let mut stream = backend.chat(model, messages, state.config.max_tokens, None, cancel_token);
+
     let mut response_text = String::new();
     let mut tool_calls = Vec::new();
-    
+
     while let Some(event) = stream.recv().await {
         match event {
             ChatEvent::Text(text) => response_text.push_str(&text),
+            ChatEvent::Reasoning(_) => {}
             ChatEvent::ToolCall(tc) => {
                 tool_calls.push(serde_json::json!({
                     "id": tc.id,
@@ -201,31 +237,33 @@ async fn post_chat(
             ChatEvent::Error(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, e),
         }
     }
-    
+
     {
         let mut messages = state.conversation.write().await;
         let tool_calls_data = if tool_calls.is_empty() {
             None
         } else {
-            Some(tool_calls.iter().map(|tc| {
-                serde_json::from_value(tc.clone()).unwrap_or_else(|_| openlibertas_core::domain::ToolCall {
-                    id: "".to_string(),
-                    call_type: "function".to_string(),
-                    function: openlibertas_core::domain::FunctionCall {
-                        name: "".to_string(),
-                        arguments: "".to_string(),
-                    },
-                })
-            }).collect())
+            Some(
+                tool_calls
+                    .iter()
+                    .map(|tc| {
+                        serde_json::from_value(tc.clone()).unwrap_or_else(|_| {
+                            openlibertas_core::domain::ToolCall {
+                                id: "".to_string(),
+                                call_type: "function".to_string(),
+                                function: openlibertas_core::domain::FunctionCall {
+                                    name: "".to_string(),
+                                    arguments: "".to_string(),
+                                },
+                            }
+                        })
+                    })
+                    .collect(),
+            )
         };
-        messages.push(Message {
-            role: Role::Assistant,
-            content: response_text.clone(),
-            tool_calls: tool_calls_data,
-            tool_call_id: None,
-        });
+        messages.push(Message { role: Role::Assistant, content: response_text.clone(), tool_calls: tool_calls_data, tool_call_id: None, timestamp: None, reasoning_content: None });
     }
-    
+
     ok(ChatResponse {
         response: response_text,
         tool_calls,
@@ -237,34 +275,35 @@ async fn stream_chat(
     Json(req): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
     use axum::response::sse::Event;
-    
+
     let default_provider = state.current_provider.read().await.clone();
-    let provider_id = req.provider
+    let provider_id = req
+        .provider
         .map(|p| ProviderId::new(&p))
         .unwrap_or(default_provider);
-    
-    let backend_opt = state.registry.get(&provider_id)
+
+    let backend_opt = state
+        .registry
+        .get(&provider_id)
         .or_else(|| state.registry.default_backend())
         .cloned();
-    
+
     let current_model = state.current_model.read().await.clone();
-    let model = req.model.or(current_model).unwrap_or_else(|| "default".to_string());
-    
+    let model = req
+        .model
+        .or(current_model)
+        .unwrap_or_else(|| "default".to_string());
+
     {
         let mut messages = state.conversation.write().await;
-        messages.push(Message {
-            role: Role::User,
-            content: req.message.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-        });
+        messages.push(Message { role: Role::User, content: req.message.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
     }
-    
+
     let messages = {
         let msgs = state.conversation.read().await.clone();
         msgs
     };
-    
+
     let state_clone = state.clone();
     let sse_stream = async_stream::stream! {
         let backend = match backend_opt {
@@ -274,7 +313,7 @@ async fn stream_chat(
                 return;
             }
         };
-        
+
         let cancel_token = CancellationToken::new();
         let mut stream = backend.chat(
             model,
@@ -283,15 +322,20 @@ async fn stream_chat(
             None,
             cancel_token,
         );
-        
+
         let mut response_text = String::new();
         let mut tool_calls = Vec::new();
-        
+
         while let Some(event) = stream.recv().await {
             match event {
                 ChatEvent::Text(text) => {
                     response_text.push_str(&text);
-                    yield Ok(Event::default().data(format!("{{\"type\": \"text\", \"content\": {} }}", serde_json::to_string(&text).unwrap())));
+                    let text_json = serde_json::to_string(&text).unwrap_or_else(|_| format!("{:?}", text));
+                    yield Ok(Event::default().data(format!("{{\"type\": \"text\", \"content\": {} }}", text_json)));
+                }
+                ChatEvent::Reasoning(text) => {
+                    let text_json = serde_json::to_string(&text).unwrap_or_else(|_| format!("{:?}", text));
+                    yield Ok(Event::default().data(format!("{{\"type\": \"reasoning\", \"content\": {} }}", text_json)));
                 }
                 ChatEvent::ToolCall(tc) => {
                     let tc_json = serde_json::json!({
@@ -314,12 +358,13 @@ async fn stream_chat(
                     break;
                 }
                 ChatEvent::Error(e) => {
-                    yield Ok(Event::default().data(format!("{{\"type\": \"error\", \"message\": {} }}", serde_json::to_string(&e).unwrap())));
+                    let err_json = serde_json::to_string(&e).unwrap_or_else(|_| format!("{:?}", e));
+                    yield Ok(Event::default().data(format!("{{\"type\": \"error\", \"message\": {} }}", err_json)));
                     break;
                 }
             }
         }
-        
+
         let mut messages = state_clone.conversation.write().await;
         let tool_calls_data = if tool_calls.is_empty() {
             None
@@ -340,9 +385,11 @@ async fn stream_chat(
             content: response_text,
             tool_calls: tool_calls_data,
             tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
         });
     };
-    
+
     Sse::new(sse_stream)
 }
 
@@ -352,7 +399,7 @@ async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
     } else {
         Vec::new()
     };
-    
+
     ok(SessionListResponse { sessions })
 }
 
@@ -362,15 +409,23 @@ async fn save_session(
 ) -> impl IntoResponse {
     let store = match state.store {
         Some(ref s) => s,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "Session storage not available"),
+        None => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Session storage not available",
+            )
+        }
     };
-    
+
     let messages = state.conversation.read().await.clone();
     let model = state.current_model.read().await.clone();
-    
+
     match store.save(&req.name, model.as_deref(), &messages) {
         Ok(_) => ok(serde_json::json!({ "saved": true })),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save: {}", e),
+        ),
     }
 }
 
@@ -380,9 +435,14 @@ async fn load_session(
 ) -> impl IntoResponse {
     let store = match state.store {
         Some(ref s) => s,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "Session storage not available"),
+        None => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Session storage not available",
+            )
+        }
     };
-    
+
     match store.load(&req.name) {
         Ok(messages) => {
             let mut conv = state.conversation.write().await;
@@ -399,12 +459,155 @@ async fn delete_session(
 ) -> impl IntoResponse {
     let store = match state.store {
         Some(ref s) => s,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "Session storage not available"),
+        None => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Session storage not available",
+            )
+        }
     };
-    
+
     match store.delete(&req.name) {
         Ok(_) => ok(serde_json::json!({ "deleted": true })),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete: {}", e),
+        ),
+    }
+}
+
+async fn voice_stt(
+    State(state): State<AppState>,
+    mut multipart: axum::extract::Multipart,
+) -> impl IntoResponse {
+    let api_key = match state.config.elevenlabs_api_key {
+        Some(key) => key,
+        None => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "ElevenLabs API key not configured",
+            )
+        }
+    };
+
+    let mut audio_bytes = Vec::new();
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        if field.name().unwrap_or("") == "audio" {
+            audio_bytes = field.bytes().await.unwrap_or_default().to_vec();
+            break;
+        }
+    }
+
+    if audio_bytes.is_empty() {
+        return err(StatusCode::BAD_REQUEST, "No audio data provided");
+    }
+
+    let form = reqwest::multipart::Form::new()
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(audio_bytes).file_name("audio.wav"),
+        )
+        .text("model_id", "scribe_v1");
+
+    match state
+        .http_client
+        .post("https://api.elevenlabs.io/v1/speech-to-text")
+        .header("xi-api-key", api_key)
+        .multipart(form)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.json::<serde_json::Value>().await {
+                    Ok(json) => {
+                        let text = json.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                        ok(SttResponse {
+                            text: text.to_string(),
+                        })
+                    }
+                    Err(e) => err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to parse STT response: {}", e),
+                    ),
+                }
+            } else {
+                err(
+                    StatusCode::BAD_GATEWAY,
+                    format!("ElevenLabs STT error: {}", resp.status()),
+                )
+            }
+        }
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("STT request failed: {}", e),
+        ),
+    }
+}
+
+async fn voice_tts(
+    State(state): State<AppState>,
+    Json(req): Json<TtsRequest>,
+) -> impl IntoResponse {
+    let api_key = match state.config.elevenlabs_api_key {
+        Some(key) => key,
+        None => {
+            return err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "ElevenLabs API key not configured",
+            )
+        }
+    };
+
+    let voice_id = req
+        .voice_id
+        .or(state.config.elevenlabs_voice_id)
+        .unwrap_or_else(|| "21m00Tcm4TlvDq8ikWAM".to_string());
+
+    let body = serde_json::json!({
+        "text": req.text,
+        "model_id": "eleven_multilingual_v2",
+    });
+
+    match state
+        .http_client
+        .post(format!(
+            "https://api.elevenlabs.io/v1/text-to-speech/{}/stream",
+            voice_id
+        ))
+        .header("xi-api-key", api_key)
+        .header("Content-Type", "application/json")
+        .query(&[("output_format", "mp3_44100_128")])
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.bytes().await {
+                    Ok(bytes) => {
+                        use base64::Engine;
+                        let base64_audio = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        ok(TtsResponse {
+                            audio: base64_audio,
+                        })
+                    }
+                    Err(e) => err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to read TTS audio: {}", e),
+                    ),
+                }
+            } else {
+                err(
+                    StatusCode::BAD_GATEWAY,
+                    format!("ElevenLabs TTS error: {}", resp.status()),
+                )
+            }
+        }
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("TTS request failed: {}", e),
+        ),
     }
 }
 
@@ -413,16 +616,17 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    
+
     let config = Config::load().unwrap_or_default();
     let registry = Arc::new(BackendRegistry::new(&config.providers));
-    let store = Config::data_dir()
-        .and_then(|d| ConversationStore::new(d).ok());
-    
-    let default_provider = config.providers.first()
+    let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
+
+    let default_provider = config
+        .providers
+        .first()
         .map(|p| ProviderId::new(&p.name))
         .unwrap_or_else(|| ProviderId::new("local"));
-    
+
     let state = AppState {
         registry,
         config,
@@ -430,8 +634,9 @@ async fn main() -> Result<()> {
         current_model: Arc::new(RwLock::new(None)),
         current_provider: Arc::new(RwLock::new(default_provider)),
         store,
+        http_client: reqwest::Client::new(),
     };
-    
+
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/api/status", get(get_status))
@@ -443,16 +648,18 @@ async fn main() -> Result<()> {
         .route("/api/session/save", post(save_session))
         .route("/api/session/load", post(load_session))
         .route("/api/session/delete", post(delete_session))
+        .route("/api/voice/stt", post(voice_stt))
+        .route("/api/voice/tts", post(voice_tts))
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
-    
+
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    
+
     tracing::info!("OpenLibertas server listening on http://0.0.0.0:{}", port);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

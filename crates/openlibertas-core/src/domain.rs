@@ -77,6 +77,56 @@ pub struct Model {
     pub provider: ProviderId,
     #[serde(skip)]
     pub supports_tools: bool,
+    #[serde(skip)]
+    pub supports_voice: bool,
+    #[serde(skip)]
+    pub local: bool,
+}
+
+impl Model {
+    /// Infer capabilities from model name patterns.
+    /// Returns (supports_tools, supports_voice).
+    pub fn infer_capabilities(id: &str) -> (bool, bool) {
+        let lower = id.to_lowercase();
+
+        // Voice/audio-capable model families (local GGUF)
+        let voice_patterns = [
+            "omni",       // Qwen2.5-Omni (audio+vision+text)
+            "multimodal", // Phi-4-multimodal (audio+vision+text)
+            "audio",      // Qwen2-Audio, SeaLLM-Audio
+            "ultravox",   // Ultravox (audio understanding)
+            "voxtral",    // Mistral Voxtral (audio)
+            "speech",     // Speech models
+            " whisper",   // Whisper (STT)
+        ];
+        let supports_voice = voice_patterns.iter().any(|p| lower.contains(p));
+
+        // Tool-capable model families (heuristic for local models)
+        let tool_patterns = [
+            "instruct",  // Most instruct models support tools
+            "coder",     // Code models usually tool-capable
+            "tool",      // Explicitly fine-tuned for tools
+            "function",  // Function-calling variants
+            "agent",     // Agent-tuned models
+            "qwen2.5",   // Qwen2.5 series has native tool support
+            "qwen3",     // Qwen3 series
+            "qwen3.5",   // Qwen3.5 series
+            "llama3",    // Llama 3 instruct variants
+            "llama-3",   // Alternate naming
+            "phi4",      // Phi-4 series
+            "phi-4",     // Alternate naming
+            "gemma3",    // Gemma 3
+            "gemma-3",   // Alternate naming
+            "mistral",   // Mistral instruct
+            "mixtral",   // Mixtral instruct
+            "nemotron",  // NVIDIA Nemotron
+            "glm4",      // GLM-4
+            "command-r", // Cohere Command-R
+        ];
+        let supports_tools = tool_patterns.iter().any(|p| lower.contains(p));
+
+        (supports_tools, supports_voice)
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -101,6 +151,16 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+}
+
+pub fn now_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let dt: chrono::DateTime<chrono::Local> = now.into();
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -136,6 +196,7 @@ pub struct FunctionCall {
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
     Text(String),
+    Reasoning(String),
     ToolCall(ToolCall),
     Done,
     Error(String),
@@ -236,12 +297,7 @@ mod tests {
 
     #[test]
     fn message_with_role_serializes() {
-        let msg = Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-        };
+        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\""));
         assert!(json.contains("\"user\""));

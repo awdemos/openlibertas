@@ -19,11 +19,7 @@ impl ExportFormat {
     }
 }
 
-pub fn export_messages(
-    messages: &[Message],
-    model: Option<&str>,
-    format: ExportFormat,
-) -> String {
+pub fn export_messages(messages: &[Message], model: Option<&str>, format: ExportFormat) -> String {
     match format {
         ExportFormat::Markdown => to_markdown(messages, model),
         ExportFormat::Json => to_json(messages, model),
@@ -42,7 +38,13 @@ fn to_markdown(messages: &[Message], model: Option<&str>) -> String {
             Role::System => "System",
             Role::Tool => "Tool",
         };
-        md.push_str(&format!("## {}\n\n{}", role, msg.content));
+        let ts = msg.timestamp.as_deref().unwrap_or("");
+        let ts_line = if ts.is_empty() {
+            String::new()
+        } else {
+            format!(" *{}*\n", ts)
+        };
+        md.push_str(&format!("## {}{}\n{}", role, ts_line, msg.content));
         if let Some(ref tool_calls) = msg.tool_calls {
             for tc in tool_calls {
                 md.push_str(&format!("\n\n**Tool Call:** `{}`", tc.function.name));
@@ -73,7 +75,12 @@ fn to_plaintext(messages: &[Message]) -> String {
                 Role::System => "System",
                 Role::Tool => "Tool",
             };
-            format!("{}: {}", role, msg.content)
+            let ts = msg.timestamp.as_deref().unwrap_or("");
+            if ts.is_empty() {
+                format!("{}: {}", role, msg.content)
+            } else {
+                format!("[{}] {}: {}", ts, role, msg.content)
+            }
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -90,12 +97,16 @@ mod tests {
                 content: "Hello".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
                 content: "Hi there!".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
         ]
     }
@@ -128,8 +139,17 @@ mod tests {
 
     #[test]
     fn format_from_extension() {
-        assert!(matches!(ExportFormat::from_extension("chat.md"), ExportFormat::Markdown));
-        assert!(matches!(ExportFormat::from_extension("chat.json"), ExportFormat::Json));
-        assert!(matches!(ExportFormat::from_extension("chat.txt"), ExportFormat::PlainText));
+        assert!(matches!(
+            ExportFormat::from_extension("chat.md"),
+            ExportFormat::Markdown
+        ));
+        assert!(matches!(
+            ExportFormat::from_extension("chat.json"),
+            ExportFormat::Json
+        ));
+        assert!(matches!(
+            ExportFormat::from_extension("chat.txt"),
+            ExportFormat::PlainText
+        ));
     }
 }

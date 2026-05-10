@@ -1,4 +1,6 @@
-use crate::backend::{Message, ToolCall, ToolDefinition, FunctionDefinition};
+pub mod tool_parser;
+
+use crate::backend::{FunctionDefinition, Message, ToolCall, ToolDefinition};
 use crate::domain::Role;
 use crate::mcp::McpTool;
 
@@ -94,12 +96,7 @@ impl ContextCompactor {
             )
         };
 
-        result.push(Message {
-            role: Role::System,
-            content: summary,
-            tool_calls: None,
-            tool_call_id: None,
-        });
+        result.push(Message { role: Role::System, content: summary, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
 
         for msg in non_system.iter().skip(drop_count) {
             result.push((*msg).clone());
@@ -114,7 +111,10 @@ pub fn parse_file_context(input: &str) -> String {
     let mut result = input.to_string();
     let mut failed_files = Vec::new();
 
-    let re = regex::Regex::new(r"@(\S+)").unwrap();
+    let re = match regex::Regex::new(r"@(\S+)") {
+        Ok(re) => re,
+        Err(_) => return input.to_string(),
+    };
     let mut replacements = Vec::new();
 
     for cap in re.captures_iter(input) {
@@ -160,21 +160,11 @@ pub fn build_chat_request(
 
     if let Some(prompt) = system_prompt {
         if !messages.iter().any(|m| m.role == Role::System) {
-            messages.push(Message {
-                role: Role::System,
-                content: prompt.to_string(),
-                tool_calls: None,
-                tool_call_id: None,
-            });
+            messages.push(Message { role: Role::System, content: prompt.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
         }
     }
 
-    messages.push(Message {
-        role: Role::User,
-        content: content.clone(),
-        tool_calls: None,
-        tool_call_id: None,
-    });
+    messages.push(Message { role: Role::User, content: content.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
     (messages, content)
 }
 
@@ -220,6 +210,8 @@ pub fn build_tool_result_messages(
                 content,
                 tool_calls: None,
                 tool_call_id: Some(tool_call.id.clone()),
+                timestamp: None,
+reasoning_content: None,
             });
         }
     }
@@ -277,6 +269,8 @@ mod tests {
             content: "existing".to_string(),
             tool_calls: None,
             tool_call_id: None,
+            timestamp: None,
+reasoning_content: None,
         }];
         let (result, _) = build_chat_request(&messages, "hello", Some("new prompt"));
         assert_eq!(result.len(), 2);
@@ -308,6 +302,8 @@ mod tests {
                 content: "hello".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -321,6 +317,8 @@ mod tests {
                     },
                 }]),
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
         ];
         let tool_calls = vec![ToolCall {
@@ -346,6 +344,8 @@ mod tests {
                 content: "hello".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -359,6 +359,8 @@ mod tests {
                     },
                 }]),
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             },
         ];
         let tool_calls = vec![ToolCall {
@@ -447,12 +449,13 @@ mod tests {
     #[test]
     fn compactor_does_nothing_below_threshold() {
         let mut compactor = ContextCompactor::new(10, 4);
-        let messages: Vec<Message> = (0..5).map(|i| Message {
-            role: if i % 2 == 0 { Role::User } else { Role::Assistant },
-            content: format!("msg {}", i),
-            tool_calls: None,
-            tool_call_id: None,
-        }).collect();
+        let messages: Vec<Message> = (0..5)
+            .map(|i| Message { role: if i % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            }, content: format!("msg {}", i), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None })
+            .collect();
 
         let result = compactor.compact(&messages);
         assert_eq!(result.len(), 5);
@@ -463,13 +466,62 @@ mod tests {
     fn compactor_preserves_system_messages() {
         let mut compactor = ContextCompactor::new(5, 2);
         let messages = vec![
-            Message { role: Role::System, content: "sys1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u3".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a3".to_string(), tool_calls: None, tool_call_id: None },
+            Message {
+                role: Role::System,
+                content: "sys1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -482,16 +534,60 @@ mod tests {
     fn compactor_adds_summary_message() {
         let mut compactor = ContextCompactor::new(5, 2);
         let messages = vec![
-            Message { role: Role::User, content: "u1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u3".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a3".to_string(), tool_calls: None, tool_call_id: None },
+            Message {
+                role: Role::User,
+                content: "u1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
         ];
 
         let result = compactor.compact(&messages);
-        let summary = result.iter().find(|m| m.role == Role::System && m.content.contains("compacted"));
+        let summary = result
+            .iter()
+            .find(|m| m.role == Role::System && m.content.contains("compacted"));
         assert!(summary.is_some());
         let summary = summary.unwrap();
         assert!(summary.content.contains("2 user"));
@@ -502,12 +598,54 @@ mod tests {
     fn compactor_preserves_recent_messages() {
         let mut compactor = ContextCompactor::new(5, 2);
         let messages = vec![
-            Message { role: Role::User, content: "old1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "old2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "old3".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "old4".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "keep1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "keep2".to_string(), tool_calls: None, tool_call_id: None },
+            Message {
+                role: Role::User,
+                content: "old1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "old2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "old3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "old4".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "keep1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "keep2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -521,16 +659,61 @@ mod tests {
     fn compactor_counts_tool_messages() {
         let mut compactor = ContextCompactor::new(5, 2);
         let messages = vec![
-            Message { role: Role::User, content: "u1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a1".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Tool, content: "t1".to_string(), tool_calls: None, tool_call_id: Some("1".to_string()) },
-            Message { role: Role::User, content: "u2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::Assistant, content: "a2".to_string(), tool_calls: None, tool_call_id: None },
-            Message { role: Role::User, content: "u3".to_string(), tool_calls: None, tool_call_id: None },
+            Message {
+                role: Role::User,
+                content: "u1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Tool,
+                content: "t1".to_string(),
+                tool_calls: None,
+                tool_call_id: Some("1".to_string()),
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u3".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
+            },
         ];
 
         let result = compactor.compact(&messages);
-        let summary = result.iter().find(|m| m.role == Role::System && m.content.contains("compacted")).unwrap();
+        let summary = result
+            .iter()
+            .find(|m| m.role == Role::System && m.content.contains("compacted"))
+            .unwrap();
         assert!(summary.content.contains("1 tool"));
     }
 }

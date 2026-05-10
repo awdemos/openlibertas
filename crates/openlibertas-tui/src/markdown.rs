@@ -5,7 +5,7 @@ use ratatui::{
 };
 use syntect::{
     easy::HighlightLines,
-    highlighting::{ThemeSet, Style as SyntectStyle},
+    highlighting::{Style as SyntectStyle, ThemeSet},
     parsing::SyntaxSet,
     util::LinesWithEndings,
 };
@@ -76,9 +76,7 @@ impl MarkdownRenderer {
                             lines.push(Line::from(std::mem::take(&mut current_spans)));
                         }
                         let color = theme.heading_color(*level as u8);
-                        current_style = Style::default()
-                            .fg(color)
-                            .add_modifier(Modifier::BOLD);
+                        current_style = Style::default().fg(color).add_modifier(Modifier::BOLD);
                     }
                     Tag::BlockQuote(_) => {
                         current_style = Style::default().fg(theme.system_color());
@@ -119,11 +117,7 @@ impl MarkdownRenderer {
                     if in_code_block {
                         code_content.push_str(text);
                     } else {
-                        let prefix = if !list_stack.is_empty() {
-                            "• "
-                        } else {
-                            ""
-                        };
+                        let prefix = if !list_stack.is_empty() { "• " } else { "" };
                         if !prefix.is_empty() && current_spans.is_empty() {
                             current_spans.push(Span::styled(prefix, current_style));
                         }
@@ -133,7 +127,9 @@ impl MarkdownRenderer {
                 Event::Code(code) => {
                     current_spans.push(Span::styled(
                         code.to_string(),
-                        Style::default().bg(theme.code_block_bg()).fg(theme.foreground()),
+                        Style::default()
+                            .bg(theme.code_block_bg())
+                            .fg(theme.foreground()),
                     ));
                 }
                 Event::Html(html) => {
@@ -172,15 +168,24 @@ impl MarkdownRenderer {
     }
 
     fn highlight_code(&self, language: &str, code: &str) -> Vec<Line<'_>> {
-        let theme = self.theme_set.themes.get("base16-ocean.dark").unwrap_or_else(|| {
-            self.theme_set.themes.values().next()
-                .expect("No themes available")
-        });
+        let default_theme = syntect::highlighting::ThemeSet::load_defaults().themes["base16-ocean.dark"].clone();
+        let theme = self
+            .theme_set
+            .themes
+            .get("base16-ocean.dark")
+            .unwrap_or_else(|| {
+                self.theme_set
+                    .themes
+                    .values()
+                    .next()
+                    .unwrap_or(&default_theme)
+            });
 
         let syntax = if language.is_empty() {
             self.syntax_set.find_syntax_plain_text()
         } else {
-            self.syntax_set.find_syntax_by_token(language)
+            self.syntax_set
+                .find_syntax_by_token(language)
                 .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text())
         };
 
@@ -194,10 +199,7 @@ impl MarkdownRenderer {
                     let spans: Vec<Span> = regions
                         .iter()
                         .map(|(style, text)| {
-                            Span::styled(
-                                text.to_string(),
-                                syntect_style_to_ratatui(*style),
-                            )
+                            Span::styled(text.to_string(), syntect_style_to_ratatui(*style))
                         })
                         .collect();
                     lines.push(Line::from(spans));
@@ -215,17 +217,26 @@ impl MarkdownRenderer {
 fn syntect_style_to_ratatui(style: SyntectStyle) -> Style {
     let fg = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
     let mut ratatui_style = Style::default().fg(fg);
-    
-    if style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::BOLD)
+    {
         ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
     }
-    if style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::ITALIC)
+    {
         ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
     }
-    if style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::UNDERLINE)
+    {
         ratatui_style = ratatui_style.add_modifier(Modifier::UNDERLINED);
     }
-    
+
     ratatui_style
 }
 
@@ -256,6 +267,13 @@ pub fn wrap_markdown(content: &str, width: usize) -> String {
                 paragraph.clear();
             }
             result.push('\n');
+        } else if line.starts_with(' ') {
+            if !paragraph.is_empty() {
+                result.push_str(&textwrap::fill(&paragraph, width));
+                result.push('\n');
+                paragraph.clear();
+            }
+            paragraph.push_str(line.trim());
         } else {
             if !paragraph.is_empty() {
                 paragraph.push(' ');
@@ -290,9 +308,9 @@ mod tests {
         let renderer = MarkdownRenderer::new();
         let text = renderer.render("**bold**", crate::theme::Theme::Default);
         let has_bold = text.lines.iter().any(|line| {
-            line.spans.iter().any(|span| {
-                span.content == "bold" && span.style.add_modifier == Modifier::BOLD
-            })
+            line.spans
+                .iter()
+                .any(|span| span.content == "bold" && span.style.add_modifier == Modifier::BOLD)
         });
         assert!(has_bold, "Should have bold text");
     }
@@ -329,6 +347,10 @@ mod tests {
         let input = "This is a very long paragraph that should be wrapped to multiple lines when the width is small.";
         let wrapped = wrap_markdown(input, 20);
         let lines: Vec<&str> = wrapped.lines().collect();
-        assert!(lines.len() > 1, "Should wrap to multiple lines: {:?}", lines);
+        assert!(
+            lines.len() > 1,
+            "Should wrap to multiple lines: {:?}",
+            lines
+        );
     }
 }

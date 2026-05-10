@@ -1,0 +1,856 @@
+//! Chat engine: state management for chat, input, agents, and tool orchestration.
+//!
+//! Core types:
+//! - `ChatEngine` — owns chat, input, agent, and tool state
+//! - `ChatState` — messages, scroll, streaming, spinner
+//! - `InputState` — buffer, cursor, history, autocomplete, selection
+//! - `AgentState` — status, iteration count, persona, yolo mode
+
+use crate::backend::{Message, ToolCall, ToolDefinition};
+use crate::conversation::{parse_file_context, ContextCompactor};
+use crate::domain::{now_timestamp, Role};
+use crate::env_context::EnvContext;
+use crate::mcp::McpClient;
+use crate::tool_registry::ToolRegistry;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AgentStatus {
+    Disabled,
+    Idle,
+    Active,
+}
+
+#[derive(Debug, PartialEq)]
+#[derive(Default)]
+pub struct InputState {
+    pub buffer: String,
+    pub cursor_pos: usize,
+    pub history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub history_stash: String,
+    pub autocomplete_index: usize,
+    pub show_autocomplete: bool,
+    /// Selection anchor (start of selection). When `selecting` is true,
+    /// this is the fixed end; `cursor_pos` is the moving end.
+    pub selection_anchor: Option<usize>,
+    /// Horizontal scroll offset for the input viewport
+    pub scroll_offset: usize,
+}
+
+
+pub struct ChatState {
+    pub messages: Vec<Message>,
+    pub scroll: usize,
+    pub streaming: bool,
+    pub auto_scroll: bool,
+    pub cancel_token: tokio_util::sync::CancellationToken,
+    pub spinner_frame: usize,
+    pub compactor: ContextCompactor,
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            scroll: 0,
+            streaming: false,
+            auto_scroll: true,
+            cancel_token: tokio_util::sync::CancellationToken::new(),
+            spinner_frame: 0,
+            compactor: ContextCompactor::default(),
+        }
+    }
+}
+
+pub struct AgentState {
+    pub status: AgentStatus,
+    pub max_iterations: usize,
+    pub current_iteration: usize,
+    pub persona: String,
+    pub yolo_mode: bool,
+}
+
+impl Default for AgentState {
+    fn default() -> Self {
+        Self {
+            status: AgentStatus::Disabled,
+            max_iterations: 10,
+            current_iteration: 0,
+            persona: "Orchestrator".to_string(),
+            yolo_mode: false,
+        }
+    }
+}
+
+pub struct ChatEngine {
+    pub chat: ChatState,
+    pub input: InputState,
+    pub agents: AgentState,
+    pub tools: ToolRegistry,
+    pub system_prompt: Option<String>,
+    pub agent_prompt: Option<String>,
+    pub env_context: Option<EnvContext>,
+}
+
+impl Default for ChatEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChatEngine {
+    pub fn new() -> Self {
+        Self {
+            chat: ChatState::default(),
+            input: InputState::default(),
+            agents: AgentState::default(),
+            tools: ToolRegistry::default(),
+            system_prompt: None,
+            agent_prompt: None,
+            env_context: None,
+        }
+    }
+
+    pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn with_agent_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.agent_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn with_env_context(mut self, ctx: EnvContext) -> Self {
+        self.env_context = Some(ctx);
+        self
+    }
+
+    pub fn switch_persona(&mut self, persona: impl Into<String>, prompt: impl Into<String>) {
+        let persona = persona.into();
+        let prompt = prompt.into();
+        self.agents.persona = persona.clone();
+        self.agent_prompt = Some(prompt);
+    }
+
+    pub fn with_mcp_client(mut self, client: McpClient) -> Self {
+        self.tools = self.tools.with_client(client);
+        self
+    }
+
+    // -- Message lifecycle --
+
+    pub fn push_user_message(&mut self, content: impl Into<String>) -> Vec<Message> {
+        let content = content.into();
+        let parsed = parse_file_context(&content);
+        let mut messages = self.chat.messages.clone();
+
+        if self.agents.status == AgentStatus::Active {
+            if let Some(prompt) = &self.agent_prompt {
+                messages.insert(
+                    0,
+                    Message { role: Role::System, content: prompt.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                );
+            }
+        }
+
+        let tool_instructions = self.tools.tool_instructions();
+        let env_section = self.env_context.as_ref().map(|ctx| ctx.to_prompt_section());
+
+        if let Some(prompt) = &self.system_prompt {
+            if !messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.starts_with(prompt))
+            {
+                let mut full_prompt = if let Some(tool_text) = &tool_instructions {
+                    format!("{}\n\n{}", prompt, tool_text)
+                } else {
+                    prompt.clone()
+                };
+                if let Some(env) = &env_section {
+                    full_prompt.push_str(env);
+                }
+                messages.insert(
+                    0,
+                    Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                );
+            }
+        } else if let Some(tool_text) = &tool_instructions {
+            let mut full_prompt = tool_text.clone();
+            if let Some(env) = &env_section {
+                full_prompt.push_str(env);
+            }
+            messages.insert(
+                0,
+                Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+            );
+        } else if let Some(env) = &env_section {
+            messages.insert(
+                0,
+                Message { role: Role::System, content: env.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+            );
+        }
+
+        let ts = Some(now_timestamp());
+        messages.push(Message { role: Role::User, content: parsed.clone(), tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None });
+
+        self.chat.messages.push(Message { role: Role::User, content: parsed, tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None });
+        self.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: ts, reasoning_content: None });
+        self.chat.streaming = true;
+        self.chat.auto_scroll = true;
+        self.tools.clear_pending();
+        messages
+    }
+
+    pub fn append_stream_chunk(&mut self, chunk: &str) {
+        if let Some(last) = self.chat.messages.last_mut() {
+            last.content.push_str(chunk);
+        }
+        self.chat.auto_scroll = true;
+    }
+
+    pub fn append_reasoning_chunk(&mut self, chunk: &str) {
+        if let Some(last) = self.chat.messages.last_mut() {
+            if last.reasoning_content.is_none() {
+                last.reasoning_content = Some(String::new());
+            }
+            if let Some(ref mut reasoning) = last.reasoning_content {
+                reasoning.push_str(chunk);
+            }
+        }
+        self.chat.auto_scroll = true;
+    }
+
+    pub fn add_tool_call(&mut self, tool_call: ToolCall) {
+        self.tools.add_tool_call(tool_call);
+    }
+
+    pub fn finish_stream(&mut self) {
+        self.chat.streaming = false;
+        if !self.tools.pending_tool_calls.is_empty() {
+            if let Some(last) = self.chat.messages.last_mut() {
+                if last.role == Role::Assistant {
+                    last.tool_calls = Some(self.tools.pending_tool_calls.clone());
+                }
+            }
+        }
+    }
+
+    pub fn cancel_stream(&mut self) {
+        self.chat.cancel_token.cancel();
+        self.finish_stream();
+    }
+
+    // -- Agent loop --
+
+    pub fn start_agent_loop(&mut self) {
+        if self.agents.status == AgentStatus::Idle {
+            self.agents.status = AgentStatus::Active;
+            self.agents.current_iteration = 0;
+        }
+    }
+
+    pub fn finish_agent_loop(&mut self) {
+        if self.agents.status == AgentStatus::Active {
+            self.agents.status = AgentStatus::Idle;
+            self.agents.current_iteration = 0;
+        }
+    }
+
+    pub fn agent_iteration_exceeded(&self) -> bool {
+        self.agents.status == AgentStatus::Active
+            && self.agents.current_iteration >= self.agents.max_iterations
+    }
+
+    pub fn increment_agent_iteration(&mut self) {
+        self.agents.current_iteration += 1;
+    }
+
+    // -- Tool execution --
+
+    pub fn get_tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
+        self.tools.get_tools_for_request()
+    }
+
+    pub fn build_tool_result_messages(&self) -> Vec<Message> {
+        let agent_prompt = if self.agents.status == AgentStatus::Active {
+            self.agent_prompt.as_deref()
+        } else {
+            None
+        };
+        self.tools.build_tool_result_messages(
+            &self.chat.messages,
+            Some("active").filter(|_| self.agents.status == AgentStatus::Active),
+            agent_prompt,
+        )
+    }
+
+    pub async fn execute_pending_tools(&mut self) -> Vec<crate::domain::ToolExecutionResult> {
+        let results = self
+            .tools
+            .execute_pending_tools(self.agents.yolo_mode)
+            .await;
+
+        for msg in self.tools.create_tool_result_messages() {
+            self.chat.messages.push(msg);
+        }
+
+        results
+    }
+
+    // -- Input helpers --
+
+    pub fn push_to_history(&mut self, input: String) {
+        if !input.trim().is_empty() {
+            self.input.history.push(input);
+        }
+        self.input.history_index = None;
+        self.input.history_stash.clear();
+    }
+
+    pub fn history_prev(&mut self) {
+        if self.input.history.is_empty() {
+            return;
+        }
+        self.input.selection_anchor = None;
+        if self.input.history_index.is_none() {
+            self.input.history_stash = self.input.buffer.clone();
+            self.input.history_index = Some(self.input.history.len() - 1);
+        } else if let Some(idx) = self.input.history_index {
+            if idx > 0 {
+                self.input.history_index = Some(idx - 1);
+            }
+        }
+        if let Some(idx) = self.input.history_index {
+            self.input.buffer = self.input.history[idx].clone();
+            self.input.cursor_pos = self.input.buffer.len();
+        }
+    }
+
+    pub fn history_next(&mut self) {
+        if self.input.history.is_empty() {
+            return;
+        }
+        self.input.selection_anchor = None;
+        if let Some(idx) = self.input.history_index {
+            if idx + 1 < self.input.history.len() {
+                self.input.history_index = Some(idx + 1);
+                self.input.buffer = self.input.history[idx + 1].clone();
+            } else {
+                self.input.history_index = None;
+                self.input.buffer = self.input.history_stash.clone();
+            }
+            self.input.cursor_pos = self.input.buffer.len();
+        }
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        self.input.selection_anchor = None;
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        self.input.cursor_pos = if self.input.buffer.is_char_boundary(pos) {
+            self.input.buffer[..pos]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0)
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i < pos)
+                .last()
+                .unwrap_or(0)
+        };
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        self.input.selection_anchor = None;
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        self.input.cursor_pos = if self.input.buffer.is_char_boundary(pos) {
+            self.input.buffer[pos..]
+                .char_indices()
+                .nth(1)
+                .map(|(i, _)| pos + i)
+                .unwrap_or(self.input.buffer.len())
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .find(|&i| i > pos)
+                .unwrap_or(self.input.buffer.len())
+        };
+    }
+
+    pub fn move_cursor_to_start(&mut self) {
+        self.input.selection_anchor = None;
+        self.input.cursor_pos = 0;
+    }
+
+    pub fn move_cursor_to_end(&mut self) {
+        self.input.selection_anchor = None;
+        self.input.cursor_pos = self.input.buffer.len();
+    }
+
+    pub fn delete_word_backward(&mut self) {
+        if self.has_selection() {
+            self.delete_selection();
+            return;
+        }
+        if self.input.cursor_pos == 0 {
+            return;
+        }
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
+            pos
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i < pos)
+                .last()
+                .unwrap_or(0)
+        };
+        let before = &self.input.buffer[..safe_pos];
+        let mut chars = before.char_indices().rev().peekable();
+        while let Some((_, ch)) = chars.peek() {
+            if !ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        while let Some((_, ch)) = chars.peek() {
+            if ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        let pos = chars.next().map(|(i, ch)| i + ch.len_utf8()).unwrap_or(0);
+        self.input.buffer.replace_range(pos..safe_pos, "");
+        self.input.cursor_pos = pos;
+    }
+
+    pub fn insert_char(&mut self, c: char) {
+        if self.has_selection() {
+            self.delete_selection();
+        }
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
+            pos
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i < pos)
+                .last()
+                .unwrap_or(0)
+        };
+        self.input.buffer.insert(safe_pos, c);
+        self.input.cursor_pos = safe_pos + c.len_utf8();
+        self.input.show_autocomplete = false;
+        self.input.autocomplete_index = 0;
+        self.input.history_index = None;
+    }
+
+    pub fn backspace(&mut self) {
+        if self.has_selection() {
+            self.delete_selection();
+            return;
+        }
+        if self.input.cursor_pos > 0 {
+            let pos = self.input.cursor_pos.min(self.input.buffer.len());
+            let safe_pos = if self.input.buffer.is_char_boundary(pos) {
+                pos
+            } else {
+                self.input
+                    .buffer
+                    .char_indices()
+                    .map(|(i, _)| i)
+                    .take_while(|&i| i < pos)
+                    .last()
+                    .unwrap_or(0)
+            };
+            let prev = self.input.buffer[..safe_pos]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.input.buffer.remove(prev);
+            self.input.cursor_pos = prev;
+        }
+        self.input.show_autocomplete = false;
+        self.input.autocomplete_index = 0;
+    }
+
+    pub fn clear_input(&mut self) {
+        self.input.buffer.clear();
+        self.input.cursor_pos = 0;
+        self.input.selection_anchor = None;
+        self.input.scroll_offset = 0;
+    }
+
+    pub fn selection(&self) -> Option<(usize, usize)> {
+        let anchor = self.input.selection_anchor?;
+        let cursor = self.input.cursor_pos.min(self.input.buffer.len());
+        let start = anchor.min(cursor);
+        let end = anchor.max(cursor);
+        if start == end {
+            None
+        } else {
+            Some((start, end))
+        }
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.selection().is_some()
+    }
+
+    pub fn select_all(&mut self) {
+        self.input.selection_anchor = Some(0);
+        self.input.cursor_pos = self.input.buffer.len();
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.input.selection_anchor = None;
+    }
+
+    pub fn start_selection(&mut self) {
+        self.input.selection_anchor = Some(self.input.cursor_pos);
+    }
+
+    pub fn extend_selection_left(&mut self) {
+        if self.input.selection_anchor.is_none() {
+            self.input.selection_anchor = Some(self.input.cursor_pos);
+        }
+        self.move_cursor_left();
+    }
+
+    pub fn extend_selection_right(&mut self) {
+        if self.input.selection_anchor.is_none() {
+            self.input.selection_anchor = Some(self.input.cursor_pos);
+        }
+        self.move_cursor_right();
+    }
+
+    pub fn get_selected_text(&self) -> Option<String> {
+        self.selection()
+            .map(|(start, end)| self.input.buffer[start..end].to_string())
+    }
+
+    pub fn delete_selection(&mut self) -> Option<String> {
+        let (start, end) = self.selection()?;
+        let text = self.input.buffer[start..end].to_string();
+        self.input.buffer.replace_range(start..end, "");
+        self.input.cursor_pos = start;
+        self.input.selection_anchor = None;
+        Some(text)
+    }
+
+    pub fn move_cursor_word_left(&mut self) {
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
+            pos
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i < pos)
+                .last()
+                .unwrap_or(0)
+        };
+        let before = &self.input.buffer[..safe_pos];
+        let mut chars = before.char_indices().rev().peekable();
+        while let Some((_, ch)) = chars.peek() {
+            if !ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        while let Some((_, ch)) = chars.peek() {
+            if ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        self.input.cursor_pos = chars.next().map(|(i, ch)| i + ch.len_utf8()).unwrap_or(0);
+    }
+
+    pub fn move_cursor_word_right(&mut self) {
+        let pos = self.input.cursor_pos.min(self.input.buffer.len());
+        let safe_pos = if self.input.buffer.is_char_boundary(pos) {
+            pos
+        } else {
+            self.input
+                .buffer
+                .char_indices()
+                .map(|(i, _)| i)
+                .take_while(|&i| i < pos)
+                .last()
+                .unwrap_or(0)
+        };
+        let after = &self.input.buffer[safe_pos..];
+        let mut chars = after.char_indices().peekable();
+        while let Some((_, ch)) = chars.peek() {
+            if ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        while let Some((_, ch)) = chars.peek() {
+            if !ch.is_whitespace() {
+                break;
+            }
+            chars.next();
+        }
+        self.input.cursor_pos = chars
+            .next()
+            .map(|(i, _)| safe_pos + i)
+            .unwrap_or(self.input.buffer.len());
+    }
+
+    // -- Clipboard --
+
+    pub fn copy_selection(&mut self) -> Option<String> {
+        self.get_selected_text()
+    }
+
+    pub fn cut_selection(&mut self) -> Option<String> {
+        self.delete_selection()
+    }
+
+    pub fn ensure_cursor_visible(&mut self, viewport_width: usize, prompt_width: usize) {
+        let text_before_cursor =
+            &self.input.buffer[..self.input.cursor_pos.min(self.input.buffer.len())];
+        let cursor_display_pos = text_before_cursor.width() + prompt_width;
+        if cursor_display_pos < self.input.scroll_offset {
+            self.input.scroll_offset = cursor_display_pos.saturating_sub(1);
+        } else if cursor_display_pos >= self.input.scroll_offset + viewport_width {
+            self.input.scroll_offset = cursor_display_pos
+                .saturating_sub(viewport_width)
+                .saturating_add(1);
+        }
+    }
+
+    pub fn set_cursor_from_click(&mut self, click_x: usize, prompt_width: usize) {
+        let text_x = click_x.saturating_sub(prompt_width);
+        let mut accumulated_width = 0;
+        let mut byte_pos = 0;
+        for (i, ch) in self.input.buffer.char_indices() {
+            let ch_width = ch.width().unwrap_or(0);
+            if accumulated_width + ch_width / 2 > text_x {
+                break;
+            }
+            accumulated_width += ch_width;
+            byte_pos = i + ch.len_utf8();
+        }
+        self.input.cursor_pos = byte_pos.min(self.input.buffer.len());
+    }
+
+    pub fn advance_spinner(&mut self) {
+        if self.chat.streaming {
+            self.chat.spinner_frame = (self.chat.spinner_frame + 1) % SPINNER_FRAMES.len();
+        }
+    }
+
+    pub fn add_system_message(&mut self, content: impl Into<String>) {
+        self.chat.messages.push(Message { role: Role::System, content: content.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None });
+    }
+
+    pub fn add_error_message(&mut self, error: impl Into<String>) {
+        self.chat.messages.push(Message { role: Role::System, content: error.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None });
+    }
+
+    pub fn scroll_page_up(&mut self) {
+        self.chat.scroll = self.chat.scroll.saturating_sub(10);
+        self.chat.auto_scroll = false;
+    }
+
+    pub fn scroll_page_down(&mut self) {
+        self.chat.scroll += 10;
+    }
+
+    pub fn clear_messages(&mut self) {
+        self.chat.messages.clear();
+        self.chat.scroll = 0;
+    }
+
+    pub fn compact_context(&mut self) -> (usize, usize) {
+        let before = self.chat.messages.len();
+        let compacted = self.chat.compactor.compact(&self.chat.messages);
+        let after = compacted.len();
+        if after < before {
+            self.chat.messages = compacted;
+        }
+        (before, after)
+    }
+
+    pub fn message_at_y(&self, y: usize, viewport_width: usize) -> Option<usize> {
+        let scroll = self.chat.scroll;
+        let mut line = 0usize;
+        for (idx, msg) in self.chat.messages.iter().enumerate() {
+            if let Some(ref tool_calls) = msg.tool_calls {
+                let mut tool_lines = 0;
+                for tc in tool_calls {
+                    tool_lines += 1;
+                    let key_arg = crate::tool_registry::extract_key_argument(
+                        &tc.function.name,
+                        &tc.function.arguments,
+                    );
+                    if key_arg.is_empty() {
+                        tool_lines += 1;
+                    }
+                }
+                tool_lines += 1;
+                if line + tool_lines > y + scroll {
+                    return Some(idx);
+                }
+                line += tool_lines;
+            } else {
+                let mut msg_lines = 1;
+
+                if msg.role == Role::Assistant {
+                    if let Some(ref reasoning) = msg.reasoning_content {
+                        if !reasoning.is_empty() && viewport_width > 10 {
+                            msg_lines += 2;
+                            msg_lines += count_wrapped_lines(
+                                reasoning,
+                                viewport_width.saturating_sub(2),
+                            );
+                            msg_lines += 1;
+                        }
+                    }
+                }
+
+                if viewport_width > 10 {
+                    msg_lines += count_wrapped_lines(&msg.content, viewport_width);
+                } else {
+                    msg_lines += msg.content.lines().count().max(1);
+                }
+
+                let is_last = idx == self.chat.messages.len().saturating_sub(1);
+                if is_last && self.chat.streaming && msg.role == Role::Assistant {
+                    msg_lines += 1;
+                }
+
+                msg_lines += 1;
+
+                if line + msg_lines > y + scroll {
+                    return Some(idx);
+                }
+                line += msg_lines;
+            }
+        }
+        None
+    }
+}
+
+/// Approximate line count after markdown-style wrapping.
+/// Mirrors `wrap_markdown` in openlibertas-tui/src/markdown.rs.
+fn count_wrapped_lines(content: &str, width: usize) -> usize {
+    if width == 0 {
+        return content.lines().count().max(1);
+    }
+
+    let mut in_code = false;
+    let mut paragraph_chars = 0usize;
+    let mut lines = 0usize;
+
+    for raw_line in content.lines() {
+        let trimmed = raw_line.trim_start();
+        if trimmed.starts_with("```") {
+            if paragraph_chars > 0 {
+                lines += (paragraph_chars + width - 1) / width;
+                paragraph_chars = 0;
+            }
+            in_code = !in_code;
+            lines += 1;
+        } else if in_code {
+            lines += 1;
+        } else if raw_line.trim().is_empty() {
+            if paragraph_chars > 0 {
+                lines += (paragraph_chars + width - 1) / width;
+                paragraph_chars = 0;
+            }
+            lines += 1;
+        } else {
+            paragraph_chars += raw_line.trim().chars().count() + 1;
+        }
+    }
+
+    if paragraph_chars > 0 {
+        lines += (paragraph_chars + width - 1) / width;
+    }
+
+    lines.max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_starts_empty() {
+        let engine = ChatEngine::new();
+        assert!(engine.chat.messages.is_empty());
+        assert!(!engine.chat.streaming);
+    }
+
+    #[test]
+    fn push_user_message_adds_messages() {
+        let mut engine = ChatEngine::new();
+        let messages = engine.push_user_message("Hello");
+        assert_eq!(engine.chat.messages.len(), 2);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, Role::System);
+        assert_eq!(messages[1].role, Role::User);
+    }
+
+    #[test]
+    fn system_prompt_inserted_once() {
+        let mut engine = ChatEngine::new().with_system_prompt("You are helpful");
+        let messages1 = engine.push_user_message("Hello");
+        assert!(messages1.iter().any(|m| m.role == Role::System));
+        let messages2 = engine.push_user_message("Again");
+        assert_eq!(
+            messages2.iter().filter(|m| m.role == Role::System).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn agent_loop_transitions() {
+        let mut engine = ChatEngine::new();
+        engine.agents.status = AgentStatus::Idle;
+        engine.start_agent_loop();
+        assert_eq!(engine.agents.status, AgentStatus::Active);
+        engine.finish_agent_loop();
+        assert_eq!(engine.agents.status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn input_history_navigation() {
+        let mut engine = ChatEngine::new();
+        engine.push_to_history("first".to_string());
+        engine.push_to_history("second".to_string());
+        engine.history_prev();
+        assert_eq!(engine.input.buffer, "second");
+        engine.history_prev();
+        assert_eq!(engine.input.buffer, "first");
+        engine.history_next();
+        assert_eq!(engine.input.buffer, "second");
+    }
+
+    #[test]
+    fn tool_needs_approval_detects_destructive() {
+        assert!(crate::tool_registry::tool_needs_approval("write_file"));
+        assert!(crate::tool_registry::tool_needs_approval("shell"));
+        assert!(!crate::tool_registry::tool_needs_approval("read_file"));
+    }
+}

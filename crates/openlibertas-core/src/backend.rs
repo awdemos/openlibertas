@@ -25,6 +25,10 @@ struct Delta {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    thinking: Option<String>,
+    #[serde(default)]
     tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
@@ -70,7 +74,7 @@ impl OpenAiBackend {
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
-            .expect("Failed to build HTTP client");
+            .unwrap_or_else(|_| Client::new());
         Self {
             client,
             base_url,
@@ -92,10 +96,15 @@ impl OpenAiBackend {
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!("HTTP {}", resp.status()));
         }
-        let data: ModelsResponse = resp.json().await.context("Failed to parse models response")?;
+        let data: ModelsResponse = resp
+            .json()
+            .await
+            .context("Failed to parse models response")?;
         let mut models = data.data;
         for model in &mut models {
-            model.supports_tools = self.supports_tools;
+            let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
+            model.supports_tools = self.supports_tools || inferred_tools;
+            model.supports_voice = inferred_voice;
         }
         Ok(models)
     }
@@ -124,30 +133,69 @@ impl OpenAiBackend {
 
         tokio::spawn(async move {
             let url = format!("{}/chat/completions", base_url);
-            let resp = match client
-                .post(&url)
-                .bearer_auth(&api_key)
-                .json(&req)
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
-                    return;
-                }
-            };
+            let mut retries = 0;
+            const MAX_RETRIES: u32 = 3;
+            let resp;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                let _ = tx.send(ChatEvent::Error(format!(
-                    "[HTTP {}: {}]",
-                    status,
-                    if body.is_empty() { "Unknown error".to_string() } else { body }
-                )));
-                return;
+            loop {
+                match client
+                    .post(&url)
+                    .bearer_auth(&api_key)
+                    .json(&req)
+                    .send()
+                    .await
+                {
+                    Ok(r) => {
+                        if r.status().is_success() {
+                            resp = Some(r);
+                            break;
+                        }
+                        let status = r.status();
+                        let is_transient =
+                            status.as_u16() == 429 || (502..=504).contains(&status.as_u16());
+                        if is_transient && retries < MAX_RETRIES {
+                            retries += 1;
+                            let delay = std::time::Duration::from_secs(2_u64.pow(retries));
+                            let _ = tx.send(ChatEvent::Error(format!(
+                                "[HTTP {} — retrying {}/{} in {:?}]",
+                                status, retries, MAX_RETRIES, delay
+                            )));
+                            tokio::time::sleep(delay).await;
+                            continue;
+                        }
+                        let body = r.text().await.unwrap_or_default();
+                        let _ = tx.send(ChatEvent::Error(format!(
+                            "[HTTP {}: {}]",
+                            status,
+                            if body.is_empty() {
+                                "Unknown error".to_string()
+                            } else {
+                                body
+                            }
+                        )));
+                        return;
+                    }
+                    Err(e) => {
+                        if retries < MAX_RETRIES {
+                            retries += 1;
+                            let delay = std::time::Duration::from_secs(2_u64.pow(retries));
+                            let _ = tx.send(ChatEvent::Error(format!(
+                                "[Connection error — retrying {}/{} in {:?}: {}]",
+                                retries, MAX_RETRIES, delay, e
+                            )));
+                            tokio::time::sleep(delay).await;
+                            continue;
+                        }
+                        let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
+                        return;
+                    }
+                }
             }
+
+            let Some(resp) = resp else {
+                let _ = tx.send(ChatEvent::Error("[Unknown error]".to_string()));
+                return;
+            };
 
             let mut stream = resp.bytes_stream();
             let mut buf: Vec<u8> = Vec::new();
@@ -190,6 +238,15 @@ impl OpenAiBackend {
                                                 let _ = tx.send(ChatEvent::Text(content.clone()));
                                             }
                                         }
+                                        if let Some(reasoning) = &choice.delta.reasoning_content {
+                                            if !reasoning.is_empty() {
+                                                let _ = tx.send(ChatEvent::Reasoning(reasoning.clone()));
+                                            }
+                                        } else if let Some(thinking) = &choice.delta.thinking {
+                                            if !thinking.is_empty() {
+                                                let _ = tx.send(ChatEvent::Reasoning(thinking.clone()));
+                                            }
+                                        }
                                         if let Some(tool_calls) = &choice.delta.tool_calls {
                                             for tc in tool_calls {
                                                 let entry = accumulated_tool_calls
@@ -199,7 +256,9 @@ impl OpenAiBackend {
                                                         call_type: tc
                                                             .call_type
                                                             .clone()
-                                                            .unwrap_or_else(|| "function".to_string()),
+                                                            .unwrap_or_else(|| {
+                                                                "function".to_string()
+                                                            }),
                                                         function: FunctionCall {
                                                             name: String::new(),
                                                             arguments: String::new(),
@@ -241,29 +300,19 @@ impl OpenAiBackend {
     }
 }
 
-pub trait Backend: Send + Sync {
-    fn fetch_models(
-        &self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>>;
-
-    fn chat(
-        &self,
-        model: String,
-        messages: Vec<Message>,
-        max_tokens: u32,
-        tools: Option<Vec<ToolDefinition>>,
-        cancel_token: tokio_util::sync::CancellationToken,
-    ) -> mpsc::UnboundedReceiver<ChatEvent>;
+#[derive(Clone)]
+pub enum Backend {
+    OpenAi(OpenAiBackend),
 }
 
-impl Backend for OpenAiBackend {
-    fn fetch_models(
-        &self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
-        Box::pin(self.fetch_models())
+impl Backend {
+    pub async fn fetch_models(&self) -> Result<Vec<Model>> {
+        match self {
+            Backend::OpenAi(backend) => backend.fetch_models().await,
+        }
     }
 
-    fn chat(
+    pub fn chat(
         &self,
         model: String,
         messages: Vec<Message>,
@@ -271,7 +320,11 @@ impl Backend for OpenAiBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
     ) -> mpsc::UnboundedReceiver<ChatEvent> {
-        self.chat(model, messages, max_tokens, tools, cancel_token)
+        match self {
+            Backend::OpenAi(backend) => {
+                backend.chat(model, messages, max_tokens, tools, cancel_token)
+            }
+        }
     }
 }
 
@@ -281,12 +334,7 @@ mod tests {
 
     #[test]
     fn message_serializes_correctly() {
-        let msg = Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-        };
+        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\":\"user\""));
         assert!(json.contains("\"content\":\"hello\""));
@@ -294,19 +342,14 @@ mod tests {
 
     #[test]
     fn message_with_tool_calls_serializes() {
-        let msg = Message {
-            role: Role::Assistant,
-            content: "".to_string(),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_1".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "test".to_string(),
-                    arguments: "{}".to_string(),
-                },
-            }]),
-            tool_call_id: None,
-        };
+        let msg = Message { role: Role::Assistant, content: "".to_string(), tool_calls: Some(vec![ToolCall {
+            id: "call_1".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+        }]), tool_call_id: None, timestamp: None, reasoning_content: None };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"tool_calls\""));
         assert!(json.contains("\"call_1\""));
@@ -321,6 +364,8 @@ mod tests {
                 content: "hi".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             }],
             stream: true,
             max_tokens: Some(100),
@@ -362,7 +407,10 @@ mod tests {
         let tc = &chunk.choices[0].delta.tool_calls.as_ref().unwrap()[0];
         assert_eq!(tc.index, 0);
         assert_eq!(tc.id, Some("call_1".to_string()));
-        assert_eq!(tc.function.as_ref().unwrap().name, Some("search".to_string()));
+        assert_eq!(
+            tc.function.as_ref().unwrap().name,
+            Some("search".to_string())
+        );
     }
 
     #[test]
@@ -376,6 +424,8 @@ mod tests {
                 content: "hi".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             }],
             stream: false,
             max_tokens: None,
@@ -395,6 +445,8 @@ mod tests {
                 content: "hi".to_string(),
                 tool_calls: None,
                 tool_call_id: None,
+                timestamp: None,
+reasoning_content: None,
             }],
             stream: true,
             max_tokens: None,

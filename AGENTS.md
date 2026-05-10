@@ -71,7 +71,23 @@ When agents are enabled (`/agents` panel → Status: Enabled):
 3. If tool calls emitted → execute via MCP → append tool results → send again
 4. Repeat until no tool calls or max iterations reached
 
-Personas are loaded dynamically from `personas/*.md` at runtime. Each file: first line is `# Name`, rest is the system prompt. The built-in personas are `general.md`, `coding.md`, `creative.md`, `research.md`.
+Personas are loaded dynamically from `personas/*.md` at runtime. Each file: first line is `# Name`, rest is the system prompt. The 15 built-in personas are comprehensive multi-agent scaffolding prompts:
+
+- **Orchestrator** — Central coordinator with intent classification and delegation tables
+- **Coding** — Implementation specialist with verification requirements
+- **Research** — Systematic investigator with source evaluation
+- **Creative** — Creative strategist with ideation workflows
+- **Captain** — Task coordinator with dependency mapping
+- **Artisan** — Deep autonomous worker with end-to-end implementation
+- **Sage** — Read-only consultant with structured review criteria
+- **Pathfinder** — External search with source hierarchy
+- **Seeker** — Codebase explorer with symbol tracing
+- **Witness** — Document analyst with precise observation
+- **Strategist** — Pre-planning consultant with risk assessment
+- **Examiner** — Plan reviewer with severity-based findings
+- **Steward** — Task tracker with progress monitoring
+- **Visionary** — Strategic architect with roadmap design
+- **Operative** — Precise executor with verification workflows
 
 ### Tool Calling Flow
 

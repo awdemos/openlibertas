@@ -30,7 +30,11 @@ pub const SLASH_COMMANDS: &[&str] = &[
     // Tools
     "/mcp",
     "/tools",
+    // Voice
+    "/voice",
+    "/voice_device",
     // System
+    "/mouse",
     "/quit",
 ];
 
@@ -39,10 +43,14 @@ pub fn command_category(cmd: &str) -> &'static str {
     match cmd {
         "/help" | "/version" => "Info",
         "/model" | "/theme" => "Config",
-        "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo" | "/title" => "Session",
+        "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
+        | "/title" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
         "/agents" | "/yolo" | "/compact" => "Agent",
         "/mcp" | "/tools" => "Tools",
+        "/voice" => "Voice",
+        "/voice_device" => "Voice",
+        "/mouse" => "System",
         "/quit" => "System",
         _ => "Other",
     }
@@ -67,11 +75,14 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/search" => "Search in conversation",
         "/edit" => "Edit a message by index",
         "/remove" => "Remove a message by index",
-    "/agents" => "Open agent configuration",
-    "/yolo" => "Toggle auto-approval for tools",
-    "/compact" => "Compact conversation context",
+        "/agents" => "Open agent configuration",
+        "/yolo" => "Toggle auto-approval for tools",
+        "/compact" => "Compact conversation context",
         "/mcp" => "Show MCP server status",
         "/tools" => "Toggle tools panel",
+        "/voice" => "Toggle voice chat mode",
+        "/voice_device" => "List or select voice input device",
+        "/mouse" => "Toggle mouse capture (for tmux copy mode)",
         "/quit" => "Quit application",
         _ => "",
     }
@@ -101,6 +112,9 @@ pub enum SlashCommand {
     Compact,
     Mcp,
     Tools,
+    Voice,
+    VoiceDevice(String),
+    Mouse,
     Quit,
     Unknown(String),
 }
@@ -142,6 +156,15 @@ impl SlashCommand {
             "/yolo" => Some(SlashCommand::Yolo),
             "/compact" => Some(SlashCommand::Compact),
             "/tools" => Some(SlashCommand::Tools),
+            "/voice" => Some(SlashCommand::Voice),
+            "/voice_device" => {
+                if parts.len() > 1 {
+                    Some(SlashCommand::VoiceDevice(parts[1..].join(" ")))
+                } else {
+                    Some(SlashCommand::VoiceDevice(String::new()))
+                }
+            }
+            "/mouse" => Some(SlashCommand::Mouse),
             "/save" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Save(parts[1..].join(" ")))
@@ -234,7 +257,10 @@ pub enum ModelSwitchResult {
     /// Successfully switched to this model and provider
     Switched { model: String, provider: ProviderId },
     /// Model not found, with suggestions
-    NotFound { query: String, suggestions: Vec<String> },
+    NotFound {
+        query: String,
+        suggestions: Vec<String>,
+    },
     /// Show current model
     Current(String),
     /// Open model picker
@@ -244,31 +270,36 @@ pub enum ModelSwitchResult {
 /// Find a model by name (exact or fuzzy match)
 pub fn find_model(models: &[Model], query: &str) -> Option<(usize, String)> {
     let query_lower = query.to_lowercase();
-    
+
     // First try exact match (case-insensitive)
-    if let Some((idx, model)) = models.iter().enumerate().find(|(_, m)| {
-        m.id.to_lowercase() == query_lower
-    }) {
+    if let Some((idx, model)) = models
+        .iter()
+        .enumerate()
+        .find(|(_, m)| m.id.to_lowercase() == query_lower)
+    {
         return Some((idx, model.id.clone()));
     }
-    
+
     // Then try substring match
-    let matches: Vec<(usize, String)> = models.iter().enumerate()
+    let matches: Vec<(usize, String)> = models
+        .iter()
+        .enumerate()
         .filter(|(_, m)| m.id.to_lowercase().contains(&query_lower))
         .map(|(idx, m)| (idx, m.id.clone()))
         .collect();
-    
+
     if matches.len() == 1 {
         return Some(matches[0].clone());
     }
-    
+
     None
 }
 
 /// Get fuzzy match suggestions for a model query
 pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
     let query_lower = query.to_lowercase();
-    models.iter()
+    models
+        .iter()
         .filter(|m| m.id.to_lowercase().contains(&query_lower))
         .map(|m| m.id.clone())
         .take(5)
@@ -283,10 +314,24 @@ pub fn build_help_message() -> String {
     let categories = [
         ("Info", &["/help", "/version"][..]),
         ("Config", &["/model", "/theme"][..]),
-        ("Session", &["/new", "/clear", "/save", "/load", "/sessions", "/delete", "/export", "/undo", "/title"][..]),
+        (
+            "Session",
+            &[
+                "/new",
+                "/clear",
+                "/save",
+                "/load",
+                "/sessions",
+                "/delete",
+                "/export",
+                "/undo",
+                "/title",
+            ][..],
+        ),
         ("Chat", &["/search", "/edit", "/remove"][..]),
         ("Agent", &["/agents", "/yolo"][..]),
         ("Tools", &["/mcp", "/tools"][..]),
+        ("Voice", &["/voice", "/voice_device"][..]),
         ("System", &["/quit"][..]),
     ];
 
@@ -316,7 +361,7 @@ pub fn load_session(store: &ConversationStore, name: &str) -> Result<LoadedSessi
         .map_err(|e| format!("Failed to read conversation: {}", e))?;
     let conversation: crate::store::Conversation = serde_json::from_str(&contents)
         .map_err(|e| format!("Failed to parse conversation: {}", e))?;
-    
+
     Ok(LoadedSession {
         messages: conversation.messages,
         model: conversation.model,
@@ -370,6 +415,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_voice_command() {
+        let cmd = SlashCommand::parse("/voice");
+        assert_eq!(cmd, Some(SlashCommand::Voice));
+    }
+
+    #[test]
     fn parse_unknown_command() {
         let cmd = SlashCommand::parse("/foobar");
         assert_eq!(cmd, Some(SlashCommand::Unknown("/foobar".to_string())));
@@ -398,8 +449,20 @@ mod tests {
     #[test]
     fn find_model_exact_match() {
         let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-            Model { id: "gpt-3.5".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
+            Model {
+                id: "gpt-4".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
+            Model {
+                id: "gpt-3.5".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
         ];
         let result = find_model(&models, "gpt-4");
         assert_eq!(result, Some((0, "gpt-4".to_string())));
@@ -407,27 +470,39 @@ mod tests {
 
     #[test]
     fn find_model_case_insensitive() {
-        let models = vec![
-            Model { id: "GPT-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-        ];
+        let models = vec![Model {
+            id: "GPT-4".to_string(),
+            provider: ProviderId::new("openai"),
+            supports_tools: true,
+            supports_voice: false,
+            local: false,
+        }];
         let result = find_model(&models, "gpt-4");
         assert_eq!(result, Some((0, "GPT-4".to_string())));
     }
 
     #[test]
     fn find_model_substring_match() {
-        let models = vec![
-            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-        ];
+        let models = vec![Model {
+            id: "gpt-4-turbo".to_string(),
+            provider: ProviderId::new("openai"),
+            supports_tools: true,
+            supports_voice: false,
+            local: false,
+        }];
         let result = find_model(&models, "turbo");
         assert_eq!(result, Some((0, "gpt-4-turbo".to_string())));
     }
 
     #[test]
     fn find_model_no_match() {
-        let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-        ];
+        let models = vec![Model {
+            id: "gpt-4".to_string(),
+            provider: ProviderId::new("openai"),
+            supports_tools: true,
+            supports_voice: false,
+            local: false,
+        }];
         let result = find_model(&models, "nonexistent");
         assert!(result.is_none());
     }
@@ -435,9 +510,27 @@ mod tests {
     #[test]
     fn model_suggestions_filter_by_query() {
         let models = vec![
-            Model { id: "gpt-4".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-            Model { id: "gpt-4-turbo".to_string(), provider: ProviderId::new("openai"), supports_tools: true },
-            Model { id: "claude-3".to_string(), provider: ProviderId::new("anthropic"), supports_tools: true },
+            Model {
+                id: "gpt-4".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
+            Model {
+                id: "gpt-4-turbo".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
+            Model {
+                id: "claude-3".to_string(),
+                provider: ProviderId::new("anthropic"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
         ];
         let suggestions = get_model_suggestions(&models, "gpt");
         assert_eq!(suggestions.len(), 2);
@@ -447,9 +540,13 @@ mod tests {
 
     #[test]
     fn model_suggestions_empty_query_returns_all() {
-        let models = vec![
-            Model { id: "model-a".to_string(), provider: ProviderId::new("local"), supports_tools: true },
-        ];
+        let models = vec![Model {
+            id: "model-a".to_string(),
+            provider: ProviderId::new("local"),
+            supports_tools: true,
+            supports_voice: false,
+            local: false,
+        }];
         let suggestions = get_model_suggestions(&models, "");
         assert_eq!(suggestions.len(), 1);
     }

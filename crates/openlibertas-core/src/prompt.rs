@@ -35,7 +35,11 @@ impl PromptManager {
             "kimi".to_string()
         } else if lower.contains("openai") || lower.contains("gpt") {
             "gpt".to_string()
-        } else if lower.contains("local") || lower.contains("ollama") || lower.contains("lmstudio") || lower.contains("llamacpp") {
+        } else if lower.contains("local")
+            || lower.contains("ollama")
+            || lower.contains("lmstudio")
+            || lower.contains("llamacpp")
+        {
             "local".to_string()
         } else {
             "default".to_string()
@@ -81,7 +85,10 @@ mod tests {
 
     #[test]
     fn normalize_provider_partial_matches() {
-        assert_eq!(PromptManager::normalize_provider("claude-3-opus"), "anthropic");
+        assert_eq!(
+            PromptManager::normalize_provider("claude-3-opus"),
+            "anthropic"
+        );
         assert_eq!(PromptManager::normalize_provider("gpt-4-turbo"), "gpt");
         assert_eq!(PromptManager::normalize_provider("kimi-moonshot"), "kimi");
     }
@@ -106,6 +113,9 @@ mod tests {
     fn default_returns_same_as_new() {
         let manager1 = PromptManager::new();
         let manager2 = PromptManager::default();
-        assert_eq!(manager1.get_prompt("default"), manager2.get_prompt("default"));
+        assert_eq!(
+            manager1.get_prompt("default"),
+            manager2.get_prompt("default")
+        );
     }
 }

@@ -325,7 +325,10 @@ mod tests {
 
     #[test]
     fn theme_from_name() {
-        assert_eq!(Theme::from_name("solarized-dark"), Some(Theme::SolarizedDark));
+        assert_eq!(
+            Theme::from_name("solarized-dark"),
+            Some(Theme::SolarizedDark)
+        );
         assert_eq!(Theme::from_name("tokyo-night"), Some(Theme::TokyoNight));
         assert_eq!(Theme::from_name("catppuccin"), Some(Theme::Catppuccin));
         assert_eq!(Theme::from_name("unknown"), None);

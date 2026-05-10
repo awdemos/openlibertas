@@ -142,44 +142,58 @@ OpenLibertas includes a multi-agent system with 15 specialized personas. Each pe
 ### How It Works
 
 1. Open the agent panel with `/agents`
-2. Select a persona (General, Coding, Research, Captain, Artisan, etc.)
+2. **Orchestrator** is selected by default — it coordinates other agents automatically
 3. Enable agent status
 4. Send your request normally
-5. The LLM will use tools as needed, analyze results, and continue until the task is complete
+5. The active agent will use tools, delegate to specialist personas as needed, and continue until the task is complete
 6. Status shows in the header: `[Agents: ● 3/10 Persona]`
 7. Maximum 10 iterations per task (configurable, prevents infinite loops)
 8. Cancel anytime with `Esc`
+
+### Multi-Agent Delegation
+
+Agents can **switch personas mid-task** to delegate work to specialists:
+
+- **Orchestrator** → Routes tasks and coordinates specialist agents
+- **Seeker** → Explores the codebase to find patterns and references
+- **Pathfinder** → Searches external documentation and APIs
+- **Sage** → Reviews code and architecture decisions
+- **Strategist** → Plans complex implementations before coding
+- **Artisan** → Handles deep, focused implementation work
+- **Steward** → Tracks progress and manages todos
+
+When an agent delegates, the persona switches transparently and the new agent continues with the appropriate context. You can see persona switches in the chat history.
 
 ### Agent Personas
 
 | Persona | Role | Best For |
 |---------|------|----------|
-| **General** | Default assistant | Everyday questions, general tasks |
-| **Coding** | Software engineer | Code review, debugging, implementation |
-| **Research** | Research assistant | Deep investigation, analysis, summaries |
-| **Creative** | Creative writer | Brainstorming, writing, design |
-| **Captain** | Orchestrator | Complex multi-step projects, delegation |
-| **Artisan** | Deep worker | Focused implementation, detailed tasks |
-| **Sage** | Consultant | Code review, architecture advice, critique |
-| **Pathfinder** | External search | Documentation lookup, API research |
-| **Seeker** | Code explorer | Navigating large codebases, finding patterns |
-| **Witness** | Document analyst | PDF/image analysis, visual verification |
-| **Strategist** | Planner | Pre-implementation planning, risk analysis |
-| **Examiner** | Reviewer | Plan validation, quality assurance |
-| **Steward** | Task manager | Todo tracking, progress monitoring |
-| **Visionary** | Architect | Long-term planning, technical strategy |
-| **Operative** | Executor | Well-defined tasks, precise implementation |
+| **Orchestrator** | Central coordinator | Multi-agent task routing, delegation, verification |
+| **Coding** | Implementation specialist | Writing, debugging, refactoring code |
+| **Research** | Systematic investigator | External research, source evaluation, synthesis |
+| **Creative** | Creative strategist | Writing, design, brainstorming, content |
+| **Captain** | Task coordinator | Multi-step projects, dependency tracking |
+| **Artisan** | Deep autonomous worker | End-to-end implementation, thorough testing |
+| **Sage** | Read-only consultant | Architecture review, debugging, trade-off analysis |
+| **Pathfinder** | External search | Documentation, APIs, library internals |
+| **Seeker** | Codebase explorer | Navigation, pattern finding, cross-references |
+| **Witness** | Document analyst | PDFs, images, diagrams, precise observation |
+| **Strategist** | Pre-planning consultant | Scope analysis, risk assessment, phased plans |
+| **Examiner** | Plan reviewer | Quality assurance, gap detection, verification |
+| **Steward** | Task tracker | Todo management, progress monitoring, blockers |
+| **Visionary** | Strategic architect | Roadmaps, technology strategy, scalability |
+| **Operative** | Precise executor | Well-defined tasks, methodical execution |
 
 Personas are loaded from `personas/*.md` files at runtime. Each file's first line is the name (`# Name`), and the rest is the system prompt. Add your own by creating a new `.md` file in the `personas/` directory.
 
 ### Agent Use Cases
 
-- **Research**: "Search for recent Rust async runtime benchmarks, then summarize the findings"
-- **File Operations**: "Read Cargo.toml, check the dependencies, then suggest updates"
-- **Multi-step Workflows**: "Find all TODO comments in the codebase, then create a summary document"
-- **Debugging**: "Check the last 50 lines of the application log, identify any errors, and suggest fixes"
-- **Code Review** (Sage): "Review this PR for security issues and performance bottlenecks"
-- **Planning** (Strategist): "Plan the migration from sync to async for this module"
+- **Multi-Agent Research**: "Search for recent Rust async runtime benchmarks" → Orchestrator delegates to Research → Results synthesized by Orchestrator
+- **Codebase Analysis**: "Find all TODO comments" → Orchestrator → Seeker explores → Steward tracks → Coding implements
+- **Debugging**: "Check the last 50 lines of logs, identify errors, suggest fixes" → Orchestrator → Seeker finds code → Sage reviews → Coding fixes
+- **Architecture Review** (Sage): "Review this PR for security issues and performance bottlenecks"
+- **Pre-Implementation Planning** (Strategist): "Plan the migration from sync to async for this module"
+- **End-to-End Implementation** (Artisan): "Add a new REST endpoint with tests and documentation"
 
 ## MCP Servers
 

@@ -2,8 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11435/v1";
-const LLAMACPP_BASE_URL: &str = "http://localhost:8080/v1";
+const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
 
@@ -37,17 +36,6 @@ impl Provider {
             extra_params: None,
         }
     }
-
-    pub fn llamacpp_default() -> Self {
-        Self {
-            name: "llamacpp".to_string(),
-            base_url: LLAMACPP_BASE_URL.to_string(),
-            api_key: DEFAULT_API_KEY.to_string(),
-            enabled: true,
-            supports_tools: true,
-            extra_params: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +46,23 @@ pub struct Config {
     pub model: Option<String>,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(default)]
+    pub elevenlabs_api_key: Option<String>,
+    #[serde(default)]
+    pub elevenlabs_voice_id: Option<String>,
+    #[serde(default = "default_models_dir")]
+    pub models_dir: PathBuf,
+    #[serde(default = "default_auto_save")]
+    pub auto_save: bool,
+    #[serde(default = "default_filter_voice_tools")]
+    pub filter_require_voice_and_tools: bool,
+}
+
+fn default_models_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        .join("openlibertas")
+        .join("models")
 }
 
 impl Default for Config {
@@ -66,12 +71,25 @@ impl Default for Config {
             providers: vec![Provider::local_default()],
             model: None,
             max_tokens: default_max_tokens(),
+            elevenlabs_api_key: None,
+            elevenlabs_voice_id: None,
+            models_dir: default_models_dir(),
+            auto_save: default_auto_save(),
+            filter_require_voice_and_tools: default_filter_voice_tools(),
         }
     }
 }
 
 fn default_max_tokens() -> u32 {
     DEFAULT_MAX_TOKENS
+}
+
+fn default_auto_save() -> bool {
+    true
+}
+
+fn default_filter_voice_tools() -> bool {
+    false
 }
 
 impl Config {
@@ -109,6 +127,12 @@ impl Config {
             if let Ok(tokens) = tokens.parse() {
                 config.max_tokens = tokens;
             }
+        }
+        if let Ok(key) = std::env::var("ELEVENLABS_API_KEY") {
+            config.elevenlabs_api_key = Some(key);
+        }
+        if let Ok(voice_id) = std::env::var("ELEVENLABS_VOICE_ID") {
+            config.elevenlabs_voice_id = Some(voice_id);
         }
 
         Ok(config)
@@ -149,17 +173,6 @@ mod tests {
         let p = Provider::local_default();
         assert_eq!(p.name, "local");
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
-        assert_eq!(p.api_key, DEFAULT_API_KEY);
-        assert!(p.enabled);
-        assert!(p.supports_tools);
-        assert!(p.extra_params.is_none());
-    }
-
-    #[test]
-    fn provider_llamacpp_default() {
-        let p = Provider::llamacpp_default();
-        assert_eq!(p.name, "llamacpp");
-        assert_eq!(p.base_url, LLAMACPP_BASE_URL);
         assert_eq!(p.api_key, DEFAULT_API_KEY);
         assert!(p.enabled);
         assert!(p.supports_tools);
@@ -217,6 +230,11 @@ mod tests {
             providers: vec![Provider::local_default()],
             model: Some("test-model".to_string()),
             max_tokens: 4096,
+            elevenlabs_api_key: None,
+            elevenlabs_voice_id: None,
+            models_dir: default_models_dir(),
+            auto_save: default_auto_save(),
+            filter_require_voice_and_tools: default_filter_voice_tools(),
         };
         let toml_str = toml::to_string(&config).unwrap();
         let deserialized: Config = toml::from_str(&toml_str).unwrap();

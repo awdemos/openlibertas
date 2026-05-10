@@ -95,6 +95,7 @@ struct ToolCallResult {
     is_error: bool,
 }
 
+#[derive(Debug)]
 pub struct McpClient {
     servers: HashMap<String, McpServerConfig>,
     tools: Mutex<HashMap<String, (String, McpTool)>>,
@@ -157,34 +158,30 @@ impl McpClient {
             statuses.insert(name.clone(), McpServerStatus::Connecting);
 
             match config.server_type.as_str() {
-                "local" => {
-                    match self.discover_local_tools(name, config).await {
-                        Ok(tools) => {
-                            statuses.insert(name.clone(), McpServerStatus::Connected);
-                            for tool in tools {
-                                tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
-                                all_tools.push(tool);
-                            }
-                        }
-                        Err(_) => {
-                            statuses.insert(name.clone(), McpServerStatus::Failed);
+                "local" => match self.discover_local_tools(name, config).await {
+                    Ok(tools) => {
+                        statuses.insert(name.clone(), McpServerStatus::Connected);
+                        for tool in tools {
+                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                            all_tools.push(tool);
                         }
                     }
-                }
-                "remote" => {
-                    match self.discover_remote_tools(name, config).await {
-                        Ok(tools) => {
-                            statuses.insert(name.clone(), McpServerStatus::Connected);
-                            for tool in tools {
-                                tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
-                                all_tools.push(tool);
-                            }
-                        }
-                        Err(_) => {
-                            statuses.insert(name.clone(), McpServerStatus::Failed);
+                    Err(_) => {
+                        statuses.insert(name.clone(), McpServerStatus::Failed);
+                    }
+                },
+                "remote" => match self.discover_remote_tools(name, config).await {
+                    Ok(tools) => {
+                        statuses.insert(name.clone(), McpServerStatus::Connected);
+                        for tool in tools {
+                            tool_map.insert(tool.name.clone(), (name.clone(), tool.clone()));
+                            all_tools.push(tool);
                         }
                     }
-                }
+                    Err(_) => {
+                        statuses.insert(name.clone(), McpServerStatus::Failed);
+                    }
+                },
                 _ => {
                     statuses.insert(name.clone(), McpServerStatus::Failed);
                 }
@@ -219,14 +216,8 @@ impl McpClient {
             .spawn()
             .with_context(|| format!("Failed to spawn MCP server {}", name))?;
 
-        let stdin = child
-            .stdin
-            .take()
-            .context("Failed to get stdin")?;
-        let stdout = child
-            .stdout
-            .take()
-            .context("Failed to get stdout")?;
+        let stdin = child.stdin.take().context("Failed to get stdin")?;
+        let stdout = child.stdout.take().context("Failed to get stdout")?;
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -300,8 +291,14 @@ impl McpClient {
             .context(format!("Server {} not found", server_name))?;
 
         match config.server_type.as_str() {
-            "local" => self.call_local_tool(&server_name, tool_name, arguments).await,
-            "remote" => self.call_remote_tool(&server_name, config, tool_name, arguments).await,
+            "local" => {
+                self.call_local_tool(&server_name, tool_name, arguments)
+                    .await
+            }
+            "remote" => {
+                self.call_remote_tool(&server_name, config, tool_name, arguments)
+                    .await
+            }
             _ => Err(anyhow::anyhow!("Unknown server type")),
         }
     }
@@ -317,10 +314,7 @@ impl McpClient {
             .get_mut(server_name)
             .context(format!("MCP server {} not running", server_name))?;
 
-        let stdin = child
-            .stdin
-            .as_mut()
-            .context("Failed to get stdin")?;
+        let stdin = child.stdin.as_mut().context("Failed to get stdin")?;
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -336,10 +330,7 @@ impl McpClient {
         stdin.write_all(request_json.as_bytes()).await?;
         stdin.flush().await?;
 
-        let stdout = child
-            .stdout
-            .as_mut()
-            .context("Failed to get stdout")?;
+        let stdout = child.stdout.as_mut().context("Failed to get stdout")?;
         let reader = BufReader::new(stdout);
         let mut lines = AsyncBufReadExt::lines(reader);
 
@@ -431,7 +422,14 @@ mod tests {
         }"#;
         let config: McpServerConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.server_type, "local");
-        assert_eq!(config.command, Some(vec!["npx".to_string(), "-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()]));
+        assert_eq!(
+            config.command,
+            Some(vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string()
+            ])
+        );
         assert!(config.enabled);
         assert!(config.url.is_none());
     }

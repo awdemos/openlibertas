@@ -132,7 +132,8 @@ impl ConversationStore {
     }
 
     pub fn list(&self) -> Result<Vec<String>> {
-        self.list_with_meta().map(|v| v.into_iter().map(|(id, _, _)| id).collect())
+        self.list_with_meta()
+            .map(|v| v.into_iter().map(|(id, _, _)| id).collect())
     }
 
     pub fn delete(&self, id: &str) -> Result<()> {
@@ -152,8 +153,8 @@ impl ConversationStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::backend::Message;
-use crate::domain::Role;
+    use crate::backend::Message;
+    use crate::domain::Role;
 
     #[test]
     fn generate_name_includes_model_and_timestamp() {
@@ -174,16 +175,18 @@ use crate::domain::Role;
         let tmp_dir = tempfile::tempdir().unwrap();
         let store = ConversationStore::new(tmp_dir.path().to_path_buf()).unwrap();
 
-        let messages = vec![
-            Message {
-                role: Role::User,
-                content: "hello".to_string(),
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ];
+        let messages = vec![Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+reasoning_content: None,
+        }];
 
-        store.save("test-session", Some("gpt-4"), &messages).unwrap();
+        store
+            .save("test-session", Some("gpt-4"), &messages)
+            .unwrap();
         let loaded = store.load("test-session").unwrap();
 
         assert_eq!(loaded.len(), 1);
@@ -200,6 +203,8 @@ use crate::domain::Role;
             content: "test".to_string(),
             tool_calls: None,
             tool_call_id: None,
+            timestamp: None,
+reasoning_content: None,
         }];
 
         store.save("session-a", Some("model-a"), &messages).unwrap();
@@ -219,6 +224,8 @@ use crate::domain::Role;
             content: "test".to_string(),
             tool_calls: None,
             tool_call_id: None,
+            timestamp: None,
+reasoning_content: None,
         }];
 
         store.save("to-delete", None, &messages).unwrap();

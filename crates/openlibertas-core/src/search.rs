@@ -22,14 +22,14 @@ pub fn search_messages(messages: &[Message], query: &str) -> Vec<SearchMatch> {
     if query.is_empty() {
         return Vec::new();
     }
-    
+
     let query_lower = query.to_lowercase();
     let mut matches = Vec::new();
-    
+
     for (msg_idx, msg) in messages.iter().enumerate() {
         let content_lower = msg.content.to_lowercase();
         let mut start = 0;
-        
+
         while let Some(pos) = content_lower[start..].find(&query_lower) {
             let char_start = start + pos;
             let char_end = char_start + query_lower.len();
@@ -44,7 +44,7 @@ pub fn search_messages(messages: &[Message], query: &str) -> Vec<SearchMatch> {
             }
         }
     }
-    
+
     matches
 }
 
@@ -55,20 +55,12 @@ mod tests {
     use crate::domain::Role;
 
     fn create_message(content: &str) -> Message {
-        Message {
-            role: Role::User,
-            content: content.to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-        }
+        Message { role: Role::User, content: content.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None }
     }
 
     #[test]
     fn search_finds_matches() {
-        let messages = vec![
-            create_message("Hello world"),
-            create_message("Hello again"),
-        ];
+        let messages = vec![create_message("Hello world"), create_message("Hello again")];
         let matches = search_messages(&messages, "Hello");
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].message_index, 0);

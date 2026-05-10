@@ -57,8 +57,10 @@ mod tests {
 
     #[test]
     fn state_roundtrip() {
-        let mut state = State::default();
-        state.last_model = Some("test-model".to_string());
+        let mut state = State {
+            last_model: Some("test-model".to_string()),
+            ..Default::default()
+        };
         state.mcp_enabled.insert("websearch".to_string(), true);
 
         let json = serde_json::to_string_pretty(&state).unwrap();
