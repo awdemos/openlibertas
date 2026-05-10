@@ -800,7 +800,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
             .saturating_add(2);
     }
 
-    let selection = app.selection();
+    let selection = app.engine.selection();
     let mut spans: Vec<Span> = vec![Span::styled(
         prompt_symbol,
         Style::default().fg(app.theme.foreground()),

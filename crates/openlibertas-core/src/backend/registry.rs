@@ -53,7 +53,7 @@ impl BackendRegistry {
 
     /// Return the provider ID for the default backend.
     /// Returns `None` if no backends are registered.
-    pub fn default_provider(&self) -> Option<&ProviderId> {
+    pub fn default_provider_id(&self) -> Option<&ProviderId> {
         self.backends.keys().next()
     }
 
@@ -179,17 +179,17 @@ mod tests {
     }
 
     #[test]
-    fn default_provider_returns_first_id() {
+    fn default_provider_id_returns_first_id() {
         let providers = test_providers();
         let registry = BackendRegistry::new(&providers);
-        let id = registry.default_provider();
+        let id = registry.default_provider_id();
         assert!(id.is_some());
     }
 
     #[test]
-    fn default_provider_none_when_empty() {
+    fn default_provider_id_none_when_empty() {
         let registry = BackendRegistry::new(&[]);
-        assert!(registry.default_provider().is_none());
+        assert!(registry.default_provider_id().is_none());
     }
 
     #[test]

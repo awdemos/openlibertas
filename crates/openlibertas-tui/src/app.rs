@@ -21,7 +21,6 @@ use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
 use openlibertas_core::store::ConversationStore;
 use openlibertas_core::voice::{VoiceManager, VoiceState};
-use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,19 +86,6 @@ pub struct App {
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
-}
-
-impl Deref for App {
-    type Target = ChatEngine;
-    fn deref(&self) -> &Self::Target {
-        &self.engine
-    }
-}
-
-impl DerefMut for App {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.engine
-    }
 }
 
 impl App {
@@ -926,7 +912,7 @@ mod tests {
     fn autocomplete_suggestions_for_prefix() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.input.buffer = "/s".to_string();
+        app.engine.input.buffer = "/s".to_string();
         let suggestions = app.get_autocomplete_suggestions();
         assert!(suggestions.contains(&"/save"));
         assert!(suggestions.contains(&"/sessions"));
@@ -944,29 +930,29 @@ mod tests {
     fn history_navigation() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.input.history = vec!["first".to_string(), "second".to_string()];
+        app.engine.input.history = vec!["first".to_string(), "second".to_string()];
 
-        app.history_prev();
-        assert_eq!(app.input.buffer, "second");
+        app.engine.history_prev();
+        assert_eq!(app.engine.input.buffer, "second");
 
-        app.history_prev();
-        assert_eq!(app.input.buffer, "first");
+        app.engine.history_prev();
+        assert_eq!(app.engine.input.buffer, "first");
 
-        app.history_next();
-        assert_eq!(app.input.buffer, "second");
+        app.engine.history_next();
+        assert_eq!(app.engine.input.buffer, "second");
     }
 
     #[test]
     fn history_wraps_around() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.input.history = vec!["only".to_string()];
+        app.engine.input.history = vec!["only".to_string()];
 
-        app.history_prev();
-        assert_eq!(app.input.buffer, "only");
+        app.engine.history_prev();
+        assert_eq!(app.engine.input.buffer, "only");
 
-        app.history_next();
-        assert_eq!(app.input.buffer, "");
+        app.engine.history_next();
+        assert_eq!(app.engine.input.buffer, "");
     }
 
     #[test]
@@ -1090,49 +1076,49 @@ mod tests {
     fn agent_starts_disabled() {
         let config = Config::default();
         let app = App::new(config);
-        assert_eq!(app.agents.status, AgentStatus::Disabled);
-        assert_eq!(app.agents.max_iterations, 10);
-        assert_eq!(app.agents.current_iteration, 0);
+        assert_eq!(app.engine.agents.status, AgentStatus::Disabled);
+        assert_eq!(app.engine.agents.max_iterations, 10);
+        assert_eq!(app.engine.agents.current_iteration, 0);
     }
 
     #[test]
     fn agent_status_transitions() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.agents.status = AgentStatus::Idle;
-        app.start_agent_loop();
-        assert_eq!(app.agents.status, AgentStatus::Active);
-        assert_eq!(app.agents.current_iteration, 0);
+        app.engine.agents.status = AgentStatus::Idle;
+        app.engine.start_agent_loop();
+        assert_eq!(app.engine.agents.status, AgentStatus::Active);
+        assert_eq!(app.engine.agents.current_iteration, 0);
 
-        app.finish_agent_loop();
-        assert_eq!(app.agents.status, AgentStatus::Idle);
-        assert_eq!(app.agents.current_iteration, 0);
+        app.engine.finish_agent_loop();
+        assert_eq!(app.engine.agents.status, AgentStatus::Idle);
+        assert_eq!(app.engine.agents.current_iteration, 0);
     }
 
     #[test]
     fn agent_iteration_tracking() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.agents.status = AgentStatus::Idle;
-        app.start_agent_loop();
-        assert_eq!(app.agents.current_iteration, 0);
+        app.engine.agents.status = AgentStatus::Idle;
+        app.engine.start_agent_loop();
+        assert_eq!(app.engine.agents.current_iteration, 0);
 
-        app.increment_agent_iteration();
-        assert_eq!(app.agents.current_iteration, 1);
-        assert!(!app.agent_iteration_exceeded());
+        app.engine.increment_agent_iteration();
+        assert_eq!(app.engine.agents.current_iteration, 1);
+        assert!(!app.engine.agent_iteration_exceeded());
 
-        app.agents.current_iteration = 10;
-        assert!(app.agent_iteration_exceeded());
+        app.engine.agents.current_iteration = 10;
+        assert!(app.engine.agent_iteration_exceeded());
     }
 
     #[test]
     fn agent_persona_cycles() {
         let config = Config::default();
         let mut app = App::new(config);
-        let initial = app.agents.persona.clone();
+        let initial = app.engine.agents.persona.clone();
 
         app.cycle_agent_persona();
-        assert_ne!(app.agents.persona, initial);
+        assert_ne!(app.engine.agents.persona, initial);
     }
 
     #[test]
