@@ -17,9 +17,9 @@ anyhow = "1"
 futures-util = "0.3"
 directories = "5"
 toml = "0.8"
-chrono = { version = "0.4", features = ["serde"] }
+time = "0.3"
 regex = "1"
-dirs = "5"
+
 thiserror = "2"
 cpal = "0.15"
 rodio = { version = "0.19", features = ["symphonia"] }

@@ -29,15 +29,15 @@ impl ConversationStore {
     }
 
     pub fn generate_name(model: &str) -> String {
-        let now = chrono::Local::now();
+        let now = time::OffsetDateTime::now_utc();
         let model_clean = model
             .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
             .replace("--", "-");
-        format!("{}-{}", model_clean, now.format("%Y-%m-%d-%H%M"))
+        format!("{}-{:04}-{:02}-{:02}-{:02}{:02}", model_clean, now.year(), now.month() as u8, now.day(), now.hour(), now.minute())
     }
 
     pub fn save_markdown(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
-        let now = chrono::Local::now().to_rfc3339();
+        let now = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default();
         let mut md = String::new();
         md.push_str("# Chat Session\n\n");
         if let Some(m) = model {
@@ -70,7 +70,7 @@ impl ConversationStore {
     }
 
     pub fn save(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
-        let now = chrono::Local::now().to_rfc3339();
+        let now = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default();
         let title = messages.first().map(|m| {
             let content = &m.content;
             if content.len() > 40 {

@@ -410,8 +410,8 @@ async fn main() -> Result<()> {
                                 {
                                     let _ = crossterm::terminal::disable_raw_mode();
                                     let _ = std::io::stdout().execute(LeaveAlternateScreen);
-                                    unsafe {
-                                        libc::raise(libc::SIGTSTP);
+                                    {
+                                        let _ = nix::sys::signal::raise(nix::sys::signal::Signal::SIGTSTP);
                                     }
                                     let _ = crossterm::terminal::enable_raw_mode();
                                     let _ = std::io::stdout().execute(EnterAlternateScreen);

@@ -95,9 +95,9 @@ pub struct Config {
 }
 
 fn default_models_dir() -> PathBuf {
-    dirs::data_dir()
+    directories::ProjectDirs::from("com", "openlibertas", "openlibertas")
+        .map(|p| p.data_dir().to_path_buf())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-        .join("openlibertas")
         .join("models")
 }
 

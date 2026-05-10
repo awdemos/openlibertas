@@ -155,9 +155,8 @@ pub struct Message {
 }
 
 pub fn now_timestamp() -> String {
-    let now = std::time::SystemTime::now();
-    let dt: chrono::DateTime<chrono::Local> = now.into();
-    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+    let now = time::OffsetDateTime::now_utc();
+    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month() as u8, now.day(), now.hour(), now.minute(), now.second())
 }
 
 #[derive(Debug, Serialize, Clone)]

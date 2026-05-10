@@ -110,8 +110,8 @@ pub struct McpClient {
 
 impl McpClient {
     pub fn from_opencode_config() -> Result<Self> {
-        let config_path = dirs::home_dir()
-            .map(|h| h.join(".config/opencode/opencode.json"))
+        let config_path = directories::BaseDirs::new()
+            .map(|b| b.home_dir().join(".config/opencode/opencode.json"))
             .context("Could not determine home directory")?;
         Self::from_config_file(&config_path)
     }
