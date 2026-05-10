@@ -853,4 +853,246 @@ mod tests {
         assert!(crate::tool_registry::tool_needs_approval("shell"));
         assert!(!crate::tool_registry::tool_needs_approval("read_file"));
     }
+
+    #[test]
+    fn cursor_moves_left_and_right() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "abc".to_string();
+        engine.input.cursor_pos = 3;
+        engine.move_cursor_left();
+        assert_eq!(engine.input.cursor_pos, 2);
+        engine.move_cursor_right();
+        assert_eq!(engine.input.cursor_pos, 3);
+    }
+
+    #[test]
+    fn cursor_moves_to_start_and_end() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "hello".to_string();
+        engine.input.cursor_pos = 3;
+        engine.move_cursor_to_start();
+        assert_eq!(engine.input.cursor_pos, 0);
+        engine.move_cursor_to_end();
+        assert_eq!(engine.input.cursor_pos, 5);
+    }
+
+    #[test]
+    fn insert_char_adds_text() {
+        let mut engine = ChatEngine::new();
+        engine.insert_char('h');
+        engine.insert_char('i');
+        assert_eq!(engine.input.buffer, "hi");
+        assert_eq!(engine.input.cursor_pos, 2);
+    }
+
+    #[test]
+    fn backspace_removes_char() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "ab".to_string();
+        engine.input.cursor_pos = 2;
+        engine.backspace();
+        assert_eq!(engine.input.buffer, "a");
+        assert_eq!(engine.input.cursor_pos, 1);
+    }
+
+    #[test]
+    fn backspace_at_start_does_nothing() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "a".to_string();
+        engine.input.cursor_pos = 0;
+        engine.backspace();
+        assert_eq!(engine.input.buffer, "a");
+    }
+
+    #[test]
+    fn selection_works() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "hello world".to_string();
+        engine.input.cursor_pos = 0;
+        engine.start_selection();
+        engine.input.cursor_pos = 5;
+        assert_eq!(engine.selection(), Some((0, 5)));
+        assert!(engine.has_selection());
+    }
+
+    #[test]
+    fn select_all_selects_everything() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "test".to_string();
+        engine.select_all();
+        assert_eq!(engine.selection(), Some((0, 4)));
+    }
+
+    #[test]
+    fn delete_selection_removes_text() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "hello world".to_string();
+        engine.input.cursor_pos = 0;
+        engine.start_selection();
+        engine.input.cursor_pos = 5;
+        let deleted = engine.delete_selection();
+        assert_eq!(deleted, Some("hello".to_string()));
+        assert_eq!(engine.input.buffer, " world");
+    }
+
+    #[test]
+    fn clear_input_resets_state() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "text".to_string();
+        engine.input.cursor_pos = 2;
+        engine.input.selection_anchor = Some(0);
+        engine.input.scroll_offset = 5;
+        engine.clear_input();
+        assert_eq!(engine.input.buffer, "");
+        assert_eq!(engine.input.cursor_pos, 0);
+        assert!(engine.input.selection_anchor.is_none());
+        assert_eq!(engine.input.scroll_offset, 0);
+    }
+
+    #[test]
+    fn empty_history_prev_does_nothing() {
+        let mut engine = ChatEngine::new();
+        engine.history_prev();
+        assert_eq!(engine.input.buffer, "");
+    }
+
+    #[test]
+    fn history_next_at_end_restores_stash() {
+        let mut engine = ChatEngine::new();
+        engine.input.buffer = "draft".to_string();
+        engine.push_to_history("first".to_string());
+        engine.history_prev();
+        assert_eq!(engine.input.buffer, "first");
+        engine.history_next();
+        assert_eq!(engine.input.buffer, "draft");
+    }
+
+    #[test]
+    fn agent_loop_exceeded_check() {
+        let mut engine = ChatEngine::new();
+        engine.agents.status = AgentStatus::Active;
+        engine.agents.max_iterations = 3;
+        engine.agents.current_iteration = 3;
+        assert!(engine.agent_iteration_exceeded());
+        engine.agents.current_iteration = 2;
+        assert!(!engine.agent_iteration_exceeded());
+    }
+
+    #[test]
+    fn streaming_message_appended() {
+        let mut engine = ChatEngine::new();
+        engine.push_user_message("Hello");
+        engine.append_stream_chunk("world");
+        let last = engine.chat.messages.last().unwrap();
+        assert_eq!(last.content, "world");
+        assert!(engine.chat.streaming);
+    }
+
+    #[test]
+    fn finish_stream_sets_tool_calls() {
+        let mut engine = ChatEngine::new();
+        engine.push_user_message("test");
+        engine.tools.pending_tool_calls.push(crate::domain::ToolCall {
+            id: "t1".to_string(),
+            call_type: "function".to_string(),
+            function: crate::domain::FunctionCall {
+                name: "read_file".to_string(),
+                arguments: "{}".to_string(),
+            },
+        });
+        engine.finish_stream();
+        assert!(!engine.chat.streaming);
+        let last = engine.chat.messages.last().unwrap();
+        assert!(last.tool_calls.is_some());
+    }
+
+    #[test]
+    fn compact_context_reduces_messages() {
+        let mut engine = ChatEngine::new();
+        for i in 0..10 {
+            engine.chat.messages.push(Message {
+                role: Role::User,
+                content: format!("msg {}", i),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
+        }
+        let (before, after) = engine.compact_context();
+        assert_eq!(before, 10);
+        assert!(after <= before);
+    }
+
+    #[test]
+    fn count_wrapped_lines_basic() {
+        assert_eq!(count_wrapped_lines("hello", 10), 1);
+        assert_eq!(count_wrapped_lines("hello world", 5), 3);
+    }
+
+    #[test]
+    fn count_wrapped_lines_code_blocks() {
+        let text = "```\ncode\n```";
+        assert_eq!(count_wrapped_lines(text, 10), 3);
+    }
+
+    #[test]
+    fn scroll_page_up_down() {
+        let mut engine = ChatEngine::new();
+        engine.chat.scroll = 20;
+        engine.scroll_page_up();
+        assert_eq!(engine.chat.scroll, 10);
+        engine.scroll_page_down();
+        assert_eq!(engine.chat.scroll, 20);
+    }
+
+    #[test]
+    fn cancel_stream_stops_streaming() {
+        let mut engine = ChatEngine::new();
+        engine.push_user_message("test");
+        assert!(engine.chat.streaming);
+        engine.cancel_stream();
+        assert!(!engine.chat.streaming);
+    }
+
+    #[test]
+    fn add_system_and_error_messages() {
+        let mut engine = ChatEngine::new();
+        engine.add_system_message("sys");
+        engine.add_error_message("err");
+        assert_eq!(engine.chat.messages.len(), 2);
+        assert_eq!(engine.chat.messages[0].content, "sys");
+        assert_eq!(engine.chat.messages[1].content, "err");
+    }
+
+    #[test]
+    fn spinner_advances_only_when_streaming() {
+        let mut engine = ChatEngine::new();
+        engine.chat.streaming = true;
+        engine.advance_spinner();
+        assert_eq!(engine.chat.spinner_frame, 1);
+        engine.chat.streaming = false;
+        let frame = engine.chat.spinner_frame;
+        engine.advance_spinner();
+        assert_eq!(engine.chat.spinner_frame, frame);
+    }
+
+    #[test]
+    fn with_methods_chain() {
+        let engine = ChatEngine::new()
+            .with_system_prompt("sys")
+            .with_agent_prompt("agent")
+            .with_env_context(EnvContext::detect());
+        assert!(engine.system_prompt.is_some());
+        assert!(engine.agent_prompt.is_some());
+        assert!(engine.env_context.is_some());
+    }
+
+    #[test]
+    fn switch_persona_updates_state() {
+        let mut engine = ChatEngine::new();
+        engine.switch_persona("Research", "You are a researcher");
+        assert_eq!(engine.agents.persona, "Research");
+        assert_eq!(engine.agent_prompt, Some("You are a researcher".to_string()));
+    }
 }

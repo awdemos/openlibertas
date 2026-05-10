@@ -184,4 +184,30 @@ mod tests {
         let id = registry.default_provider();
         assert!(id.is_some());
     }
+
+    #[test]
+    fn default_provider_none_when_empty() {
+        let registry = BackendRegistry::new(&[]);
+        assert!(registry.default_provider().is_none());
+    }
+
+    #[test]
+    fn select_provider_case_insensitive() {
+        let providers = test_providers();
+        let registry = BackendRegistry::new(&providers);
+        assert!(registry.select_provider(Some("KIMI")).is_some());
+        assert!(registry.select_provider(Some("Local")).is_some());
+    }
+
+    #[test]
+    fn provider_count_zero_when_empty() {
+        let registry = BackendRegistry::new(&[]);
+        assert_eq!(registry.provider_count(), 0);
+    }
+
+    #[test]
+    fn list_providers_empty_when_none() {
+        let registry = BackendRegistry::new(&[]);
+        assert!(registry.list_providers().is_empty());
+    }
 }

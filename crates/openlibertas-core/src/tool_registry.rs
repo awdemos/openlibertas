@@ -294,4 +294,47 @@ mod tests {
         assert!(registry.available_tools.is_empty());
         assert!(registry.pending_tool_calls.is_empty());
     }
+
+    #[test]
+    fn clear_pending_removes_calls() {
+        let mut registry = ToolRegistry::default();
+        registry.add_tool_call(ToolCall {
+            id: "t1".to_string(),
+            call_type: "function".to_string(),
+            function: crate::domain::FunctionCall {
+                name: "read_file".to_string(),
+                arguments: "{}".to_string(),
+            },
+        });
+        assert_eq!(registry.pending_tool_calls.len(), 1);
+        registry.clear_pending();
+        assert!(registry.pending_tool_calls.is_empty());
+    }
+
+    #[test]
+    fn tool_needs_approval_variants() {
+        assert!(tool_needs_approval("editFile"));
+        assert!(tool_needs_approval("EXECUTE"));
+        assert!(tool_needs_approval("Delete_File"));
+        assert!(!tool_needs_approval("read_file"));
+        assert!(!tool_needs_approval("search"));
+    }
+
+    #[test]
+    fn extract_key_argument_shell_command() {
+        let args = r#"{"command": "ls -la"}"#;
+        assert_eq!(extract_key_argument("shell", args), "ls -la");
+    }
+
+    #[test]
+    fn extract_key_argument_search_query() {
+        let args = r#"{"query": "test pattern"}"#;
+        assert_eq!(extract_key_argument("search", args), "test pattern");
+    }
+
+    #[test]
+    fn extract_key_argument_no_match() {
+        let args = r#"{}"#;
+        assert_eq!(extract_key_argument("unknown", args), "");
+    }
 }

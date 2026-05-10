@@ -94,4 +94,40 @@ mod tests {
         let matches = search_messages(&messages, "hello");
         assert_eq!(matches.len(), 3);
     }
+
+    #[test]
+    fn search_snippet_extracts_match() {
+        let messages = vec![create_message("Hello world")];
+        let matches = search_messages(&messages, "world");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].snippet(&messages[0].content), "world");
+    }
+
+    #[test]
+    fn search_snippet_empty_on_bounds() {
+        let m = SearchMatch { message_index: 0, char_start: 10, char_end: 5 };
+        assert_eq!(m.snippet("short"), "");
+    }
+
+    #[test]
+    fn search_across_multiple_messages() {
+        let messages = vec![
+            create_message("first msg"),
+            create_message("second msg"),
+            create_message("third msg"),
+        ];
+        let matches = search_messages(&messages, "msg");
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0].message_index, 0);
+        assert_eq!(matches[1].message_index, 1);
+        assert_eq!(matches[2].message_index, 2);
+    }
+
+    #[test]
+    fn search_unicode_content() {
+        let messages = vec![create_message("Hello 世界")];
+        let matches = search_messages(&messages, "世界");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].snippet(&messages[0].content), "世界");
+    }
 }

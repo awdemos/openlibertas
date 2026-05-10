@@ -152,4 +152,49 @@ reasoning_content: None,
             ExportFormat::PlainText
         ));
     }
+
+    #[test]
+    fn format_defaults_to_markdown() {
+        assert!(matches!(
+            ExportFormat::from_extension("chat.pdf"),
+            ExportFormat::Markdown
+        ));
+    }
+
+    #[test]
+    fn export_markdown_with_timestamp() {
+        let messages = vec![Message {
+            role: Role::User,
+            content: "Hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: Some("2024-01-01".to_string()),
+            reasoning_content: None,
+        }];
+        let md = to_markdown(&messages, Some("test"));
+        assert!(md.contains("2024-01-01"));
+    }
+
+    #[test]
+    fn export_plaintext_with_timestamp() {
+        let messages = vec![Message {
+            role: Role::User,
+            content: "Hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: Some("12:00".to_string()),
+            reasoning_content: None,
+        }];
+        let text = to_plaintext(&messages);
+        assert!(text.contains("[12:00]"));
+    }
+
+    #[test]
+    fn export_empty_messages() {
+        let messages: Vec<Message> = vec![];
+        let md = to_markdown(&messages, None);
+        assert!(md.contains("Unknown"));
+        let json = to_json(&messages, None);
+        assert!(json.contains("\"message_count\": 0"));
+    }
 }

@@ -98,4 +98,39 @@ mod tests {
         let calls = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
     }
+
+    #[test]
+    fn parses_xml_tool_call() {
+        let text = r#"<tool name="read_file">{"path": "/tmp/test"}</tool>"#;
+        let calls = parse_tool_calls_from_text(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].function.name, "read_file");
+    }
+
+    #[test]
+    fn parses_codeblock_tool_call() {
+        // Test the codeblock parser directly since parse_tool_calls_from_text
+        // also runs the JSON parser on the full text
+        let text = r#"```json
+{"name": "glob", "arguments": {"pattern": "*.rs"}}
+```"#;
+        let calls = parse_codeblock_tool_calls(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].function.name, "glob");
+    }
+
+    #[test]
+    fn parses_mixed_formats() {
+        let text = r#"{"name": "read", "arguments": {}}
+<tool name="write">{"path": "/tmp"}</tool>"#;
+        let calls = parse_tool_calls_from_text(text);
+        assert_eq!(calls.len(), 2);
+    }
+
+    #[test]
+    fn malformed_json_skipped() {
+        let text = r#"{"name": "broken", "arguments"}"#;
+        let calls = parse_json_tool_calls(text);
+        assert!(calls.is_empty());
+    }
 }

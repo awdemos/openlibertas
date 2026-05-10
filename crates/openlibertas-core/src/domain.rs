@@ -71,6 +71,7 @@ pub struct ModelsResponse {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[non_exhaustive]
 pub struct Model {
     pub id: String,
     #[serde(skip)]

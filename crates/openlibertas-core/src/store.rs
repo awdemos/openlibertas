@@ -7,6 +7,7 @@ use crate::backend::Message;
 use crate::domain::Role;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Conversation {
     pub id: String,
     pub title: Option<String>,

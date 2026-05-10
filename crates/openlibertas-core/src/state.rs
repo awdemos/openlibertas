@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub struct State {
     pub last_model: Option<String>,
     pub mcp_enabled: HashMap<String, bool>,
@@ -68,5 +69,28 @@ mod tests {
 
         assert_eq!(restored.last_model, Some("test-model".to_string()));
         assert_eq!(restored.mcp_enabled.get("websearch"), Some(&true));
+    }
+
+    #[test]
+    fn state_path_returns_some() {
+        assert!(State::state_path().is_some());
+    }
+
+    #[test]
+    fn state_serialization_format() {
+        let state = State::default();
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("last_model"));
+        assert!(json.contains("mcp_enabled"));
+    }
+
+    #[test]
+    fn state_with_multiple_mcp_entries() {
+        let mut state = State::default();
+        state.mcp_enabled.insert("web".to_string(), true);
+        state.mcp_enabled.insert("git".to_string(), false);
+        assert_eq!(state.mcp_enabled.len(), 2);
+        assert_eq!(state.mcp_enabled.get("web"), Some(&true));
+        assert_eq!(state.mcp_enabled.get("git"), Some(&false));
     }
 }
