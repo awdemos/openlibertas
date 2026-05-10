@@ -766,7 +766,7 @@ fn count_wrapped_lines(content: &str, width: usize) -> usize {
         let trimmed = raw_line.trim_start();
         if trimmed.starts_with("```") {
             if paragraph_chars > 0 {
-                lines += (paragraph_chars + width - 1) / width;
+                lines += paragraph_chars.div_ceil(width);
                 paragraph_chars = 0;
             }
             in_code = !in_code;
@@ -775,7 +775,7 @@ fn count_wrapped_lines(content: &str, width: usize) -> usize {
             lines += 1;
         } else if raw_line.trim().is_empty() {
             if paragraph_chars > 0 {
-                lines += (paragraph_chars + width - 1) / width;
+                lines += paragraph_chars.div_ceil(width);
                 paragraph_chars = 0;
             }
             lines += 1;
@@ -785,7 +785,7 @@ fn count_wrapped_lines(content: &str, width: usize) -> usize {
     }
 
     if paragraph_chars > 0 {
-        lines += (paragraph_chars + width - 1) / width;
+        lines += paragraph_chars.div_ceil(width);
     }
 
     lines.max(1)

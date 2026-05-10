@@ -127,9 +127,6 @@ impl SlashCommand {
         }
 
         let parts: Vec<&str> = input.split_whitespace().collect();
-        if parts.is_empty() {
-            return None;
-        }
 
         match parts[0] {
             "/help" => Some(SlashCommand::Help),

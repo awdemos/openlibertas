@@ -273,7 +273,7 @@ impl McpClient {
                     Err(anyhow::anyhow!("HTTP {}", resp.status()))
                 }
             }
-            Err(_) => Ok(Vec::new()),
+            Err(e) => Err(anyhow::anyhow!("Failed to discover remote tools: {}", e)),
         }
     }
 

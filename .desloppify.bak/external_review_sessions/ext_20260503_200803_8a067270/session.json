@@ -1,0 +1,20 @@
+{
+  "session_id": "ext_20260503_200803_8a067270",
+  "status": "submitted",
+  "runner": "claude",
+  "created_at": "2026-05-03T20:08:03+00:00",
+  "expires_at": "2026-05-04T20:08:03+00:00",
+  "ttl_hours": 24,
+  "token": "d515dba65c8f9020047f93c248b7348f",
+  "attest": "I validated this review was completed without awareness of overall score and is unbiased.",
+  "packet_path": "/var/home/a/code/openlibertas/.desloppify/review_packets/holistic_packet_20260503_200803.json",
+  "blind_packet_path": "/var/home/a/code/openlibertas/.desloppify/review_packet_blind.json",
+  "packet_sha256": "667ecd0db1e0af0e2a04839301e628b00622f5507d402ab54ecfb3aeb47cee3c",
+  "template_path": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/review_result.template.json",
+  "launch_prompt_path": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/claude_launch_prompt.md",
+  "instructions_path": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/reviewer_instructions.md",
+  "expected_output_path": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/review_result.json",
+  "submitted_at": "2026-05-03T20:14:00+00:00",
+  "submitted_input_file": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/review_result.json",
+  "submitted_canonical_file": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/canonical_import_20260503_201400.json"
+}

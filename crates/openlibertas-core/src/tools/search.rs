@@ -81,7 +81,7 @@ pub fn glob(args: Value) -> Result<String> {
     for entry in entries {
         match entry {
             Ok(path) => results.push(path.to_string_lossy().to_string()),
-            Err(e) => eprintln!("Glob error: {}", e),
+            Err(e) => return Err(anyhow::anyhow!("Glob error: {}", e)),
         }
     }
 
@@ -103,6 +103,8 @@ pub fn grep(args: Value) -> Result<String> {
     let mut results = Vec::new();
     let base_path = Path::new(base);
 
+    let mut errors = Vec::new();
+
     if base_path.is_file() {
         search_file(base_path, &regex, &mut results)?;
     } else if base_path.is_dir() {
@@ -119,12 +121,19 @@ pub fn grep(args: Value) -> Result<String> {
         for path in glob_iter.flatten() {
             if path.is_file() {
                 if let Err(e) = search_file(&path, &regex, &mut results) {
-                    eprintln!("Error searching {}: {}", path.display(), e);
+                    errors.push(format!("{}: {}", path.display(), e));
                 }
             }
         }
     } else {
         return Err(anyhow::anyhow!("Path not found: {}", base));
+    }
+
+    if !errors.is_empty() {
+        results.push(format!("\nErrors searching {} file(s):", errors.len()));
+        for err in errors {
+            results.push(err);
+        }
     }
 
     if results.is_empty() {

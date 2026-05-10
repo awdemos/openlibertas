@@ -990,7 +990,6 @@ available tools to refine and polish your work."
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use super::*;
 

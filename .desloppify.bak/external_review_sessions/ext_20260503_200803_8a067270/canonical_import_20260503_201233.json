@@ -1,0 +1,723 @@
+{
+  "assessments": {
+    "cross_module_architecture": 55.0,
+    "high_level_elegance": 50.0,
+    "mid_level_elegance": 60.0,
+    "low_level_elegance": 65.0,
+    "design_coherence": 55.0,
+    "package_organization": 60.0,
+    "abstraction_fitness": 60.0,
+    "test_strategy": 40.0,
+    "error_consistency": 70.0,
+    "type_safety": 75.0,
+    "contract_coherence": 70.0,
+    "naming_quality": 75.0,
+    "convention_outlier": 70.0,
+    "logic_clarity": 75.0,
+    "initialization_coupling": 70.0,
+    "dependency_health": 80.0,
+    "api_surface_coherence": 65.0,
+    "ai_generated_debt": 60.0,
+    "incomplete_migration": 85.0,
+    "authorization_consistency": 90.0
+  },
+  "dimension_notes": {
+    "cross_module_architecture": {
+      "evidence": [
+        "Import cycle detected: backend.rs -> commands.rs -> config.rs -> domain.rs -> lib.rs -> backend.rs (6 files)",
+        "backend.rs imports from commands.rs (line 1), creating bidirectional coupling between backend and command layers",
+        "lib.rs re-exports from commands and domain, acting as a central hub with high blast radius"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    },
+    "design_coherence": {
+      "evidence": [
+        "app.rs is 1170 lines mixing UI state (Screen, ConnectionStatus), chat state (ChatState), agent state (AgentState), input handling (InputState), and slash command execution",
+        "ui.rs is 1021 lines with all rendering functions in one file - draw_models, draw_chat, draw_help_panel, draw_agents_panel, etc.",
+        "backend.rs mixes HTTP client (reqwest), SSE stream parsing, and tool call delta assembly in one module",
+        "mcp.rs has 5 detector flags (responsibility_cohesion, rust_api_convention, rust_async_locking, rust_future_proofing, smells)"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    },
+    "package_organization": {
+      "evidence": [
+        "crates/openlibertas-core/src/ has 12 modules in flat directory - no subdirectories for related concerns",
+        "backend.rs and backend/registry.rs share a directory but backend.rs is 350 lines of HTTP logic while registry.rs is 104 lines of backend selection",
+        "commands.rs (444 lines) mixes command parsing, session I/O, and search functionality"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    },
+    "test_strategy": {
+      "evidence": [
+        "Only ~22 tests across entire codebase (6,458 LOC production code)",
+        "backend.rs has zero tests for SSE parsing, HTTP error handling, or tool call assembly",
+        "ui.rs has zero tests for rendering logic",
+        "main.rs event loop has zero tests",
+        "Tests exist only for: registry (4), app state (4), markdown rendering (4), store (4), commands (3), config (2), search (1)"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    },
+    "low_level_elegance": {
+      "evidence": [
+        "main.rs event loop has 400+ lines with deep nesting (event handling inside model loading inside chat events)",
+        "backend.rs chat() method is ~150 lines with nested match statements for SSE parsing",
+        "app.rs push_user_message() mixes message construction, system prompt injection, and chat history mutation"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    },
+    "mid_level_elegance": {
+      "evidence": [
+        "App struct has 12+ fields with cross-cutting concerns (chat, input, models, panels, agents, mcp, theme, search)",
+        "State handoff between main.rs event loop and app.rs state mutations is implicit - no clear boundary contract",
+        "Tool call flow: backend emits deltas -> main.rs collects -> app.rs executes -> main.rs appends -> backend sends again - distributed across 3 files"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    },
+    "abstraction_fitness": {
+      "evidence": [
+        "BackendRegistry is a thin wrapper around HashMap<ProviderId, Arc<dyn Backend>> with only 4 methods (new, get, default_backend, has_backend)",
+        "app.rs AgentState mixes status tracking, iteration counting, and persona selection - could be simpler",
+        "TerminalGuard in terminal.rs is a proper RAII abstraction - positive pattern"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "confidence": "medium"
+    },
+    "type_safety": {
+      "evidence": [
+        "Public structs Provider (6 fields), Model (3 fields), Config (3 fields), Conversation (5 fields), State (2 fields) lack #[non_exhaustive]",
+        "ProviderId is a newtype wrapper around String - good pattern",
+        "Role enum is well-typed with clear variants"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    },
+    "error_consistency": {
+      "evidence": [
+        "Most functions use anyhow::Result consistently",
+        "Some functions return Option where Result would be more informative (e.g., app.rs find_message_index)",
+        "HTTP errors in backend.rs now properly propagated via ChatEvent::Error after recent fix"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "confidence": "medium"
+    },
+    "api_surface_coherence": {
+      "evidence": [
+        "get_server_names() uses get_ prefix - not idiomatic Rust (should be server_names())",
+        "Mixed naming: find_model() vs get_model_suggestions() vs load_session() - some use verbs, others use get_",
+        "Public re-export surface in lib.rs is large and includes implementation details (find_model, get_model_suggestions)"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "confidence": "medium"
+    },
+    "ai_generated_debt": {
+      "evidence": [
+        "Some comments restate code: 'Spinner frame counter for animation' on a field named spinner_frame",
+        "Generic method names in app.rs: handle_event(), update_state(), process_input()",
+        "Multiple #[allow(dead_code)] attributes on struct fields (ToolResult.is_error, ToolContent.content_type) suggest incomplete cleanup"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "confidence": "medium"
+    },
+    "initialization_coupling": {
+      "evidence": [
+        "Config::load() reads from filesystem at module level during app initialization",
+        "State::load() reads from filesystem during app initialization",
+        "App::new() takes Config by value and clones it - could take reference",
+        "No clear init order dependency issues detected"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "confidence": "low"
+    }
+  },
+  "dimension_judgment": {
+    "cross_module_architecture": {
+      "dimension_character": "The crate structure is clean (core/tui/server) but internal module boundaries within openlibertas-core are blurred by an import cycle and excessive re-exports. The single backend design is architecturally sound but the cycle between backend and commands undermines layering.",
+      "score_rationale": "55.0 reflects the sound top-level crate split but penalizes the backend<->commands cycle and the hub-like lib.rs that re-exports implementation details. Breaking the cycle and reducing re-exports would improve this significantly."
+    },
+    "design_coherence": {
+      "dimension_character": "The codebase has several god files (app.rs 1170 lines, ui.rs 1021 lines) that mix unrelated responsibilities. The agent loop state is scattered across the App struct rather than encapsulated. However, the core domain types (Message, Role, ToolCall) are well-designed.",
+      "score_rationale": "55.0 acknowledges the good domain model but penalizes the mixed-responsibility files. app.rs should be split into state modules, ui.rs into component modules, and backend.rs into HTTP/parse submodules."
+    },
+    "package_organization": {
+      "dimension_character": "The flat src/ directory in openlibertas-core contains 12 modules with no grouping. Large files like commands.rs and backend.rs could be directories with focused submodules. The TUI crate has better separation (app.rs, ui.rs, theme.rs, markdown.rs).",
+      "score_rationale": "60.0 reflects adequate organization for a small project but notes that growth is already straining the flat layout. Splitting commands.rs into commands/parse.rs, commands/session.rs, etc. would improve navigability."
+    },
+    "test_strategy": {
+      "dimension_character": "Test coverage is extremely low at ~0.3% (22 tests for 6458 LOC). Critical paths like SSE parsing, HTTP error handling, UI rendering, and the agent loop have zero tests. Existing tests are mostly unit tests for isolated functions.",
+      "score_rationale": "40.0 is generous given the near-absence of tests on critical paths. The backend SSE parser, agent iteration logic, and tool call assembly are all untested. Adding integration tests for the backend and unit tests for edge cases would be the highest-impact improvement."
+    },
+    "low_level_elegance": {
+      "dimension_character": "Individual functions are generally readable with clear variable names. The main event loop and backend chat() method are overly long with nested control flow, but helper extraction is used consistently. Early returns are used well in most places.",
+      "score_rationale": "65.0 reflects competent function-level craft but notes the long functions in main.rs and backend.rs. Extracting SSE parsing into a dedicated parser and splitting the event loop into handler functions would improve this."
+    },
+    "mid_level_elegance": {
+      "dimension_character": "Handoffs between modules are implicit rather than through clear APIs. The App struct acts as a god object holding state for all subsystems. The tool calling flow spans backend -> main -> app -> main -> backend with no clear seam contract.",
+      "score_rationale": "60.0 penalizes the implicit handoffs and god-object pattern. Encapsulating agent state, chat state, and input state into their own types with clear APIs would improve module boundaries."
+    },
+    "abstraction_fitness": {
+      "dimension_character": "Most abstractions earn their keep. BackendRegistry is a thin wrapper but justified by the dyn Backend indirection. The MarkdownRenderer is a good abstraction. Some structs accumulate fields without clear cohesion (App, AgentState).",
+      "score_rationale": "60.0 reflects generally sound abstractions but notes that AgentState and App have low cohesion. The TerminalGuard RAII pattern is a positive example of abstraction fitness."
+    },
+    "type_safety": {
+      "dimension_character": "Rust's type system is used well throughout. ProviderId as a newtype, Role as an enum, and strong typing on domain types are positive patterns. The main gap is missing #[non_exhaustive] on public structs which limits future API evolution.",
+      "score_rationale": "75.0 reflects good use of Rust's type system but penalizes the missing #[non_exhaustive] attributes. Adding these would be a quick win for API stability."
+    },
+    "error_consistency": {
+      "dimension_character": "anyhow::Result is used consistently for fallible operations. Error propagation through ChatEvent::Error is well-designed for the async streaming case. Some Option returns could be Result for better error context.",
+      "score_rationale": "70.0 reflects consistent error strategy but notes the missed opportunities for richer error types. The recent addition of HTTP status code checking improved error handling significantly."
+    },
+    "api_surface_coherence": {
+      "dimension_character": "The public API has some inconsistencies in naming conventions (get_ prefix vs bare names). The lib.rs re-export surface is large, exposing implementation helpers like find_model alongside core types.",
+      "score_rationale": "65.0 reflects a usable API but notes the naming inconsistencies and overly broad re-exports. Removing get_ prefixes and trimming re-exports would improve coherence."
+    },
+    "ai_generated_debt": {
+      "dimension_character": "Some comments restate rather than explain. A few #[allow(dead_code)] attributes suggest incomplete cleanup. Method names like handle_event and process_input are generic rather than domain-specific. Overall debt is moderate.",
+      "score_rationale": "60.0 acknowledges that most code is hand-crafted quality but notes the AI hallmark patterns in comments and naming. A cleanup pass on comments and dead code allowances would address this."
+    },
+    "initialization_coupling": {
+      "dimension_character": "Initialization is straightforward with no complex boot order dependencies. Config and State are loaded at startup in a predictable sequence. No import-time side effects or mutable globals detected.",
+      "score_rationale": "70.0 reflects clean initialization but notes that Config::load() and State::load() could be combined or better orchestrated. No serious coupling issues found."
+    },
+    "naming_quality": {
+      "dimension_character": "Names are generally clear and domain-appropriate. ProviderId, ToolCall, CancellationToken, and ConversationStore communicate intent well. A few generic names (handle_event, process_input) and one get_ prefix deviation exist.",
+      "score_rationale": "75.0 reflects good naming overall with minor deviations. The get_server_names -> server_names rename and more specific event handler names would be quick improvements."
+    },
+    "convention_outlier": {
+      "dimension_character": "Naming conventions are consistent across the codebase (snake_case for functions, PascalCase for types). File organization follows Rust conventions. No significant style islands or mixed export patterns detected.",
+      "score_rationale": "70.0 reflects consistent conventions. The main outlier is the get_ prefix on one function. Overall convention adherence is good for a Rust project."
+    },
+    "logic_clarity": {
+      "dimension_character": "Control flow is generally direct and intention-revealing. No dead code paths, always-true conditions, or redundant null checks detected. The agent loop iteration logic is complex but well-structured.",
+      "score_rationale": "75.0 reflects clear logic with no obvious defects. The complexity in the agent loop and SSE parser is inherent to the domain, not accidental."
+    },
+    "dependency_health": {
+      "evidence": [
+        "Clean dependency graph: core has tokio, reqwest, serde, anyhow; tui adds ratatui, crossterm; server adds axum",
+        "No duplicate libraries for same purpose",
+        "textwrap added for markdown wrapping - justified by ratatui wrap bug"
+      ],
+      "dimension_character": "Dependencies are well-chosen and minimal. Each crate adds only what's needed for its layer. No version conflicts or unused dependencies detected.",
+      "score_rationale": "80.0 reflects healthy dependency management. The dependency tree is shallow and each crate has a clear purpose."
+    },
+    "high_level_elegance": {
+      "dimension_character": "The top-level architecture is sound: core crate for shared logic, tui for terminal UI, server for HTTP API. The single-backend design (OpenAiBackend for all providers) is elegant. However, the flat module structure within crates and mixed-responsibility files blur the high-level decomposition.",
+      "score_rationale": "50.0 reflects good crate-level decomposition but penalizes the flat internal structure and god files. The architecture is conceptually clean but implementation details have outgrown the initial structure."
+    },
+    "incomplete_migration": {
+      "dimension_character": "No signs of incomplete migration. The codebase uses modern Rust patterns consistently. No deprecated symbols, old API patterns, or compatibility shims detected.",
+      "score_rationale": "85.0 reflects a modern, consistent codebase with no migration debt."
+    },
+    "authorization_consistency": {
+      "dimension_character": "Not applicable - this is a local TUI client with no authorization system. API keys are provider configuration, not application auth.",
+      "score_rationale": "90.0 - no auth system to evaluate. This dimension is not relevant to the project's domain."
+    },
+    "contract_coherence": {
+      "dimension_character": "Function signatures generally match their behavior. No getX functions that mutate state. Return types are honest. The main issue is the broad re-export surface in lib.rs that doesn't clearly distinguish public API from implementation details.",
+      "score_rationale": "70.0 reflects coherent contracts but notes the blurry API boundary in lib.rs re-exports."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "import_cycle_backend_commands",
+      "summary": "Import cycle between backend.rs and commands.rs blurs layer boundaries",
+      "related_files": [
+        "crates/openlibertas-core/src/backend.rs",
+        "crates/openlibertas-core/src/commands.rs",
+        "crates/openlibertas-core/src/lib.rs"
+      ],
+      "evidence": [
+        "backend.rs line 1: 'use crate::commands::{find_model, get_model_suggestions}' creates cycle: backend -> commands -> config -> domain -> lib.rs -> backend"
+      ],
+      "suggestion": "Move Model-related types and search functions to a separate module (e.g., model.rs or domain/model.rs) that both backend and commands can depend on without cycling. Or move find_model/get_model_suggestions to backend/registry.rs since they are backend-selection concerns.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "ada37b2b84ee52a4"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "god_file_app_rs",
+      "summary": "app.rs is 1170 lines with mixed responsibilities",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "app.rs contains: Screen enum, ConnectionStatus enum, ChatState, InputState, ModelState, PanelState, AgentState, SearchState, App struct, 30+ methods spanning state management, command execution, agent logic, search, and UI state updates"
+      ],
+      "suggestion": "Split app.rs into focused modules: app/state.rs (ChatState, InputState, ModelState), app/agent.rs (AgentState, agent loop methods), app/search.rs (SearchState, search methods). Keep app.rs as the coordinator that imports from submodules.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "eaa16024429b8d10"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "god_file_ui_rs",
+      "summary": "ui.rs is 1021 lines with all rendering functions",
+      "related_files": [
+        "crates/openlibertas-tui/src/ui.rs"
+      ],
+      "evidence": [
+        "ui.rs contains draw(), draw_models(), draw_chat(), draw_messages(), draw_input(), draw_header(), draw_status_bar(), draw_help_panel(), draw_agents_panel(), draw_tools_panel(), draw_sessions_panel(), draw_command_palette(), draw_themes_panel(), draw_mcp_panel(), draw_welcome_screen(), and 15+ helper functions"
+      ],
+      "suggestion": "Split ui.rs into ui/chat.rs, ui/models.rs, ui/panels.rs, ui/header.rs. Each submodule handles one screen or panel type. This matches the pattern used in other TUI projects.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "d42b6a1bbacd458e"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "mixed_responsibilities_backend",
+      "summary": "backend.rs mixes HTTP client, SSE parsing, and tool call assembly",
+      "related_files": [
+        "crates/openlibertas-core/src/backend.rs"
+      ],
+      "evidence": [
+        "backend.rs lines 1-350 contain: HTTP request construction (reqwest client), SSE stream reading, JSON deserialization (ChatCompletionChunk, ChunkChoice, Delta, ToolCallDelta, FunctionCallDelta), tool call delta accumulation, and error handling"
+      ],
+      "suggestion": "Extract SSE parsing into backend/sse.rs with a dedicated SseParser struct. Extract HTTP request building into backend/request.rs. Keep backend.rs as the high-level OpenAiBackend impl that coordinates the pieces.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "ada37b2b84ee52a4"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "flat_core_modules",
+      "summary": "openlibertas-core has 12 modules in flat directory with no grouping",
+      "related_files": [
+        "crates/openlibertas-core/src/"
+      ],
+      "evidence": [
+        "Directory listing: backend.rs, backend/registry.rs, commands.rs, config.rs, conversation.rs, domain.rs, export.rs, lib.rs, mcp.rs, prompt.rs, search.rs, state.rs, store.rs - all at top level"
+      ],
+      "suggestion": "Group related modules: backend/ (backend.rs, registry.rs, sse.rs), session/ (store.rs, conversation.rs, export.rs), commands/ (commands.rs, search.rs). Keep domain.rs, config.rs, mcp.rs, prompt.rs, state.rs at top level.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "missing_backend_tests",
+      "summary": "backend.rs has zero tests for critical HTTP and SSE logic",
+      "related_files": [
+        "crates/openlibertas-core/src/backend.rs"
+      ],
+      "evidence": [
+        "backend.rs is 350 lines with no #[cfg(test)] module. SSE parsing, tool call delta assembly, HTTP status checking, and error propagation are all untested."
+      ],
+      "suggestion": "Add tests for: SSE chunk parsing (mock JSON chunks), tool call delta accumulation (multiple deltas merging into one call), HTTP error handling (non-200 status codes), and request serialization.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "missing_agent_loop_tests",
+      "summary": "Agent loop logic has zero tests",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs",
+        "crates/openlibertas-tui/src/main.rs"
+      ],
+      "evidence": [
+        "Agent loop iteration logic (should_continue_agent, increment_agent_iteration, max_iterations) is not tested. Tool call execution flow across agent iterations is not tested."
+      ],
+      "suggestion": "Add unit tests for AgentState iteration logic. Add integration test that simulates an agent conversation with tool calls across multiple iterations.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "low_test_coverage_overall",
+      "summary": "Only 22 tests for 6458 lines of production code",
+      "related_files": [
+        "crates/openlibertas-core/src/",
+        "crates/openlibertas-tui/src/"
+      ],
+      "evidence": [
+        "cargo test shows ~22 tests. Production code is 6458 LOC. Coverage is approximately 0.3%."
+      ],
+      "suggestion": "Prioritize testing: 1) backend SSE parsing, 2) agent loop state transitions, 3) command parsing (edge cases), 4) config loading ( malformed files), 5) markdown rendering. Use mock HTTP server for backend tests.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "missing_non_exhaustive",
+      "summary": "Public structs lack #[non_exhaustive] limiting API evolution",
+      "related_files": [
+        "crates/openlibertas-core/src/config.rs",
+        "crates/openlibertas-core/src/domain.rs",
+        "crates/openlibertas-core/src/store.rs",
+        "crates/openlibertas-core/src/state.rs"
+      ],
+      "evidence": [
+        "Provider has 6 public fields, Model has 3, Config has 3, Conversation has 5, State has 2 - none have #[non_exhaustive]. Adding fields to these structs would be a breaking change for downstream users."
+      ],
+      "suggestion": "Add #[non_exhaustive] to all public structs that are part of the crate's API surface: Provider, Config, Model, Conversation, State. For structs that need construction (like Provider), keep a Default impl or builder pattern.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "8ba2eb6b481bb0ce"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "missing_non_exhaustive_model",
+      "summary": "Model struct lacks #[non_exhaustive]",
+      "related_files": [
+        "crates/openlibertas-core/src/domain.rs"
+      ],
+      "evidence": [
+        "Model struct has 3 public fields (id, name, provider) without #[non_exhaustive]. The supports_tools field was recently added - if this struct had #[non_exhaustive], that addition would not have been a breaking change."
+      ],
+      "suggestion": "Add #[non_exhaustive] to Model struct and provide a constructor or Default impl.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "d7f14ee0f06227e2"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "missing_non_exhaustive_conversation",
+      "summary": "Conversation struct lacks #[non_exhaustive]",
+      "related_files": [
+        "crates/openlibertas-core/src/store.rs"
+      ],
+      "evidence": [
+        "Conversation struct has 5 public fields without #[non_exhaustive]."
+      ],
+      "suggestion": "Add #[non_exhaustive] to Conversation struct.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "15970f6ba3974bc6"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "missing_non_exhaustive_state",
+      "summary": "State struct lacks #[non_exhaustive]",
+      "related_files": [
+        "crates/openlibertas-core/src/state.rs"
+      ],
+      "evidence": [
+        "State struct has 2 public fields without #[non_exhaustive]."
+      ],
+      "suggestion": "Add #[non_exhaustive] to State struct.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "666246427779d6c9"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "get_prefix_naming",
+      "summary": "get_server_names uses get_ prefix not idiomatic in Rust",
+      "related_files": [
+        "crates/openlibertas-core/src/mcp.rs"
+      ],
+      "evidence": [
+        "mcp.rs line with pub fn get_server_names(&self) -> Vec<String> - Rust idiomatic getters are bare names (server_names) when they just return a field or computed value."
+      ],
+      "suggestion": "Rename get_server_names to server_names. If this is a breaking change, add server_names as the new name and deprecate get_server_names.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "af3c15f0599c9338"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "broad_lib_reexports",
+      "summary": "lib.rs re-exports implementation details alongside core types",
+      "related_files": [
+        "crates/openlibertas-core/src/lib.rs"
+      ],
+      "evidence": [
+        "lib.rs re-exports: find_model, get_model_suggestions, load_session, command_description, SLASH_COMMANDS alongside core types like Message, Model, Config. The helper functions are implementation details, not public API."
+      ],
+      "suggestion": "Trim lib.rs re-exports to only core types and traits. Move implementation helpers (find_model, get_model_suggestions, load_session) to be imported directly from their modules by consumers.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "restating_comments",
+      "summary": "Some comments restate code without adding insight",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "Comment 'Spinner frame counter for animation' on spinner_frame field. Comment 'Current scroll position in messages' on scroll field. These restate the obvious from the field names."
+      ],
+      "suggestion": "Remove restating comments. Keep only comments that explain WHY (business rules, non-obvious constraints) not WHAT (the code already says what).",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "dead_code_allowances",
+      "summary": "Multiple #[allow(dead_code)] attributes suggest incomplete cleanup",
+      "related_files": [
+        "crates/openlibertas-core/src/mcp.rs"
+      ],
+      "evidence": [
+        "ToolResult.is_error has #[allow(dead_code)], ToolContent.content_type has #[allow(dead_code)], JsonRpcResponse fields have #[allow(dead_code)]"
+      ],
+      "suggestion": "Either use the fields (e.g., check is_error when displaying tool results) or remove them. Dead code allowances accumulate technical debt.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "long_event_loop_main",
+      "summary": "main.rs event loop is 400+ lines with deep nesting",
+      "related_files": [
+        "crates/openlibertas-tui/src/main.rs"
+      ],
+      "evidence": [
+        "main.rs lines 95-495 contain the event loop with 6+ levels of nesting: loop -> match event -> match app.screen -> match key -> match key code -> if agents active -> match chat event."
+      ],
+      "suggestion": "Extract event handlers into functions: handle_key_event(), handle_chat_event(), handle_model_loaded(). Use early returns to flatten nesting. Consider a command pattern where each key maps to a Command enum variant handled by a dispatcher.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "4fcb3e34348c2892"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "implicit_tool_call_handoff",
+      "summary": "Tool call flow spans 3 files with no clear seam contract",
+      "related_files": [
+        "crates/openlibertas-core/src/backend.rs",
+        "crates/openlibertas-tui/src/main.rs",
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "Flow: 1) backend.rs streams SSE with tool_call deltas, 2) main.rs receives ChatEvent::Text/Done and calls app methods, 3) app.rs finish_stream() attaches tool_calls to messages, 4) main.rs on Done checks pending_tool_calls and calls app.execute_tool_calls(), 5) app.rs builds tool result messages, 6) main.rs sends next chat request with tool results."
+      ],
+      "suggestion": "Encapsulate the tool call loop in a single type (e.g., ToolCallExecutor) that owns the state machine: collect deltas -> execute calls -> build results -> send followup. This type would live in core and be used by both TUI and server.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "app_god_object",
+      "summary": "App struct holds state for all subsystems with no encapsulation",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "App has 12+ fields: chat, input, models, panels, agents, mcp, theme, search, screen, loading, context_files, config, persona_manager. Methods on App mutate multiple fields with no clear transaction boundaries."
+      ],
+      "suggestion": "Encapsulate subsystem state: ChatManager { chat, messages, scroll }, InputManager { buffer, cursor, history }, AgentController { state, persona, iterations }. App becomes a facade that delegates to these managers.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "thin_backend_registry",
+      "summary": "BackendRegistry is a thin wrapper around HashMap",
+      "related_files": [
+        "crates/openlibertas-core/src/backend/registry.rs"
+      ],
+      "evidence": [
+        "BackendRegistry has 4 methods over 41 lines. It wraps HashMap<ProviderId, Arc<dyn Backend>> with minimal added behavior beyond construction."
+      ],
+      "suggestion": "Either enrich BackendRegistry with provider selection logic (moving find_model from commands.rs) or inline it into Backend if it adds no policy. If kept, add methods like select_provider(), fallback_provider() to justify the abstraction.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "option_vs_result",
+      "summary": "Some functions return Option where Result would be more informative",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "find_message_index() returns Option<usize> but callers could benefit from knowing WHY a message wasn't found (invalid index, out of bounds, etc.)."
+      ],
+      "suggestion": "Consider using Result<usize, AppError> for functions where the error reason matters. Keep Option for truly optional lookups.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "config_load_cloning",
+      "summary": "App::new takes Config by value and immediately clones it",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs",
+        "crates/openlibertas-tui/src/main.rs"
+      ],
+      "evidence": [
+        "main.rs: App::new(config.clone()) where config is already owned. app.rs: App::new(config: Config) stores it. The clone in main.rs is unnecessary."
+      ],
+      "suggestion": "Change App::new to take Config by value (move) and remove the clone in main.rs. Or if both need the config, use Arc<Config>.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "missing_markdown_tests",
+      "summary": "Markdown rendering has limited test coverage",
+      "related_files": [
+        "crates/openlibertas-tui/src/markdown.rs"
+      ],
+      "evidence": [
+        "markdown.rs has ~4 tests but wrap_markdown() (the pre-wrapping fix) has no tests. Complex markdown with nested formatting is not tested."
+      ],
+      "suggestion": "Add tests for wrap_markdown: code blocks preserved, inline code not wrapped, lists handled correctly, edge cases (very long words, unicode).",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "generic_handler_names",
+      "summary": "Some event handler names are too generic",
+      "related_files": [
+        "crates/openlibertas-tui/src/app.rs"
+      ],
+      "evidence": [
+        "handle_event(), process_input(), update_state() - these names don't reveal what specific event/input/state is being handled."
+      ],
+      "suggestion": "Rename to domain-specific names: handle_key_event -> handle_user_input, process_input -> parse_slash_command_or_message, update_state -> refresh_connection_status.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "logic_clarity",
+      "identifier": "complex_agent_condition",
+      "summary": "Agent continuation logic has complex nested condition",
+      "related_files": [
+        "crates/openlibertas-tui/src/main.rs"
+      ],
+      "evidence": [
+        "Agent continuation in main.rs checks: agents.enabled && !agents.pending_tool_calls.is_empty() && agents.current_iteration < agents.max_iterations - multiple conditions in one if."
+      ],
+      "suggestion": "Extract to a method on AgentState: should_continue(&self) -> bool that encapsulates all continuation conditions. This makes the intent explicit and testable.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "context_updates": {
+    "cross_module_architecture": {
+      "add": [
+        {
+          "header": "Clean crate-level split",
+          "description": "The top-level architecture with core/tui/server crates is well-designed and follows Rust conventions. Each crate has a clear responsibility.",
+          "settled": true,
+          "positive": true
+        },
+        {
+          "header": "Single backend design",
+          "description": "Using OpenAiBackend for all providers via config (base_url, api_key) is elegant and reduces code duplication.",
+          "settled": true,
+          "positive": true
+        }
+      ]
+    },
+    "design_coherence": {
+      "add": [
+        {
+          "header": "Strong domain model",
+          "description": "Core types (Message, Role, ToolCall, ProviderId) are well-designed with clear semantics and good use of Rust's type system.",
+          "settled": true,
+          "positive": true
+        },
+        {
+          "header": "TerminalGuard RAII pattern",
+          "description": "terminal.rs uses a proper RAII guard for terminal cleanup - good example of resource management.",
+          "settled": true,
+          "positive": true
+        }
+      ]
+    },
+    "test_strategy": {
+      "add": [
+        {
+          "header": "Existing tests are focused",
+          "description": "The few existing tests cover specific behaviors well (registry creation, config loading, markdown rendering). Test quality is good, quantity is the issue.",
+          "settled": true,
+          "positive": true
+        }
+      ]
+    },
+    "dependency_health": {
+      "add": [
+        {
+          "header": "Minimal dependency tree",
+          "description": "Each crate adds only necessary dependencies. No bloat or duplicate libraries.",
+          "settled": true,
+          "positive": true
+        }
+      ]
+    },
+    "type_safety": {
+      "add": [
+        {
+          "header": "Newtype for ProviderId",
+          "description": "ProviderId is a newtype wrapper around String, preventing accidental mixing of provider names with other strings.",
+          "settled": true,
+          "positive": true
+        },
+        {
+          "header": "Strong Role enum",
+          "description": "Role enum with User/Assistant/System/Tool variants provides type-safe message role handling.",
+          "settled": true,
+          "positive": true
+        }
+      ]
+    }
+  },
+  "provenance": {
+    "kind": "blind_review_batch_import",
+    "blind": true,
+    "runner": "claude",
+    "session_id": "ext_20260503_200803_8a067270",
+    "created_at": "2026-05-03T20:12:33+00:00",
+    "packet_path": "/var/home/a/code/openlibertas/.desloppify/review_packet_blind.json",
+    "packet_sha256": "667ecd0db1e0af0e2a04839301e628b00622f5507d402ab54ecfb3aeb47cee3c"
+  }
+}

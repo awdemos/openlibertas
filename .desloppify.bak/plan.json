@@ -1,0 +1,2210 @@
+{
+  "version": 8,
+  "created": "2026-05-03T20:06:52+00:00",
+  "updated": "2026-05-10T15:26:43+00:00",
+  "queue_order": [
+    "review::.::holistic::ai_generated_debt::dead_code_allowances",
+    "review::.::holistic::ai_generated_debt::restating_comments",
+    "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+    "review::.::holistic::api_surface_coherence::get_prefix_naming",
+    "review::.::holistic::authorization_consistency::no_auth_system",
+    "review::.::holistic::contract_coherence::broad_reexport_surface",
+    "review::.::holistic::convention_outlier::get_prefix_deviation",
+    "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+    "review::.::holistic::dependency_health::textwrap_justification",
+    "review::.::holistic::design_coherence::god_file_app_rs",
+    "review::.::holistic::design_coherence::god_file_ui_rs",
+    "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+    "review::.::holistic::error_consistency::option_vs_result",
+    "review::.::holistic::high_level_elegance::flat_module_structure",
+    "review::.::holistic::incomplete_migration::no_migration_debt",
+    "review::.::holistic::initialization_coupling::config_load_cloning",
+    "review::.::holistic::logic_clarity::complex_agent_condition",
+    "review::.::holistic::low_level_elegance::long_event_loop_main",
+    "review::.::holistic::mid_level_elegance::app_god_object",
+    "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+    "review::.::holistic::naming_quality::generic_handler_names",
+    "review::.::holistic::package_organization::flat_core_modules",
+    "review::.::holistic::test_strategy::low_test_coverage_overall",
+    "review::.::holistic::test_strategy::missing_agent_loop_tests",
+    "review::.::holistic::test_strategy::missing_backend_tests",
+    "review::.::holistic::test_strategy::missing_markdown_tests",
+    "review::.::holistic::type_safety::missing_non_exhaustive",
+    "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+    "review::.::holistic::type_safety::missing_non_exhaustive_model",
+    "review::.::holistic::type_safety::missing_non_exhaustive_state",
+    "subjective::abstraction_fitness",
+    "subjective::ai_generated_debt",
+    "subjective::api_surface_coherence",
+    "subjective::contract_coherence",
+    "subjective::convention_outlier",
+    "subjective::cross_module_architecture",
+    "subjective::dependency_health",
+    "subjective::design_coherence",
+    "subjective::error_consistency",
+    "subjective::high_level_elegance",
+    "subjective::initialization_coupling",
+    "subjective::logic_clarity",
+    "subjective::low_level_elegance",
+    "subjective::mid_level_elegance",
+    "subjective::naming_quality",
+    "subjective::package_organization",
+    "subjective::test_strategy",
+    "subjective::type_safety"
+  ],
+  "deferred": [],
+  "skipped": {},
+  "active_cluster": null,
+  "overrides": {
+    "clippy_warning::crates/openlibertas-core/src/lib.rs::clippy_warning::1": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/lib.rs::clippy_warning::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::13": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::13",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::29": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::29",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::33": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::33",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::38": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::38",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::56": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::56",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::60": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::60",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::64": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::64",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::70": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::70",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::71": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::71",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::83": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::83",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::103": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::103",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::126": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::126",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::136": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::136",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::159": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::159",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::209": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::209",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::228": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::228",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::38": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::38",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::52": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::52",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::205": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::205",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::242": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::242",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::266": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::266",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::276": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::276",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::291": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::291",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::294": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::294",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::310": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::310",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::313": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::313",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::315": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::315",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::29": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::29",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::40": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::40",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::76": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::76",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::82": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::82",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::84": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::84",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::115": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::115",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::121": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::121",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::7": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::7",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::11": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::11",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::20": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::20",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::24": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::24",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::27": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::27",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::47": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::47",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::77": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::77",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::91": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::91",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::93": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::93",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::94": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::94",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::123": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::123",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::124": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::124",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::31": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::31",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::44": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::44",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::11": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::11",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::12": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::12",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::14": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::14",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::22": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::22",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::25": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::25",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::37": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::37",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::45": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::45",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::48": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::48",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::49": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::49",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::108": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::108",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::115": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::115",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::117": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::117",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::119": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::119",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::136": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::136",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::182": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::182",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::192": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::192",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::230": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::230",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::261": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::261",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::265": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::265",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::272": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::272",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::290": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::290",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::14": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::14",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::25": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::25",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::11": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::11",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::21": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::21",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::13": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::13",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::26": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::26",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::30": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::30",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::35": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::35",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::37": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::37",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::41": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::41",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::24": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::24",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::26": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::26",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::30": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::30",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::38": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::38",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::43": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::43",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::45": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::45",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::55": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::55",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::58": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::58",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::59": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::59",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::67": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::67",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::72": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::72",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::86": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::86",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::91": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::91",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::97": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::97",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::99": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::99",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::104": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::104",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::107": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::107",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::109": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::109",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::113": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::113",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::116": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::116",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::136": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::136",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::140": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::140",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::144": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::144",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::149": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::149",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::150": {
+      "issue_id": "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::150",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/clippy_warning",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/backend.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-core/src/backend.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/backend.rs::unused_import::2": {
+      "issue_id": "unused::crates/openlibertas-core/src/backend.rs::unused_import::2",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/backend.rs::unused_import::9": {
+      "issue_id": "unused::crates/openlibertas-core/src/backend.rs::unused_import::9",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/backend.rs::unused_import::280": {
+      "issue_id": "unused::crates/openlibertas-core/src/backend.rs::unused_import::280",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/backend/registry.rs::unused_import::45": {
+      "issue_id": "unused::crates/openlibertas-core/src/backend/registry.rs::unused_import::45",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/commands.rs::unused_import::277": {
+      "issue_id": "unused::crates/openlibertas-core/src/commands.rs::unused_import::277",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/commands.rs::unused_import::325": {
+      "issue_id": "unused::crates/openlibertas-core/src/commands.rs::unused_import::325",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/config.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-core/src/config.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/config.rs::unused_import::129": {
+      "issue_id": "unused::crates/openlibertas-core/src/config.rs::unused_import::129",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/conversation.rs::unused_import::146": {
+      "issue_id": "unused::crates/openlibertas-core/src/conversation.rs::unused_import::146",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/domain.rs::unused_import::143": {
+      "issue_id": "unused::crates/openlibertas-core/src/domain.rs::unused_import::143",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/export.rs::unused_import::84": {
+      "issue_id": "unused::crates/openlibertas-core/src/export.rs::unused_import::84",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/lib.rs::unused_import::13": {
+      "issue_id": "unused::crates/openlibertas-core/src/lib.rs::unused_import::13",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/lib.rs::unused_import::17": {
+      "issue_id": "unused::crates/openlibertas-core/src/lib.rs::unused_import::17",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/lib.rs::unused_import::20": {
+      "issue_id": "unused::crates/openlibertas-core/src/lib.rs::unused_import::20",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/mcp.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-core/src/mcp.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/mcp.rs::unused_import::7": {
+      "issue_id": "unused::crates/openlibertas-core/src/mcp.rs::unused_import::7",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/search.rs::unused_import::53": {
+      "issue_id": "unused::crates/openlibertas-core/src/search.rs::unused_import::53",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/state.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-core/src/state.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/state.rs::unused_import::49": {
+      "issue_id": "unused::crates/openlibertas-core/src/state.rs::unused_import::49",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/store.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-core/src/store.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-core/src/store.rs::unused_import::156": {
+      "issue_id": "unused::crates/openlibertas-core/src/store.rs::unused_import::156",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-server/src/main.rs::unused_import::2": {
+      "issue_id": "unused::crates/openlibertas-server/src/main.rs::unused_import::2",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-server/src/main.rs::unused_import::10": {
+      "issue_id": "unused::crates/openlibertas-server/src/main.rs::unused_import::10",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/app.rs::unused_import::1021": {
+      "issue_id": "unused::crates/openlibertas-tui/src/app.rs::unused_import::1021",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/event.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-tui/src/event.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/main.rs::unused_import::4": {
+      "issue_id": "unused::crates/openlibertas-tui/src/main.rs::unused_import::4",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/main.rs::unused_import::5": {
+      "issue_id": "unused::crates/openlibertas-tui/src/main.rs::unused_import::5",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::2": {
+      "issue_id": "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::2",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::6": {
+      "issue_id": "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::6",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::277": {
+      "issue_id": "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::277",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/terminal.rs::unused_import::2": {
+      "issue_id": "unused::crates/openlibertas-tui/src/terminal.rs::unused_import::2",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/theme.rs::unused_import::324": {
+      "issue_id": "unused::crates/openlibertas-tui/src/theme.rs::unused_import::324",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/ui.rs::unused_import::1": {
+      "issue_id": "unused::crates/openlibertas-tui/src/ui.rs::unused_import::1",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "unused::crates/openlibertas-tui/src/ui.rs::unused_import::8": {
+      "issue_id": "unused::crates/openlibertas-tui/src/ui.rs::unused_import::8",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/unused",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-tui/src/event.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-tui/src/event.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-core/src/mcp.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-core/src/mcp.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-tui/src/terminal.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-tui/src/terminal.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-tui/src/ui.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-tui/src/ui.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-core/src/prompt.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-core/src/prompt.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "test_coverage::crates/openlibertas-tui/src/main.rs::transitive_only": {
+      "issue_id": "test_coverage::crates/openlibertas-tui/src/main.rs::transitive_only",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/test_coverage-transitive_only",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    },
+    "stale_exclude::target::target/": {
+      "issue_id": "stale_exclude::target::target/",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": null,
+      "updated_at": "2026-05-10T12:25:26+00:00"
+    },
+    "stale_exclude::.git::.git/": {
+      "issue_id": "stale_exclude::.git::.git/",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": null,
+      "updated_at": "2026-05-10T12:25:27+00:00"
+    },
+    "stale_exclude::.playwright-mcp::.playwright-mcp/": {
+      "issue_id": "stale_exclude::.playwright-mcp::.playwright-mcp/",
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "cluster": "auto/stale_exclude",
+      "updated_at": "2026-05-03T20:06:52+00:00"
+    }
+  },
+  "clusters": {
+    "auto/clippy_warning": {
+      "name": "auto/clippy_warning",
+      "description": "Fix 105 clippy warning issues",
+      "issue_ids": [
+        "clippy_warning::crates/openlibertas-core/src/lib.rs::clippy_warning::1",
+        "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::13",
+        "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::29",
+        "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::33",
+        "clippy_warning::crates/openlibertas-core/src/backend/registry.rs::clippy_warning::38",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::56",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::60",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::64",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::70",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::71",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::83",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::103",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::126",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::136",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::159",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::209",
+        "clippy_warning::crates/openlibertas-core/src/backend.rs::clippy_warning::228",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::38",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::52",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::205",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::242",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::266",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::276",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::291",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::294",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::310",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::313",
+        "clippy_warning::crates/openlibertas-core/src/commands.rs::clippy_warning::315",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::29",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::40",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::76",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::82",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::84",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::115",
+        "clippy_warning::crates/openlibertas-core/src/config.rs::clippy_warning::121",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::7",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::11",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::20",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::24",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::27",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::47",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::77",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::91",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::93",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::94",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::123",
+        "clippy_warning::crates/openlibertas-core/src/conversation.rs::clippy_warning::124",
+        "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::31",
+        "clippy_warning::crates/openlibertas-core/src/domain.rs::clippy_warning::44",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::11",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::12",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::14",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::22",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::25",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::37",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::45",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::48",
+        "clippy_warning::crates/openlibertas-core/src/export.rs::clippy_warning::49",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::108",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::115",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::117",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::119",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::136",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::182",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::192",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::230",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::261",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::265",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::272",
+        "clippy_warning::crates/openlibertas-core/src/mcp.rs::clippy_warning::290",
+        "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::14",
+        "clippy_warning::crates/openlibertas-core/src/prompt.rs::clippy_warning::25",
+        "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::11",
+        "clippy_warning::crates/openlibertas-core/src/search.rs::clippy_warning::21",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::13",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::26",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::30",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::35",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::37",
+        "clippy_warning::crates/openlibertas-core/src/state.rs::clippy_warning::41",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::24",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::26",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::30",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::38",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::43",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::45",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::55",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::58",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::59",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::67",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::72",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::86",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::91",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::97",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::99",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::104",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::107",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::109",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::113",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::116",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::136",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::140",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::144",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::149",
+        "clippy_warning::crates/openlibertas-core/src/store.rs::clippy_warning::150"
+      ],
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "updated_at": "2026-05-03T20:06:52+00:00",
+      "auto": true,
+      "cluster_key": "detector::clippy_warning",
+      "action": "fix Clippy diagnostics or justify narrow suppressions close to the code",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    },
+    "auto/unused": {
+      "name": "auto/unused",
+      "description": "Remove 35 unused issues",
+      "issue_ids": [
+        "unused::crates/openlibertas-core/src/backend.rs::unused_import::1",
+        "unused::crates/openlibertas-core/src/backend.rs::unused_import::2",
+        "unused::crates/openlibertas-core/src/backend.rs::unused_import::9",
+        "unused::crates/openlibertas-core/src/backend.rs::unused_import::280",
+        "unused::crates/openlibertas-core/src/backend/registry.rs::unused_import::45",
+        "unused::crates/openlibertas-core/src/commands.rs::unused_import::277",
+        "unused::crates/openlibertas-core/src/commands.rs::unused_import::325",
+        "unused::crates/openlibertas-core/src/config.rs::unused_import::1",
+        "unused::crates/openlibertas-core/src/config.rs::unused_import::129",
+        "unused::crates/openlibertas-core/src/conversation.rs::unused_import::146",
+        "unused::crates/openlibertas-core/src/domain.rs::unused_import::143",
+        "unused::crates/openlibertas-core/src/export.rs::unused_import::84",
+        "unused::crates/openlibertas-core/src/lib.rs::unused_import::13",
+        "unused::crates/openlibertas-core/src/lib.rs::unused_import::17",
+        "unused::crates/openlibertas-core/src/lib.rs::unused_import::20",
+        "unused::crates/openlibertas-core/src/mcp.rs::unused_import::1",
+        "unused::crates/openlibertas-core/src/mcp.rs::unused_import::7",
+        "unused::crates/openlibertas-core/src/search.rs::unused_import::53",
+        "unused::crates/openlibertas-core/src/state.rs::unused_import::1",
+        "unused::crates/openlibertas-core/src/state.rs::unused_import::49",
+        "unused::crates/openlibertas-core/src/store.rs::unused_import::1",
+        "unused::crates/openlibertas-core/src/store.rs::unused_import::156",
+        "unused::crates/openlibertas-server/src/main.rs::unused_import::2",
+        "unused::crates/openlibertas-server/src/main.rs::unused_import::10",
+        "unused::crates/openlibertas-tui/src/app.rs::unused_import::1021",
+        "unused::crates/openlibertas-tui/src/event.rs::unused_import::1",
+        "unused::crates/openlibertas-tui/src/main.rs::unused_import::4",
+        "unused::crates/openlibertas-tui/src/main.rs::unused_import::5",
+        "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::2",
+        "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::6",
+        "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::277",
+        "unused::crates/openlibertas-tui/src/terminal.rs::unused_import::2",
+        "unused::crates/openlibertas-tui/src/theme.rs::unused_import::324",
+        "unused::crates/openlibertas-tui/src/ui.rs::unused_import::1",
+        "unused::crates/openlibertas-tui/src/ui.rs::unused_import::8"
+      ],
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "updated_at": "2026-05-03T20:06:52+00:00",
+      "auto": true,
+      "cluster_key": "auto::unused",
+      "action": "desloppify autofix unused-imports --dry-run",
+      "execution_status": "active",
+      "user_modified": false,
+      "action_type": "auto_fix",
+      "execution_policy": "ephemeral_autopromote"
+    },
+    "auto/test_coverage-transitive_only": {
+      "name": "auto/test_coverage-transitive_only",
+      "description": "Fix 6 test coverage issues",
+      "issue_ids": [
+        "test_coverage::crates/openlibertas-tui/src/event.rs::transitive_only",
+        "test_coverage::crates/openlibertas-core/src/mcp.rs::transitive_only",
+        "test_coverage::crates/openlibertas-tui/src/terminal.rs::transitive_only",
+        "test_coverage::crates/openlibertas-tui/src/ui.rs::transitive_only",
+        "test_coverage::crates/openlibertas-core/src/prompt.rs::transitive_only",
+        "test_coverage::crates/openlibertas-tui/src/main.rs::transitive_only"
+      ],
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "updated_at": "2026-05-03T20:06:52+00:00",
+      "auto": true,
+      "cluster_key": "detector::test_coverage::transitive_only",
+      "action": "review test coverage gaps",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "refactor",
+      "execution_policy": "planned_only"
+    },
+    "auto/stale_exclude": {
+      "name": "auto/stale_exclude",
+      "description": "Fix 3 stale exclude issues",
+      "issue_ids": [
+        "stale_exclude::.playwright-mcp::.playwright-mcp/"
+      ],
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "updated_at": "2026-05-03T20:06:52+00:00",
+      "auto": true,
+      "cluster_key": "detector::stale_exclude",
+      "action": "remove stale exclusion or verify it's still needed",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    },
+    "auto/initial-review": {
+      "name": "auto/initial-review",
+      "description": "Initial review of 20 unscored subjective dimensions",
+      "issue_ids": [],
+      "created_at": "2026-05-03T20:06:52+00:00",
+      "updated_at": "2026-05-03T20:06:52+00:00",
+      "auto": true,
+      "cluster_key": "subjective::unscored",
+      "action": "desloppify review --prepare --dimensions abstraction_fitness,ai_generated_debt,api_surface_coherence,authorization_consistency,contract_coherence,convention_outlier,cross_module_architecture,dependency_health,design_coherence,error_consistency,high_level_elegance,incomplete_migration,initialization_coupling,logic_clarity,low_level_elegance,mid_level_elegance,naming_quality,package_organization,test_strategy,type_safety",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    }
+  },
+  "superseded": {},
+  "promoted_ids": [],
+  "plan_start_scores": {
+    "strict": 69.1,
+    "overall": 69.1,
+    "objective": 88.6,
+    "verified": 88.6
+  },
+  "refresh_state": {
+    "_subjective_migration_pruned": true,
+    "lifecycle_phase": "plan",
+    "subjective_review_completed_at_scan_count": 2,
+    "postflight_scan_completed_at_scan_count": 16,
+    "pending_import_scores": {
+      "timestamp": "2026-05-03T20:24:34+00:00",
+      "import_file": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/review_result.json",
+      "normalized_import_file": "/var/home/a/code/openlibertas/.desloppify/external_review_sessions/ext_20260503_200803_8a067270/review_result.json",
+      "packet_sha256": ""
+    }
+  },
+  "execution_log": [
+    {
+      "timestamp": "2026-05-03T20:06:52+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:06:52+00:00",
+      "action": "auto_cluster",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:06:52+00:00",
+      "action": "sync_lifecycle_phase",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "phase": "review_initial"
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:06:52+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:14:00+00:00",
+      "action": "review_import_sync",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "trigger": "review_import",
+        "new_ids": [
+          "review::.::holistic::abstraction_fitness::thin_backend_registry",
+          "review::.::holistic::ai_generated_debt::dead_code_allowances",
+          "review::.::holistic::ai_generated_debt::restating_comments",
+          "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+          "review::.::holistic::api_surface_coherence::get_prefix_naming",
+          "review::.::holistic::authorization_consistency::no_auth_system",
+          "review::.::holistic::contract_coherence::broad_reexport_surface",
+          "review::.::holistic::convention_outlier::get_prefix_deviation",
+          "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+          "review::.::holistic::dependency_health::textwrap_justification",
+          "review::.::holistic::design_coherence::god_file_app_rs",
+          "review::.::holistic::design_coherence::god_file_ui_rs",
+          "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+          "review::.::holistic::error_consistency::option_vs_result",
+          "review::.::holistic::high_level_elegance::flat_module_structure",
+          "review::.::holistic::incomplete_migration::no_migration_debt",
+          "review::.::holistic::initialization_coupling::config_load_cloning",
+          "review::.::holistic::logic_clarity::complex_agent_condition",
+          "review::.::holistic::low_level_elegance::long_event_loop_main",
+          "review::.::holistic::mid_level_elegance::app_god_object",
+          "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+          "review::.::holistic::naming_quality::generic_handler_names",
+          "review::.::holistic::package_organization::flat_core_modules",
+          "review::.::holistic::test_strategy::low_test_coverage_overall",
+          "review::.::holistic::test_strategy::missing_agent_loop_tests",
+          "review::.::holistic::test_strategy::missing_backend_tests",
+          "review::.::holistic::test_strategy::missing_markdown_tests",
+          "review::.::holistic::type_safety::missing_non_exhaustive",
+          "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+          "review::.::holistic::type_safety::missing_non_exhaustive_model",
+          "review::.::holistic::type_safety::missing_non_exhaustive_state"
+        ],
+        "added_to_queue": [
+          "review::.::holistic::abstraction_fitness::thin_backend_registry",
+          "review::.::holistic::ai_generated_debt::dead_code_allowances",
+          "review::.::holistic::ai_generated_debt::restating_comments",
+          "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+          "review::.::holistic::api_surface_coherence::get_prefix_naming",
+          "review::.::holistic::authorization_consistency::no_auth_system",
+          "review::.::holistic::contract_coherence::broad_reexport_surface",
+          "review::.::holistic::convention_outlier::get_prefix_deviation",
+          "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+          "review::.::holistic::dependency_health::textwrap_justification",
+          "review::.::holistic::design_coherence::god_file_app_rs",
+          "review::.::holistic::design_coherence::god_file_ui_rs",
+          "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+          "review::.::holistic::error_consistency::option_vs_result",
+          "review::.::holistic::high_level_elegance::flat_module_structure",
+          "review::.::holistic::incomplete_migration::no_migration_debt",
+          "review::.::holistic::initialization_coupling::config_load_cloning",
+          "review::.::holistic::logic_clarity::complex_agent_condition",
+          "review::.::holistic::low_level_elegance::long_event_loop_main",
+          "review::.::holistic::mid_level_elegance::app_god_object",
+          "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+          "review::.::holistic::naming_quality::generic_handler_names",
+          "review::.::holistic::package_organization::flat_core_modules",
+          "review::.::holistic::test_strategy::low_test_coverage_overall",
+          "review::.::holistic::test_strategy::missing_agent_loop_tests",
+          "review::.::holistic::test_strategy::missing_backend_tests",
+          "review::.::holistic::test_strategy::missing_markdown_tests",
+          "review::.::holistic::type_safety::missing_non_exhaustive",
+          "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+          "review::.::holistic::type_safety::missing_non_exhaustive_model",
+          "review::.::holistic::type_safety::missing_non_exhaustive_state"
+        ],
+        "workflow_injected_ids": [],
+        "triage_injected": false,
+        "triage_injected_ids": [],
+        "triage_deferred": false,
+        "diff_new": 31,
+        "diff_reopened": 0,
+        "diff_auto_resolved": 20,
+        "stale_pruned_from_queue": [
+          "unused::crates/openlibertas-core/src/backend.rs::unused_import::1",
+          "unused::crates/openlibertas-core/src/backend.rs::unused_import::2",
+          "unused::crates/openlibertas-core/src/backend.rs::unused_import::280",
+          "unused::crates/openlibertas-core/src/backend.rs::unused_import::9",
+          "unused::crates/openlibertas-core/src/backend/registry.rs::unused_import::45",
+          "unused::crates/openlibertas-core/src/commands.rs::unused_import::277",
+          "unused::crates/openlibertas-core/src/commands.rs::unused_import::325",
+          "unused::crates/openlibertas-core/src/config.rs::unused_import::1",
+          "unused::crates/openlibertas-core/src/config.rs::unused_import::129",
+          "unused::crates/openlibertas-core/src/conversation.rs::unused_import::146",
+          "unused::crates/openlibertas-core/src/domain.rs::unused_import::143",
+          "unused::crates/openlibertas-core/src/export.rs::unused_import::84",
+          "unused::crates/openlibertas-core/src/lib.rs::unused_import::13",
+          "unused::crates/openlibertas-core/src/lib.rs::unused_import::17",
+          "unused::crates/openlibertas-core/src/lib.rs::unused_import::20",
+          "unused::crates/openlibertas-core/src/mcp.rs::unused_import::1",
+          "unused::crates/openlibertas-core/src/mcp.rs::unused_import::7",
+          "unused::crates/openlibertas-core/src/search.rs::unused_import::53",
+          "unused::crates/openlibertas-core/src/state.rs::unused_import::1",
+          "unused::crates/openlibertas-core/src/state.rs::unused_import::49",
+          "unused::crates/openlibertas-core/src/store.rs::unused_import::1",
+          "unused::crates/openlibertas-core/src/store.rs::unused_import::156",
+          "unused::crates/openlibertas-server/src/main.rs::unused_import::10",
+          "unused::crates/openlibertas-server/src/main.rs::unused_import::2",
+          "unused::crates/openlibertas-tui/src/app.rs::unused_import::1021",
+          "unused::crates/openlibertas-tui/src/event.rs::unused_import::1",
+          "unused::crates/openlibertas-tui/src/main.rs::unused_import::4",
+          "unused::crates/openlibertas-tui/src/main.rs::unused_import::5",
+          "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::2",
+          "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::277",
+          "unused::crates/openlibertas-tui/src/markdown.rs::unused_import::6",
+          "unused::crates/openlibertas-tui/src/terminal.rs::unused_import::2",
+          "unused::crates/openlibertas-tui/src/theme.rs::unused_import::324",
+          "unused::crates/openlibertas-tui/src/ui.rs::unused_import::1",
+          "unused::crates/openlibertas-tui/src/ui.rs::unused_import::8"
+        ],
+        "covered_subjective_pruned_from_queue": [
+          "subjective::abstraction_fitness",
+          "subjective::ai_generated_debt",
+          "subjective::api_surface_coherence",
+          "subjective::authorization_consistency",
+          "subjective::contract_coherence",
+          "subjective::convention_outlier",
+          "subjective::cross_module_architecture",
+          "subjective::dependency_health",
+          "subjective::design_coherence",
+          "subjective::error_consistency",
+          "subjective::high_level_elegance",
+          "subjective::incomplete_migration",
+          "subjective::initialization_coupling",
+          "subjective::logic_clarity",
+          "subjective::low_level_elegance",
+          "subjective::mid_level_elegance",
+          "subjective::naming_quality",
+          "subjective::package_organization",
+          "subjective::test_strategy",
+          "subjective::type_safety"
+        ],
+        "covered_subjective": [
+          "subjective::abstraction_fitness",
+          "subjective::ai_generated_debt",
+          "subjective::api_surface_coherence",
+          "subjective::authorization_consistency",
+          "subjective::contract_coherence",
+          "subjective::convention_outlier",
+          "subjective::cross_module_architecture",
+          "subjective::dependency_health",
+          "subjective::design_coherence",
+          "subjective::error_consistency",
+          "subjective::high_level_elegance",
+          "subjective::incomplete_migration",
+          "subjective::initialization_coupling",
+          "subjective::logic_clarity",
+          "subjective::low_level_elegance",
+          "subjective::mid_level_elegance",
+          "subjective::naming_quality",
+          "subjective::package_organization",
+          "subjective::test_strategy",
+          "subjective::type_safety"
+        ],
+        "stale_sync_injected": [],
+        "stale_sync_pruned": [],
+        "auto_cluster_changes": 0,
+        "import_scores_injected": [],
+        "import_scores_pruned": [],
+        "sync_status": "synced",
+        "sync_message": null
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:14:04+00:00",
+      "action": "clear_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:14:04+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 3
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:23:37+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:23:48+00:00",
+      "action": "clear_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:23:48+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 5
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:24:34+00:00",
+      "action": "review_import_sync",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "trigger": "review_import",
+        "new_ids": [
+          "review::.::holistic::abstraction_fitness::thin_backend_registry",
+          "review::.::holistic::ai_generated_debt::dead_code_allowances",
+          "review::.::holistic::ai_generated_debt::restating_comments",
+          "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+          "review::.::holistic::api_surface_coherence::get_prefix_naming",
+          "review::.::holistic::authorization_consistency::no_auth_system",
+          "review::.::holistic::contract_coherence::broad_reexport_surface",
+          "review::.::holistic::convention_outlier::get_prefix_deviation",
+          "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+          "review::.::holistic::dependency_health::textwrap_justification",
+          "review::.::holistic::design_coherence::god_file_app_rs",
+          "review::.::holistic::design_coherence::god_file_ui_rs",
+          "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+          "review::.::holistic::error_consistency::option_vs_result",
+          "review::.::holistic::high_level_elegance::flat_module_structure",
+          "review::.::holistic::incomplete_migration::no_migration_debt",
+          "review::.::holistic::initialization_coupling::config_load_cloning",
+          "review::.::holistic::logic_clarity::complex_agent_condition",
+          "review::.::holistic::low_level_elegance::long_event_loop_main",
+          "review::.::holistic::mid_level_elegance::app_god_object",
+          "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+          "review::.::holistic::naming_quality::generic_handler_names",
+          "review::.::holistic::package_organization::flat_core_modules",
+          "review::.::holistic::test_strategy::low_test_coverage_overall",
+          "review::.::holistic::test_strategy::missing_agent_loop_tests",
+          "review::.::holistic::test_strategy::missing_backend_tests",
+          "review::.::holistic::test_strategy::missing_markdown_tests",
+          "review::.::holistic::type_safety::missing_non_exhaustive",
+          "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+          "review::.::holistic::type_safety::missing_non_exhaustive_model",
+          "review::.::holistic::type_safety::missing_non_exhaustive_state"
+        ],
+        "added_to_queue": [],
+        "workflow_injected_ids": [],
+        "triage_injected": false,
+        "triage_injected_ids": [],
+        "triage_deferred": false,
+        "diff_new": 0,
+        "diff_reopened": 0,
+        "diff_auto_resolved": 20,
+        "stale_pruned_from_queue": [],
+        "covered_subjective_pruned_from_queue": [],
+        "covered_subjective": [],
+        "stale_sync_injected": [],
+        "stale_sync_pruned": [],
+        "auto_cluster_changes": 0,
+        "import_scores_injected": [
+          "workflow::import-scores"
+        ],
+        "import_scores_pruned": [],
+        "sync_status": "synced",
+        "sync_message": null
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:24:41+00:00",
+      "action": "review_import_sync",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "trigger": "review_import",
+        "new_ids": [
+          "review::.::holistic::abstraction_fitness::thin_backend_registry",
+          "review::.::holistic::ai_generated_debt::dead_code_allowances",
+          "review::.::holistic::ai_generated_debt::restating_comments",
+          "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+          "review::.::holistic::api_surface_coherence::get_prefix_naming",
+          "review::.::holistic::authorization_consistency::no_auth_system",
+          "review::.::holistic::contract_coherence::broad_reexport_surface",
+          "review::.::holistic::convention_outlier::get_prefix_deviation",
+          "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+          "review::.::holistic::dependency_health::textwrap_justification",
+          "review::.::holistic::design_coherence::god_file_app_rs",
+          "review::.::holistic::design_coherence::god_file_ui_rs",
+          "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+          "review::.::holistic::error_consistency::option_vs_result",
+          "review::.::holistic::high_level_elegance::flat_module_structure",
+          "review::.::holistic::incomplete_migration::no_migration_debt",
+          "review::.::holistic::initialization_coupling::config_load_cloning",
+          "review::.::holistic::logic_clarity::complex_agent_condition",
+          "review::.::holistic::low_level_elegance::long_event_loop_main",
+          "review::.::holistic::mid_level_elegance::app_god_object",
+          "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+          "review::.::holistic::naming_quality::generic_handler_names",
+          "review::.::holistic::package_organization::flat_core_modules",
+          "review::.::holistic::test_strategy::low_test_coverage_overall",
+          "review::.::holistic::test_strategy::missing_agent_loop_tests",
+          "review::.::holistic::test_strategy::missing_backend_tests",
+          "review::.::holistic::test_strategy::missing_markdown_tests",
+          "review::.::holistic::type_safety::missing_non_exhaustive",
+          "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+          "review::.::holistic::type_safety::missing_non_exhaustive_model",
+          "review::.::holistic::type_safety::missing_non_exhaustive_state"
+        ],
+        "added_to_queue": [],
+        "workflow_injected_ids": [],
+        "triage_injected": false,
+        "triage_injected_ids": [],
+        "triage_deferred": false,
+        "diff_new": 0,
+        "diff_reopened": 0,
+        "diff_auto_resolved": 20,
+        "stale_pruned_from_queue": [],
+        "covered_subjective_pruned_from_queue": [],
+        "covered_subjective": [
+          "subjective::abstraction_fitness",
+          "subjective::ai_generated_debt",
+          "subjective::api_surface_coherence",
+          "subjective::authorization_consistency",
+          "subjective::contract_coherence",
+          "subjective::convention_outlier",
+          "subjective::cross_module_architecture",
+          "subjective::dependency_health",
+          "subjective::design_coherence",
+          "subjective::error_consistency",
+          "subjective::high_level_elegance",
+          "subjective::incomplete_migration",
+          "subjective::initialization_coupling",
+          "subjective::logic_clarity",
+          "subjective::low_level_elegance",
+          "subjective::mid_level_elegance",
+          "subjective::naming_quality",
+          "subjective::package_organization",
+          "subjective::test_strategy",
+          "subjective::type_safety"
+        ],
+        "stale_sync_injected": [],
+        "stale_sync_pruned": [],
+        "auto_cluster_changes": 0,
+        "import_scores_injected": [],
+        "import_scores_pruned": [],
+        "sync_status": "synced",
+        "sync_message": null
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:25:12+00:00",
+      "action": "done",
+      "issue_ids": [
+        "Import assessment scores with attestation"
+      ],
+      "cluster_name": null,
+      "actor": "user",
+      "note": "Imported review scores manually with --manual-override attestation after scan reset",
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:25:24+00:00",
+      "action": "done",
+      "issue_ids": [
+        "Import assessment scores with attestation"
+      ],
+      "cluster_name": null,
+      "actor": "user",
+      "note": "Imported review scores manually with --manual-override attestation after scan reset",
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:30:26+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:30:26+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 8
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:31:08+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:31:08+00:00",
+      "action": "sync_triage",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "injected": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:31:08+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:31:08+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 9
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:34:23+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:34:23+00:00",
+      "action": "sync_triage",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "injected": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:34:23+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:34:23+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 10
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:39:08+00:00",
+      "action": "triage_strategize",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "user",
+      "note": null,
+      "detail": {
+        "reuse": false,
+        "score_trend": "improving",
+        "focus_dimensions": []
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:39:14+00:00",
+      "action": "triage_observe",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "user",
+      "note": null,
+      "detail": {
+        "issue_count": 31,
+        "cited_ids": [],
+        "reuse": false
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:39:51+00:00",
+      "action": "triage_observe",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "user",
+      "note": null,
+      "detail": {
+        "issue_count": 31,
+        "cited_ids": [],
+        "reuse": false
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:40:27+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-03T20:40:27+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-03T20:40:27+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 11
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:26:20+00:00",
+      "action": "triage_auto_start",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "source": "runner_auto_start",
+        "runner": "claude",
+        "injected_stage_ids": [
+          "strategize",
+          "observe",
+          "reflect",
+          "organize",
+          "enrich",
+          "sense-check"
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:30:10+00:00",
+      "action": "done",
+      "issue_ids": [
+        "review::.::holistic::abstraction_fitness::thin_backend_registry"
+      ],
+      "cluster_name": null,
+      "actor": "user",
+      "note": "Enriched BackendRegistry with provider selection policy: list_providers(), provider_count(), default_provider(), select_provider(preferred). Added 6 new tests. Abstraction now justified by encapsulated fallback logic beyond simple HashMap wrapping.",
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T12:30:10+00:00",
+      "action": "resolve",
+      "issue_ids": [
+        "review::.::holistic::abstraction_fitness::thin_backend_registry"
+      ],
+      "cluster_name": null,
+      "actor": "user",
+      "note": "Enriched BackendRegistry with provider selection policy: list_providers(), provider_count(), default_provider(), select_provider(preferred). Added 6 new tests. Abstraction now justified by encapsulated fallback logic beyond simple HashMap wrapping.",
+      "detail": {
+        "status": "fixed",
+        "attestation": "I have actually Enriched BackendRegistry with provider selection policy: list_providers(), provider_count(), default_provider(), select_provider(preferred). Added 6 new tests. Abstraction now justified by encapsulated fallback logic beyond simple HashMap wrapping. and I am not gaming the score."
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:32:36+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:32:36+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T12:32:36+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 12
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:47:22+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:47:22+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T12:47:22+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 13
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:49:15+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-10T12:49:15+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T12:49:15+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 14
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:13:27+00:00",
+      "action": "commit_record",
+      "issue_ids": [
+        "review::.::holistic::abstraction_fitness::thin_backend_registry"
+      ],
+      "cluster_name": null,
+      "actor": "user",
+      "note": "Major architectural refactoring: Backend enum pattern, ChatEngine, ToolRegistry, VoiceManager, model scanner, conversation compactor, app state restructuring, updated personas",
+      "detail": {
+        "sha": "62f566568191",
+        "branch": "main"
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:15:01+00:00",
+      "action": "triage_auto_start",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "source": "runner_auto_start",
+        "runner": "claude",
+        "injected_stage_ids": [
+          "strategize",
+          "observe",
+          "reflect",
+          "organize",
+          "enrich",
+          "sense-check"
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:17:48+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:17:48+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T15:17:48+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 15
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:26:43+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-05-10T15:26:43+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    },
+    {
+      "timestamp": "2026-05-10T15:26:43+00:00",
+      "action": "complete_postflight_scan",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "scan_count": 16
+      }
+    }
+  ],
+  "epic_triage_meta": {
+    "triage_stages": {
+      "strategize": {
+        "stage": "strategize",
+        "report": "{\n  \"score_trend\": \"improving\",\n  \"debt_trend\": \"shrinking\",\n  \"executive_summary\": \"Score improved from 21.1 to 67.6 (+46.9). Main wins: fixed import cycles, renamed methods, added 40+ tests, cleaned dead code. Need +17.4 to reach 85.0 target.\",\n  \"observe_guidance\": \"Focus on test_strategy (40.0%) as the biggest opportunity. Continue adding tests to uncovered modules.\",\n  \"reflect_guidance\": \"Previous cycle successfully fixed mechanical issues. Next cycle should focus on test coverage and design coherence.\",\n  \"organize_guidance\": \"Prioritize test additions for prompt.rs, mcp.rs, config.rs. Consider splitting large files (app.rs, ui.rs) if score remains low.\",\n  \"sense_check_guidance\": \"Verify new tests actually exercise meaningful code paths. Ensure no test-only code bloat.\",\n  \"focus_dimensions\": [\"test_strategy\", \"test_health\", \"design_coherence\"]\n}",
+        "timestamp": "2026-05-03T20:39:08+00:00",
+        "score_trend": "improving",
+        "focus_dimensions": [],
+        "anti_pattern_count": 0,
+        "confirmed_at": "2026-05-03T20:39:08+00:00",
+        "confirmed_text": "auto-confirmed"
+      },
+      "observe": {
+        "stage": "observe",
+        "report": "Verified 31 open issues by direct code inspection:\n\nIMPORT CYCLES (genuine):\n- cycles::crates/openlibertas-core/src/backend.rs: 6-file cycle backend->commands->config->domain->lib.rs+1. Root cause: commands.rs imports Message/Model from backend instead of domain.\n- cycles::crates/openlibertas-tui/src/app.rs: 4-file cycle app->main->markdown->theme. Root cause: app.rs imports markdown/theme directly.\n\nMISSING #[non_exhaustive] (genuine):\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::ChatRequest (line 82): 6 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::Message (line 97): 4 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::ToolCall (line 123): 3 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::Model (line 74): 3 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::ToolDefinition (line 105): 2 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::FunctionDefinition (line 112): 3 public fields, no #[non_exhaustive]\n- rust_future_proofing::crates/openlibertas-core/src/domain.rs::struct::FunctionCall (line 131): 2 public fields, no #[non_exhaustive]\n\nTEST COVERAGE GAPS (genuine):\n- test_coverage::crates/openlibertas-core/src/prompt.rs: 50 LOC, 0 direct tests\n- test_coverage::crates/openlibertas-tui/src/ui.rs: 1021 LOC, 0 direct tests (ratatui UI code, hard to unit test)\n- test_coverage::crates/openlibertas-tui/src/main.rs: 495 LOC, 0 direct tests\n- test_coverage::crates/openlibertas-tui/src/event.rs: 50 LOC, 0 direct tests\n- test_coverage::crates/openlibertas-tui/src/terminal.rs: 35 LOC, 0 direct tests\n\nCLUTTER (genuine, easy fixes):\n- clippy_warning::crates/openlibertas-core/src/backend.rs: 10 clippy warnings (format args, must_use, expect_used, etc.)\n- unused::crates/openlibertas-core/src/backend.rs: 4 unused imports (Context, StreamExt, etc.)\n\nAPI CONVENTIONS (genuine):\n- rust_api_convention::crates/openlibertas-core/src/mcp.rs: get_server_names renamed to server_names in previous cycle, but scan may not have picked it up yet.",
+        "cited_ids": [],
+        "timestamp": "2026-05-03T20:39:51+00:00",
+        "issue_count": 31,
+        "dimension_names": [
+          "test_strategy",
+          "type_safety",
+          "design_coherence",
+          "ai_generated_debt",
+          "api_surface_coherence",
+          "mid_level_elegance",
+          "abstraction_fitness",
+          "authorization_consistency",
+          "contract_coherence",
+          "convention_outlier",
+          "cross_module_architecture",
+          "dependency_health",
+          "error_consistency",
+          "high_level_elegance",
+          "incomplete_migration",
+          "initialization_coupling",
+          "logic_clarity",
+          "low_level_elegance",
+          "naming_quality",
+          "package_organization"
+        ],
+        "dimension_counts": {
+          "cross_module_architecture": 1,
+          "design_coherence": 3,
+          "package_organization": 1,
+          "test_strategy": 4,
+          "type_safety": 4,
+          "api_surface_coherence": 2,
+          "ai_generated_debt": 2,
+          "low_level_elegance": 1,
+          "mid_level_elegance": 2,
+          "abstraction_fitness": 1,
+          "error_consistency": 1,
+          "initialization_coupling": 1,
+          "naming_quality": 1,
+          "logic_clarity": 1,
+          "high_level_elegance": 1,
+          "contract_coherence": 1,
+          "convention_outlier": 1,
+          "dependency_health": 1,
+          "authorization_consistency": 1,
+          "incomplete_migration": 1
+        },
+        "assessments": []
+      }
+    },
+    "strategist_briefing": {
+      "score_trend": "improving",
+      "debt_trend": "stable",
+      "executive_summary": "Score improved from 21.1 to 67.6 (+46.9). Main wins: fixed import cycles, renamed methods, added 40+ tests, cleaned dead code. Need +17.4 to reach 85.0 target.",
+      "observe_guidance": "Focus on test_strategy (40.0%) as the biggest opportunity. Continue adding tests to uncovered modules.",
+      "reflect_guidance": "Previous cycle successfully fixed mechanical issues. Next cycle should focus on test coverage and design coherence.",
+      "organize_guidance": "Prioritize test additions for prompt.rs, mcp.rs, config.rs. Consider splitting large files (app.rs, ui.rs) if score remains low.",
+      "sense_check_guidance": "Verify new tests actually exercise meaningful code paths. Ensure no test-only code bloat.",
+      "focus_dimensions": [
+        "test_strategy",
+        "test_health",
+        "design_coherence"
+      ],
+      "computed_at": "2026-05-03T20:39:08+00:00",
+      "lookback_scans": 5
+    },
+    "issue_dispositions": {},
+    "triaged_ids": [
+      "review::.::holistic::abstraction_fitness::thin_backend_registry",
+      "review::.::holistic::ai_generated_debt::dead_code_allowances",
+      "review::.::holistic::ai_generated_debt::restating_comments",
+      "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+      "review::.::holistic::api_surface_coherence::get_prefix_naming",
+      "review::.::holistic::authorization_consistency::no_auth_system",
+      "review::.::holistic::contract_coherence::broad_reexport_surface",
+      "review::.::holistic::convention_outlier::get_prefix_deviation",
+      "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+      "review::.::holistic::dependency_health::textwrap_justification",
+      "review::.::holistic::design_coherence::god_file_app_rs",
+      "review::.::holistic::design_coherence::god_file_ui_rs",
+      "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+      "review::.::holistic::error_consistency::option_vs_result",
+      "review::.::holistic::high_level_elegance::flat_module_structure",
+      "review::.::holistic::incomplete_migration::no_migration_debt",
+      "review::.::holistic::initialization_coupling::config_load_cloning",
+      "review::.::holistic::logic_clarity::complex_agent_condition",
+      "review::.::holistic::low_level_elegance::long_event_loop_main",
+      "review::.::holistic::mid_level_elegance::app_god_object",
+      "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+      "review::.::holistic::naming_quality::generic_handler_names",
+      "review::.::holistic::package_organization::flat_core_modules",
+      "review::.::holistic::test_strategy::low_test_coverage_overall",
+      "review::.::holistic::test_strategy::missing_agent_loop_tests",
+      "review::.::holistic::test_strategy::missing_backend_tests",
+      "review::.::holistic::test_strategy::missing_markdown_tests",
+      "review::.::holistic::type_safety::missing_non_exhaustive",
+      "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+      "review::.::holistic::type_safety::missing_non_exhaustive_model",
+      "review::.::holistic::type_safety::missing_non_exhaustive_state"
+    ],
+    "issue_snapshot_hash": "0be148c5b9138018",
+    "active_triage_issue_ids": [
+      "review::.::holistic::abstraction_fitness::thin_backend_registry",
+      "review::.::holistic::ai_generated_debt::dead_code_allowances",
+      "review::.::holistic::ai_generated_debt::restating_comments",
+      "review::.::holistic::api_surface_coherence::broad_lib_reexports",
+      "review::.::holistic::api_surface_coherence::get_prefix_naming",
+      "review::.::holistic::authorization_consistency::no_auth_system",
+      "review::.::holistic::contract_coherence::broad_reexport_surface",
+      "review::.::holistic::convention_outlier::get_prefix_deviation",
+      "review::.::holistic::cross_module_architecture::import_cycle_backend_commands",
+      "review::.::holistic::dependency_health::textwrap_justification",
+      "review::.::holistic::design_coherence::god_file_app_rs",
+      "review::.::holistic::design_coherence::god_file_ui_rs",
+      "review::.::holistic::design_coherence::mixed_responsibilities_backend",
+      "review::.::holistic::error_consistency::option_vs_result",
+      "review::.::holistic::high_level_elegance::flat_module_structure",
+      "review::.::holistic::incomplete_migration::no_migration_debt",
+      "review::.::holistic::initialization_coupling::config_load_cloning",
+      "review::.::holistic::logic_clarity::complex_agent_condition",
+      "review::.::holistic::low_level_elegance::long_event_loop_main",
+      "review::.::holistic::mid_level_elegance::app_god_object",
+      "review::.::holistic::mid_level_elegance::implicit_tool_call_handoff",
+      "review::.::holistic::naming_quality::generic_handler_names",
+      "review::.::holistic::package_organization::flat_core_modules",
+      "review::.::holistic::test_strategy::low_test_coverage_overall",
+      "review::.::holistic::test_strategy::missing_agent_loop_tests",
+      "review::.::holistic::test_strategy::missing_backend_tests",
+      "review::.::holistic::test_strategy::missing_markdown_tests",
+      "review::.::holistic::type_safety::missing_non_exhaustive",
+      "review::.::holistic::type_safety::missing_non_exhaustive_conversation",
+      "review::.::holistic::type_safety::missing_non_exhaustive_model",
+      "review::.::holistic::type_safety::missing_non_exhaustive_state"
+    ]
+  },
+  "commit_log": [
+    {
+      "sha": "62f566568191",
+      "branch": "main",
+      "issue_ids": [
+        "review::.::holistic::abstraction_fitness::thin_backend_registry"
+      ],
+      "recorded_at": "2026-05-10T15:13:27+00:00",
+      "note": "Major architectural refactoring: Backend enum pattern, ChatEngine, ToolRegistry, VoiceManager, model scanner, conversation compactor, app state restructuring, updated personas",
+      "cluster_name": null
+    }
+  ],
+  "uncommitted_issues": [],
+  "commit_tracking_branch": null,
+  "scan_count_at_plan_start": 16,
+  "previous_plan_start_scores": {
+    "strict": 69.1,
+    "overall": 69.1,
+    "objective": 88.6,
+    "verified": 88.6
+  }
+}

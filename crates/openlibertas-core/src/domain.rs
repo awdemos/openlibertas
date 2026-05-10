@@ -34,7 +34,6 @@ impl std::str::FromStr for Role {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-#[non_exhaustive]
 pub struct ProviderId(pub String);
 
 impl ProviderId {
@@ -71,7 +70,6 @@ pub struct ModelsResponse {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-#[non_exhaustive]
 pub struct Model {
     pub id: String,
     #[serde(skip)]
@@ -131,7 +129,6 @@ impl Model {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[non_exhaustive]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
@@ -165,7 +162,6 @@ pub fn now_timestamp() -> String {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[non_exhaustive]
 pub struct ToolDefinition {
     #[serde(rename = "type")]
     pub tool_type: String,
@@ -173,7 +169,6 @@ pub struct ToolDefinition {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[non_exhaustive]
 pub struct FunctionDefinition {
     pub name: String,
     pub description: String,
