@@ -15,10 +15,10 @@ struct GitArgs {
 }
 
 pub fn tool_definition() -> BuiltinTool {
-    BuiltinTool {
-        name: "git".to_string(),
-        description: "Run git commands (status, diff, log, branch, add, commit, etc.).".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "git",
+        "Run git commands (status, diff, log, branch, add, commit, etc.).",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "subcommand": {
@@ -36,8 +36,8 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["subcommand"]
         }),
-        handler: run,
-    }
+        run
+    )
 }
 
 pub fn run(args: Value) -> Result<String> {

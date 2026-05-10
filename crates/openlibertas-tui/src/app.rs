@@ -83,9 +83,6 @@ pub struct App {
     pub agent_selected: usize,
     pub voice: VoiceManager,
     pub voice_status: Option<String>,
-    /// Tracks whether the voice push-to-talk key is physically held.
-    /// Prevents key-repeat from toggling recording in a loop.
-    pub voice_key_held: bool,
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
@@ -135,7 +132,6 @@ impl App {
             agent_selected: 0,
             voice: VoiceManager::new(voice_api_key, voice_id),
             voice_status: None,
-            voice_key_held: false,
             mouse_enabled: true,
             last_click_time: None,
             last_click_pos: None,

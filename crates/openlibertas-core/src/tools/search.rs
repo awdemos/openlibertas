@@ -22,10 +22,10 @@ struct GrepArgs {
 }
 
 pub fn glob_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "glob".to_string(),
-        description: "Find files matching a glob pattern.".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "glob",
+        "Find files matching a glob pattern.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "pattern": {
@@ -39,15 +39,15 @@ pub fn glob_tool() -> BuiltinTool {
             },
             "required": ["pattern"]
         }),
-        handler: glob,
-    }
+        glob
+    )
 }
 
 pub fn grep_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "grep".to_string(),
-        description: "Search file contents for a regex pattern.".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "grep",
+        "Search file contents for a regex pattern.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "pattern": {
@@ -65,8 +65,8 @@ pub fn grep_tool() -> BuiltinTool {
             },
             "required": ["pattern"]
         }),
-        handler: grep,
-    }
+        grep
+    )
 }
 
 pub fn glob(args: Value) -> Result<String> {

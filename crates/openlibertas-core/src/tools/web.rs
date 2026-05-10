@@ -49,10 +49,10 @@ async fn fetch_url_async(url: String) -> Result<String> {
 }
 
 pub fn web_search_tool() -> crate::tools::BuiltinTool {
-    crate::tools::BuiltinTool {
-        name: "web_search".to_string(),
-        description: "Search the web for information on a given query.".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "web_search",
+        "Search the web for information on a given query.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "query": {
@@ -62,15 +62,15 @@ pub fn web_search_tool() -> crate::tools::BuiltinTool {
             },
             "required": ["query"]
         }),
-        handler: web_search,
-    }
+        web_search
+    )
 }
 
 pub fn fetch_url_tool() -> crate::tools::BuiltinTool {
-    crate::tools::BuiltinTool {
-        name: "fetch_url".to_string(),
-        description: "Fetch the content of a URL and return the page text.".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "fetch_url",
+        "Fetch the content of a URL and return the page text.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "url": {
@@ -80,8 +80,8 @@ pub fn fetch_url_tool() -> crate::tools::BuiltinTool {
             },
             "required": ["url"]
         }),
-        handler: fetch_url,
-    }
+        fetch_url
+    )
 }
 
 #[cfg(test)]

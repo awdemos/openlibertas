@@ -33,6 +33,19 @@ impl BuiltinTool {
     }
 }
 
+/// Helper macro to reduce boilerplate in tool definitions.
+#[macro_export]
+macro_rules! define_tool {
+    ($name:expr, $description:expr, $parameters:expr, $handler:expr) => {
+        $crate::tools::BuiltinTool {
+            name: $name.to_string(),
+            description: $description.to_string(),
+            parameters: $parameters,
+            handler: $handler,
+        }
+    };
+}
+
 /// Execute a built-in tool by name with the given arguments.
 pub fn execute_builtin(name: &str, args: Value) -> Result<String> {
     match name {

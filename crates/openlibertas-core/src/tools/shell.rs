@@ -13,10 +13,10 @@ struct ShellArgs {
 }
 
 pub fn tool_definition() -> BuiltinTool {
-    BuiltinTool {
-        name: "shell".to_string(),
-        description: "Execute a shell command and return its output. Use with caution.".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "shell",
+        "Execute a shell command and return its output. Use with caution.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "command": {
@@ -32,8 +32,8 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["command"]
         }),
-        handler: run,
-    }
+        run
+    )
 }
 
 pub fn run(args: Value) -> Result<String> {

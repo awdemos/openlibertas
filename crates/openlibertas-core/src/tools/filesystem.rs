@@ -24,12 +24,10 @@ struct WriteFileArgs {
 }
 
 pub fn read_file_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "read_file".to_string(),
-        description:
-            "Read the contents of a file. Optionally specify offset and limit for partial reads."
-                .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "read_file",
+        "Read the contents of a file. Optionally specify offset and limit for partial reads.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "path": {
@@ -47,16 +45,15 @@ pub fn read_file_tool() -> BuiltinTool {
             },
             "required": ["path"]
         }),
-        handler: read_file,
-    }
+        read_file
+    )
 }
 
 pub fn write_file_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "write_file".to_string(),
-        description: "Write content to a file. Can optionally append instead of overwrite."
-            .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "write_file",
+        "Write content to a file. Can optionally append instead of overwrite.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "path": {
@@ -74,8 +71,8 @@ pub fn write_file_tool() -> BuiltinTool {
             },
             "required": ["path", "content"]
         }),
-        handler: write_file,
-    }
+        write_file
+    )
 }
 
 pub fn read_file(args: Value) -> Result<String> {
@@ -136,12 +133,10 @@ struct StrReplaceFileArgs {
 }
 
 pub fn str_replace_file_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "str_replace_file".to_string(),
-        description:
-            "Replace a string in a file. The old_str must match exactly (including whitespace)."
-                .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "str_replace_file",
+        "Replace a string in a file. The old_str must match exactly (including whitespace).",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "path": {
@@ -159,8 +154,8 @@ pub fn str_replace_file_tool() -> BuiltinTool {
             },
             "required": ["path", "old_str", "new_str"]
         }),
-        handler: str_replace_file,
-    }
+        str_replace_file
+    )
 }
 
 pub fn str_replace_file(args: Value) -> Result<String> {

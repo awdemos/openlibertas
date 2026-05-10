@@ -18,13 +18,12 @@ pub fn think(args: Value) -> Result<String> {
 }
 
 pub fn think_tool() -> crate::tools::BuiltinTool {
-    crate::tools::BuiltinTool {
-        name: "think".to_string(),
-        description: "Use this tool to think through a problem step by step before taking action. \
-            This helps break down complex tasks, consider edge cases, and plan your approach. \
-            Provide your reasoning in the 'thought' parameter."
-            .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "think",
+        "Use this tool to think through a problem step by step before taking action. \
+        This helps break down complex tasks, consider edge cases, and plan your approach. \
+        Provide your reasoning in the 'thought' parameter.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "thought": {
@@ -34,8 +33,8 @@ pub fn think_tool() -> crate::tools::BuiltinTool {
             },
             "required": ["thought"]
         }),
-        handler: think,
-    }
+        think
+    )
 }
 
 #[cfg(test)]

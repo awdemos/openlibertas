@@ -20,7 +20,7 @@ pub struct InputDeviceInfo {
 }
 
 /// List all available audio input devices.
-pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, super::VoiceError> {
+pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceError> {
     let host = cpal::default_host();
     let default_device = host.default_input_device();
     let default_name = default_device.as_ref().and_then(|d| d.name().ok());
@@ -48,7 +48,7 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, super::VoiceError> {
             }
         }
         Err(e) => {
-            return Err(super::VoiceError::AudioError(format!(
+            return Err(crate::voice::VoiceError::AudioError(format!(
                 "Failed to enumerate input devices: {e}"
             )))
         }
@@ -69,12 +69,12 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, super::VoiceError> {
 }
 
 /// Get the name of the default input device.
-pub fn default_input_device_name() -> Result<String, super::VoiceError> {
+pub fn default_input_device_name() -> Result<String, crate::voice::VoiceError> {
     let host = cpal::default_host();
     host.default_input_device()
         .and_then(|d| d.name().ok())
         .ok_or_else(|| {
-            super::VoiceError::AudioError("No default input device available".to_string())
+            crate::voice::VoiceError::AudioError("No default input device available".to_string())
         })
 }
 
@@ -202,7 +202,7 @@ impl AudioRecorder {
         self.channels
     }
 
-    pub fn start(&mut self) -> Result<cpal::Stream, super::VoiceError> {
+    pub fn start(&mut self) -> Result<cpal::Stream, crate::voice::VoiceError> {
         let host = cpal::default_host();
         let device = match &self.device_name {
             Some(name) => {
@@ -218,19 +218,19 @@ impl AudioRecorder {
                     }
                 }
                 found.ok_or_else(|| {
-                    super::VoiceError::AudioError(format!(
+                    crate::voice::VoiceError::AudioError(format!(
                         "Input device '{}' not found. Use /voice_device to list available devices.",
                         name
                     ))
                 })?
             }
             None => host.default_input_device().ok_or_else(|| {
-                super::VoiceError::AudioError("No input device available".to_string())
+                crate::voice::VoiceError::AudioError("No input device available".to_string())
             })?,
         };
 
         let config = device.default_input_config().map_err(|e| {
-            super::VoiceError::AudioError(format!("Failed to get input config: {e}"))
+            crate::voice::VoiceError::AudioError(format!("Failed to get input config: {e}"))
         })?;
 
         self.sample_rate = config.sample_rate().0;
@@ -274,27 +274,27 @@ impl AudioRecorder {
                 None,
             ),
             _ => {
-                return Err(super::VoiceError::AudioError(format!(
+                return Err(crate::voice::VoiceError::AudioError(format!(
                     "Unsupported sample format: {:?}",
                     config.sample_format()
                 )))
             }
         }
-        .map_err(|e| super::VoiceError::AudioError(format!("Failed to build input stream: {e}")))?;
+        .map_err(|e| crate::voice::VoiceError::AudioError(format!("Failed to build input stream: {e}")))?;
 
         stream.play().map_err(|e| {
-            super::VoiceError::AudioError(format!("Failed to start recording: {e}"))
+            crate::voice::VoiceError::AudioError(format!("Failed to start recording: {e}"))
         })?;
 
         Ok(stream)
     }
 
     /// Stop recording and return the captured audio with format info.
-    pub fn stop(&self) -> Result<Recording, super::VoiceError> {
+    pub fn stop(&self) -> Result<Recording, crate::voice::VoiceError> {
         let samples = self
             .buffer
             .lock()
-            .map_err(|e| super::VoiceError::AudioError(format!("Mutex poisoned: {e}")))?
+            .map_err(|e| crate::voice::VoiceError::AudioError(format!("Mutex poisoned: {e}")))?
             .clone();
         Ok(Recording {
             samples,
@@ -319,11 +319,11 @@ pub struct AudioPlayer {
 
 impl AudioPlayer {
     /// Create a new audio player with a shared output stream.
-    pub fn new() -> Result<Self, super::VoiceError> {
+    pub fn new() -> Result<Self, crate::voice::VoiceError> {
         let (_stream, stream_handle) = rodio::OutputStream::try_default()
-            .map_err(|e| super::VoiceError::AudioError(format!("No audio output device: {e}")))?;
+            .map_err(|e| crate::voice::VoiceError::AudioError(format!("No audio output device: {e}")))?;
         let sink = rodio::Sink::try_new(&stream_handle).map_err(|e| {
-            super::VoiceError::AudioError(format!("Failed to create audio sink: {e}"))
+            crate::voice::VoiceError::AudioError(format!("Failed to create audio sink: {e}"))
         })?;
         Ok(Self {
             _stream,
@@ -333,11 +333,11 @@ impl AudioPlayer {
     }
 
     /// Play audio bytes, replacing any currently playing audio.
-    pub fn play(&self, audio_bytes: Vec<u8>) -> Result<(), super::VoiceError> {
+    pub fn play(&self, audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
         self.sink.stop();
         let cursor = Cursor::new(audio_bytes);
         let source = rodio::Decoder::new(cursor)
-            .map_err(|e| super::VoiceError::AudioError(format!("Failed to decode audio: {e}")))?;
+            .map_err(|e| crate::voice::VoiceError::AudioError(format!("Failed to decode audio: {e}")))?;
         self.sink.append(source);
         Ok(())
     }
@@ -353,7 +353,7 @@ impl AudioPlayer {
     }
 
     /// Play audio bytes and block until playback completes.
-    pub fn play_blocking(audio_bytes: Vec<u8>) -> Result<(), super::VoiceError> {
+    pub fn play_blocking(audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
         let player = Self::new()?;
         player.play(audio_bytes)?;
         player.sink.sleep_until_end();
@@ -407,7 +407,7 @@ pub fn normalize_audio(samples: &mut [f32], target_peak: f32) {
 }
 
 /// Encode a buffer of f32 PCM samples into WAV format bytes.
-pub fn encode_wav(recording: &Recording) -> Result<Vec<u8>, super::VoiceError> {
+pub fn encode_wav(recording: &Recording) -> Result<Vec<u8>, crate::voice::VoiceError> {
     let mut cursor = Cursor::new(Vec::new());
     let spec = hound::WavSpec {
         channels: recording.channels,
@@ -417,19 +417,19 @@ pub fn encode_wav(recording: &Recording) -> Result<Vec<u8>, super::VoiceError> {
     };
 
     let mut writer = hound::WavWriter::new(&mut cursor, spec)
-        .map_err(|e| super::VoiceError::AudioError(format!("WAV writer error: {e}")))?;
+        .map_err(|e| crate::voice::VoiceError::AudioError(format!("WAV writer error: {e}")))?;
 
     for &sample in &recording.samples {
         let clamped = sample.clamp(-1.0, 1.0);
         let int_sample = (clamped * i16::MAX as f32) as i16;
         writer
             .write_sample(int_sample)
-            .map_err(|e| super::VoiceError::AudioError(format!("WAV write error: {e}")))?;
+            .map_err(|e| crate::voice::VoiceError::AudioError(format!("WAV write error: {e}")))?;
     }
 
     writer
         .finalize()
-        .map_err(|e| super::VoiceError::AudioError(format!("WAV finalize error: {e}")))?;
+        .map_err(|e| crate::voice::VoiceError::AudioError(format!("WAV finalize error: {e}")))?;
 
     Ok(cursor.into_inner())
 }

@@ -21,16 +21,15 @@ pub fn switch_persona(args: Value) -> Result<String> {
 }
 
 pub fn switch_persona_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "switch_persona".to_string(),
-        description: "Switch to a different agent persona to delegate work to a specialist. \
-            Use this ONCE when the current task requires expertise that another persona provides. \
-            For example, switch to 'Seeker' for codebase exploration, 'Sage' for code review, \
-            'Strategist' for planning, or 'Artisan' for deep implementation. \
-            CRITICAL: Do NOT call this tool repeatedly. Switch once, then proceed with the task. \
-            After switching, the new persona will continue the conversation with the appropriate context."
-            .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "switch_persona",
+        "Switch to a different agent persona to delegate work to a specialist. \
+        Use this ONCE when the current task requires expertise that another persona provides. \
+        For example, switch to 'Seeker' for codebase exploration, 'Sage' for code review, \
+        'Strategist' for planning, or 'Artisan' for deep implementation. \
+        CRITICAL: Do NOT call this tool repeatedly. Switch once, then proceed with the task. \
+        After switching, the new persona will continue the conversation with the appropriate context.",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "persona": {
@@ -44,8 +43,8 @@ pub fn switch_persona_tool() -> BuiltinTool {
             },
             "required": ["persona", "reason"]
         }),
-        handler: switch_persona,
-    }
+        switch_persona
+    )
 }
 
 /// Spawn a parallel sub-agent with a different persona to work on a sub-task.
@@ -59,15 +58,14 @@ pub fn spawn_subagent(_args: Value) -> Result<String> {
 }
 
 pub fn spawn_subagent_tool() -> BuiltinTool {
-    BuiltinTool {
-        name: "spawn_subagent".to_string(),
-        description: "Spawn a parallel sub-agent with a different persona to work on a sub-task. \
-            Use this when you need work done in parallel or by a specialist while you continue. \
-            The sub-agent receives the task description and optional context, executes independently, \
-            and returns results. You can spawn multiple sub-agents in parallel. \
-            Available personas for sub-agents: Seeker, Pathfinder, Research, Sage, Strategist, Artisan, Coding"
-            .to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "spawn_subagent",
+        "Spawn a parallel sub-agent with a different persona to work on a sub-task. \
+        Use this when you need work done in parallel or by a specialist while you continue. \
+        The sub-agent receives the task description and optional context, executes independently, \
+        and returns results. You can spawn multiple sub-agents in parallel. \
+        Available personas for sub-agents: Seeker, Pathfinder, Research, Sage, Strategist, Artisan, Coding",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "persona": {
@@ -85,8 +83,8 @@ pub fn spawn_subagent_tool() -> BuiltinTool {
             },
             "required": ["persona", "task"]
         }),
-        handler: spawn_subagent,
-    }
+        spawn_subagent
+    )
 }
 
 #[cfg(test)]

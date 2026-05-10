@@ -15,10 +15,10 @@ struct TmuxArgs {
 }
 
 pub fn tool_definition() -> BuiltinTool {
-    BuiltinTool {
-        name: "tmux".to_string(),
-        description: "Interact with tmux sessions (list, capture pane, send keys).".to_string(),
-        parameters: serde_json::json!({
+    crate::define_tool!(
+        "tmux",
+        "Interact with tmux sessions (list, capture pane, send keys).",
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "subcommand": {
@@ -36,8 +36,8 @@ pub fn tool_definition() -> BuiltinTool {
             },
             "required": ["subcommand"]
         }),
-        handler: run,
-    }
+        run
+    )
 }
 
 pub fn run(args: Value) -> Result<String> {

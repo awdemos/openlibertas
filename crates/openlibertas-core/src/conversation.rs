@@ -1,6 +1,6 @@
 pub mod tool_parser;
 
-use crate::domain::{FunctionCall, FunctionDefinition, Message, ToolCall, ToolDefinition};
+use crate::domain::{FunctionDefinition, Message, ToolCall, ToolDefinition};
 use crate::domain::Role;
 use crate::mcp::McpTool;
 
@@ -242,6 +242,7 @@ pub fn get_tools_for_request(available_tools: &[McpTool]) -> Option<Vec<ToolDefi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::FunctionCall;
 
     #[test]
     fn build_chat_request_adds_user_message() {

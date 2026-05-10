@@ -191,7 +191,6 @@ async fn main() -> Result<()> {
             app.add_system_message(
                 "[Voice] Recording stopped — maximum duration reached.".to_string(),
             );
-            app.voice_key_held = false;
             app.voice_status = None;
             match app.voice.stop_recording() {
                 Ok(audio_bytes) => {
@@ -226,45 +225,40 @@ async fn main() -> Result<()> {
             Ok(Some(event)) => match event {
                 Event::Input(CEvent::Key(key)) if key.kind == KeyEventKind::Release => {
                     let is_space = key.code == KeyCode::Char(' ') || key.code == KeyCode::Null;
-                    // Only handle release for push-to-talk (Ctrl+Space). Toggle mode (Space)
-                    // starts/stops on Press events, so release must not interfere.
-                    if is_space && app.voice_key_held && app.voice.push_to_talk_active {
-                        app.voice_key_held = false;
-                        if app.voice.is_enabled()
-                            && matches!(
-                                app.voice.state(),
-                                openlibertas_core::voice::VoiceState::Recording
-                            )
-                        {
-                            if !app.voice.has_min_recording_duration() {
-                                app.voice_status = Some(
-                                    "Recording too short — hold Ctrl+Space longer".to_string(),
-                                );
-                                app.voice.cancel();
-                            } else {
-                                match app.voice.stop_recording() {
-                                    Ok(audio_bytes) => {
-                                        if audio_bytes.len() <= 44 {
-                                            app.voice_status = Some(
-                                                "No audio captured — check microphone".to_string(),
-                                            );
-                                            app.voice.cancel();
-                                        } else {
-                                            let sender = event_stream.sender();
-                                            let api_key = app.voice.config.api_key.clone();
-                                            spawn_voice_transcription(api_key, audio_bytes, sender);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        app.voice_status = Some(format!("Recording failed: {}", e));
+                    if is_space
+                        && app.voice.push_to_talk_active
+                        && matches!(
+                            app.voice.state(),
+                            openlibertas_core::voice::VoiceState::Recording
+                        )
+                    {
+                        app.voice_status = None;
+                        if !app.voice.has_min_recording_duration() {
+                            app.voice_status = Some(
+                                "Recording too short — hold Ctrl+Space longer".to_string(),
+                            );
+                            app.voice.cancel();
+                        } else {
+                            match app.voice.stop_recording() {
+                                Ok(audio_bytes) => {
+                                    if audio_bytes.len() <= 44 {
+                                        app.voice_status = Some(
+                                            "No audio captured — check microphone".to_string(),
+                                        );
                                         app.voice.cancel();
+                                    } else {
+                                        let sender = event_stream.sender();
+                                        let api_key = app.voice.config.api_key.clone();
+                                        spawn_voice_transcription(api_key, audio_bytes, sender);
                                     }
+                                }
+                                Err(e) => {
+                                    app.voice_status =
+                                        Some(format!("Recording failed: {}", e));
+                                    app.voice.cancel();
                                 }
                             }
                         }
-                    } else if is_space && app.voice_key_held {
-                        // Release of Space without push-to-talk: just clear the held flag.
-                        app.voice_key_held = false;
                     }
                 }
                 Event::Input(CEvent::Mouse(mouse)) => {
@@ -436,15 +430,12 @@ async fn main() -> Result<()> {
                                     && app.voice.is_enabled()
                                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
                             {
-                                // Toggle fallback: if already recording in push-to-talk mode,
-                                // stop on this press (terminals often don't send Release events).
                                 if app.voice.push_to_talk_active
                                     && matches!(
                                         app.voice.state(),
                                         openlibertas_core::voice::VoiceState::Recording
                                     )
                                 {
-                                    app.voice_key_held = false;
                                     app.voice_status = None;
                                     match app.voice.stop_recording() {
                                         Ok(audio_bytes) => {
@@ -469,16 +460,12 @@ async fn main() -> Result<()> {
                                     continue;
                                 }
 
-                                if !app.voice_key_held {
-                                    app.voice_key_held = true;
-                                    if let Err(e) = app.voice.start_recording(true) {
-                                        app.voice_key_held = false;
-                                        app.voice_status =
-                                            Some(format!("Failed to start recording: {}", e));
-                                    } else {
-                                        app.voice_status =
-                                            Some("Recording... 🎙  (release to stop)".to_string());
-                                    }
+                                if let Err(e) = app.voice.start_recording(true) {
+                                    app.voice_status =
+                                        Some(format!("Failed to start recording: {}", e));
+                                } else {
+                                    app.voice_status =
+                                        Some("Recording... 🎙  (release to stop)".to_string());
                                 }
                                 continue;
                             }
@@ -515,7 +502,6 @@ async fn main() -> Result<()> {
                                     app.voice.state(),
                                     openlibertas_core::voice::VoiceState::Recording
                                 ) {
-                                    app.voice_key_held = false;
                                     app.voice_status = Some("Recording cancelled".to_string());
                                     app.voice.cancel();
                                 } else if matches!(
@@ -565,54 +551,6 @@ async fn main() -> Result<()> {
                                     app.palette_next();
                                 } else {
                                     app.overlay = Overlay::None;
-                                }
-                            }
-                            KeyCode::Char(' ') | KeyCode::Null
-                                if app.voice.is_enabled()
-                                    && app.engine.input.buffer.is_empty()
-                                    && !app.voice_key_held =>
-                            {
-                                app.voice_key_held = true;
-                                if matches!(
-                                    app.voice.state(),
-                                    openlibertas_core::voice::VoiceState::Recording
-                                ) {
-                                    if !app.voice.has_min_recording_duration() {
-                                        app.voice_status =
-                                            Some("Recording too short — hold longer".to_string());
-                                        app.voice.cancel();
-                                    } else {
-                                        match app.voice.stop_recording() {
-                                            Ok(audio_bytes) => {
-                                                if audio_bytes.len() <= 44 {
-                                                    app.voice_status = Some(
-                                                        "No audio captured — check microphone"
-                                                            .to_string(),
-                                                    );
-                                                    app.voice.cancel();
-                                                } else {
-                                                    app.voice_status = None;
-                                                    let sender = event_stream.sender();
-                                                    let api_key = app.voice.config.api_key.clone();
-                                                    spawn_voice_transcription(api_key, audio_bytes, sender);
-                                                }
-                                            }
-                                            Err(e) => {
-                                                app.voice_status =
-                                                    Some(format!("Recording failed: {}", e));
-                                                app.voice.cancel();
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    if let Err(e) = app.voice.start_recording(false) {
-                                        app.voice_key_held = false;
-                                        app.voice_status =
-                                            Some(format!("Failed to start recording: {}", e));
-                                    } else {
-                                        app.voice_status =
-                                            Some("Recording... 🎙  (Space to stop)".to_string());
-                                    }
                                 }
                             }
                             KeyCode::Enter => {
