@@ -1,6 +1,6 @@
 pub mod tool_parser;
 
-use crate::backend::{FunctionDefinition, Message, ToolCall, ToolDefinition};
+use crate::domain::{FunctionCall, FunctionDefinition, Message, ToolCall, ToolDefinition};
 use crate::domain::Role;
 use crate::mcp::McpTool;
 
@@ -311,7 +311,7 @@ reasoning_content: None,
                 tool_calls: Some(vec![ToolCall {
                     id: "call_1".to_string(),
                     call_type: "function".to_string(),
-                    function: crate::backend::FunctionCall {
+                    function: FunctionCall {
                         name: "tool".to_string(),
                         arguments: "{}".to_string(),
                     },
@@ -324,7 +324,7 @@ reasoning_content: None,
         let tool_calls = vec![ToolCall {
             id: "call_1".to_string(),
             call_type: "function".to_string(),
-            function: crate::backend::FunctionCall {
+            function: FunctionCall {
                 name: "tool".to_string(),
                 arguments: "{}".to_string(),
             },
@@ -353,7 +353,7 @@ reasoning_content: None,
                 tool_calls: Some(vec![ToolCall {
                     id: "call_1".to_string(),
                     call_type: "function".to_string(),
-                    function: crate::backend::FunctionCall {
+                    function: FunctionCall {
                         name: "tool".to_string(),
                         arguments: "{}".to_string(),
                     },
@@ -366,7 +366,7 @@ reasoning_content: None,
         let tool_calls = vec![ToolCall {
             id: "call_1".to_string(),
             call_type: "function".to_string(),
-            function: crate::backend::FunctionCall {
+            function: FunctionCall {
                 name: "tool".to_string(),
                 arguments: "{}".to_string(),
             },

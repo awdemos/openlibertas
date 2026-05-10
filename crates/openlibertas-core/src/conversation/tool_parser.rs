@@ -1,6 +1,6 @@
 //! Fallback tool call parser for models that don't support native function calling.
 
-use crate::backend::{FunctionCall, ToolCall};
+use crate::domain::{FunctionCall, ToolCall};
 use serde_json::Value;
 
 pub fn parse_tool_calls_from_text(text: &str) -> Vec<ToolCall> {

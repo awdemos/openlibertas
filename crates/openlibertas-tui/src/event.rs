@@ -1,8 +1,8 @@
 use crossterm::event::Event as CEvent;
 use tokio::sync::mpsc;
 
-use openlibertas_core::backend::ChatEvent;
-use openlibertas_core::backend::Model;
+use openlibertas_core::domain::ChatEvent;
+use openlibertas_core::domain::Model;
 use openlibertas_core::domain::McpServerStatus;
 use openlibertas_core::mcp::McpTool;
 use std::collections::HashMap;

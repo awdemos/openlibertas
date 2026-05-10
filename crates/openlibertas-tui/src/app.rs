@@ -9,7 +9,7 @@
 
 use crate::markdown::MarkdownRenderer;
 use crate::theme::Theme;
-use openlibertas_core::backend::{Message, Model, ToolCall, ToolDefinition};
+use openlibertas_core::domain::{Message, Model, ToolCall, ToolDefinition};
 use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::commands::{find_model, get_model_suggestions};
 use openlibertas_core::config::Config;

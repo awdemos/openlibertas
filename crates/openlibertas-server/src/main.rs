@@ -14,7 +14,8 @@ use axum::{
 };
 use futures_util::stream::Stream;
 use openlibertas_core::{
-    backend::{registry::BackendRegistry, ChatEvent, Message},
+    backend::registry::BackendRegistry,
+    domain::{ChatEvent, Message},
     config::Config,
     domain::{ProviderId, Role},
     store::ConversationStore,

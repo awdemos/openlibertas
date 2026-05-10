@@ -1,4 +1,4 @@
-use crate::backend::{Message, ToolCall, ToolDefinition};
+use crate::domain::{Message, ToolCall, ToolDefinition};
 use crate::conversation::build_tool_result_messages;
 use crate::domain::{now_timestamp, Role, ToolExecutionResult};
 use crate::mcp::{McpClient, McpTool};

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::backend::Message;
+use crate::domain::Message;
 use crate::domain::Role;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -154,7 +154,7 @@ impl ConversationStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Message;
+use crate::domain::Message;
     use crate::domain::Role;
 
     #[test]

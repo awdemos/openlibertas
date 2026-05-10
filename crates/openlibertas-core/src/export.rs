@@ -1,4 +1,4 @@
-use crate::backend::Message;
+use crate::domain::Message;
 use crate::domain::Role;
 
 pub enum ExportFormat {

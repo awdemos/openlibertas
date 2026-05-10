@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-pub use crate::domain::*;
+use crate::domain::*;
 
 pub mod registry;
 

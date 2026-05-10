@@ -1,4 +1,4 @@
-use crate::backend::Message;
+use crate::domain::Message;
 
 #[derive(Debug, Clone)]
 pub struct SearchMatch {
@@ -51,7 +51,7 @@ pub fn search_messages(messages: &[Message], query: &str) -> Vec<SearchMatch> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Message;
+    use crate::domain::Message;
     use crate::domain::Role;
 
     fn create_message(content: &str) -> Message {

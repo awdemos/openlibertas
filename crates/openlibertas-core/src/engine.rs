@@ -6,7 +6,7 @@
 //! - `InputState` — buffer, cursor, history, autocomplete, selection
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
-use crate::backend::{Message, ToolCall, ToolDefinition};
+use crate::domain::{Message, ToolCall, ToolDefinition};
 use crate::conversation::{parse_file_context, ContextCompactor};
 use crate::domain::{now_timestamp, Role};
 use crate::env_context::EnvContext;
