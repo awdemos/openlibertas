@@ -24,7 +24,7 @@ mod ui;
 use crate::event::{Event, EventStream};
 use app::{App, Overlay, Screen, SlashCommand};
 use openlibertas_core::backend::registry::BackendRegistry;
-use openlibertas_core::backend::{Backend, ChatEvent, Message, OpenAiBackend};
+use openlibertas_core::backend::{ChatEvent, Message, OpenAiBackend};
 use openlibertas_core::config::Config;
 use openlibertas_core::domain::{Model, ProviderId, Role};
 use openlibertas_core::state::State;
@@ -678,10 +678,10 @@ async fn main() -> Result<()> {
                                             .or_else(|| registry.default_backend())
                                             .cloned()
                                             .unwrap_or_else(|| {
-                                                Arc::new(Backend::OpenAi(OpenAiBackend::new(
+                                                Arc::new(OpenAiBackend::new(
                                                     "".to_string(),
                                                     "".to_string(),
-                                                )))
+                                                ))
                                             });
                                         app.engine.chat.cancel_token =
                                             tokio_util::sync::CancellationToken::new();
@@ -919,10 +919,10 @@ async fn main() -> Result<()> {
                             .or_else(|| registry.default_backend())
                             .cloned()
                             .unwrap_or_else(|| {
-                                Arc::new(Backend::OpenAi(OpenAiBackend::new(
+                                Arc::new(OpenAiBackend::new(
                                     "".to_string(),
                                     "".to_string(),
-                                )))
+                                ))
                             });
                         app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
                         app.engine.tools.pending_tool_calls.clear();
@@ -1113,10 +1113,10 @@ async fn main() -> Result<()> {
                             .or_else(|| registry.default_backend())
                             .cloned()
                             .unwrap_or_else(|| {
-                                Arc::new(Backend::OpenAi(OpenAiBackend::new(
+                                Arc::new(OpenAiBackend::new(
                                     "".to_string(),
                                     "".to_string(),
-                                )))
+                                ))
                             });
                         app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
                         let stream_rx = backend.chat(

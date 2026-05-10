@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::backend::{Backend, OpenAiBackend};
+use crate::backend::OpenAiBackend;
 use crate::config::Provider;
 use crate::domain::ProviderId;
 
@@ -13,7 +13,7 @@ use crate::domain::ProviderId;
 /// - Default fallback to first registered provider
 /// - Enumeration of available providers
 pub struct BackendRegistry {
-    backends: HashMap<ProviderId, Arc<Backend>>,
+    backends: HashMap<ProviderId, Arc<OpenAiBackend>>,
 }
 
 impl BackendRegistry {
@@ -21,19 +21,19 @@ impl BackendRegistry {
         let mut backends = HashMap::new();
         for provider in providers {
             if provider.enabled {
-                let backend = Arc::new(Backend::OpenAi(OpenAiBackend::with_tools_and_params(
+                let backend = Arc::new(OpenAiBackend::with_tools_and_params(
                     provider.base_url.clone(),
                     provider.api_key.clone(),
                     provider.supports_tools,
                     provider.extra_params.clone(),
-                )));
+                ));
                 backends.insert(ProviderId::new(&provider.name), backend);
             }
         }
         Self { backends }
     }
 
-    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<Backend>> {
+    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<OpenAiBackend>> {
         self.backends.get(provider)
     }
 
@@ -61,7 +61,7 @@ impl BackendRegistry {
     ///
     /// Tries `preferred` name first (case-insensitive), then falls back
     /// to the default provider. Returns `None` if no backends exist.
-    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<Backend>> {
+    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<OpenAiBackend>> {
         if let Some(name) = preferred {
             let id = ProviderId::new(name);
             if let Some(backend) = self.backends.get(&id) {
@@ -71,7 +71,7 @@ impl BackendRegistry {
         self.default_backend()
     }
 
-    pub fn default_backend(&self) -> Option<&Arc<Backend>> {
+    pub fn default_backend(&self) -> Option<&Arc<OpenAiBackend>> {
         self.backends.values().next()
     }
 }

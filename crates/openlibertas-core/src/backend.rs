@@ -297,33 +297,8 @@ impl OpenAiBackend {
     }
 }
 
-#[derive(Clone)]
-pub enum Backend {
-    OpenAi(OpenAiBackend),
-}
-
-impl Backend {
-    pub async fn fetch_models(&self) -> Result<Vec<Model>> {
-        match self {
-            Backend::OpenAi(backend) => backend.fetch_models().await,
-        }
-    }
-
-    pub fn chat(
-        &self,
-        model: String,
-        messages: Vec<Message>,
-        max_tokens: u32,
-        tools: Option<Vec<ToolDefinition>>,
-        cancel_token: tokio_util::sync::CancellationToken,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
-        match self {
-            Backend::OpenAi(backend) => {
-                backend.chat(model, messages, max_tokens, tools, cancel_token)
-            }
-        }
-    }
-}
+// OpenAiBackend is the sole backend implementation.
+// New providers are handled via different base_url/config, not new backend types.
 
 #[cfg(test)]
 mod tests {
