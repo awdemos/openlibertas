@@ -33,6 +33,7 @@ struct AppState {
     current_provider: Arc<RwLock<ProviderId>>,
     store: Option<ConversationStore>,
     http_client: reqwest::Client,
+    api_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -125,6 +126,24 @@ fn err(
             error: Some(msg.into()),
         }),
     )
+}
+
+async fn auth_middleware(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> impl IntoResponse {
+    if let Some(expected) = &state.api_key {
+        let auth_header = req
+            .headers()
+            .get("authorization")
+            .and_then(|h| h.to_str().ok());
+        let provided = auth_header.and_then(|h| h.strip_prefix("Bearer "));
+        if provided != Some(expected) {
+            return err(StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response();
+        }
+    }
+    next.run(req).await
 }
 
 async fn health_check() -> impl IntoResponse {
@@ -627,6 +646,8 @@ async fn main() -> Result<()> {
         .map(|p| ProviderId::new(&p.name))
         .unwrap_or_else(|| ProviderId::new("local"));
 
+    let api_key = std::env::var("SERVER_API_KEY").ok();
+
     let state = AppState {
         registry,
         config,
@@ -635,21 +656,27 @@ async fn main() -> Result<()> {
         current_provider: Arc::new(RwLock::new(default_provider)),
         store,
         http_client: reqwest::Client::new(),
+        api_key,
     };
 
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/api/status", get(get_status))
-        .route("/api/history", get(get_history))
-        .route("/api/clear", post(clear_conversation))
-        .route("/api/chat", post(post_chat))
-        .route("/api/chat/stream", post(stream_chat))
-        .route("/api/sessions", get(list_sessions))
-        .route("/api/session/save", post(save_session))
-        .route("/api/session/load", post(load_session))
-        .route("/api/session/delete", post(delete_session))
-        .route("/api/voice/stt", post(voice_stt))
-        .route("/api/voice/tts", post(voice_tts))
+        .nest(
+            "/api",
+            Router::new()
+                .route("/status", get(get_status))
+                .route("/history", get(get_history))
+                .route("/clear", post(clear_conversation))
+                .route("/chat", post(post_chat))
+                .route("/chat/stream", post(stream_chat))
+                .route("/sessions", get(list_sessions))
+                .route("/session/save", post(save_session))
+                .route("/session/load", post(load_session))
+                .route("/session/delete", post(delete_session))
+                .route("/voice/stt", post(voice_stt))
+                .route("/voice/tts", post(voice_tts))
+                .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware)),
+        )
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
