@@ -87,6 +87,7 @@ pub struct App {
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
     pub last_voice_key_at: Option<Instant>,
+    pub voice_activity_at: Option<Instant>,
 }
 
 impl App {
@@ -139,6 +140,7 @@ impl App {
             last_click_time: None,
             last_click_pos: None,
             last_voice_key_at: None,
+            voice_activity_at: None,
         }
     }
 

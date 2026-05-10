@@ -212,6 +212,35 @@ async fn main() -> Result<()> {
             }
         }
 
+        // Activity timeout fallback: if push-to-talk is active and no key
+        // activity for 500ms, assume the key was released and stop recording.
+        // This handles terminals that don't send Release events reliably.
+        if app.voice.push_to_talk_active
+            && matches!(
+                app.voice.state(),
+                openlibertas_core::voice::VoiceState::Recording
+            )
+            && app
+                .voice_activity_at
+                .is_some_and(|t| t.elapsed().as_millis() >= 500)
+        {
+            info!("Voice activity timeout: stopping recording");
+            app.voice_status = None;
+            match app.voice.stop_recording() {
+                Ok(audio_bytes) => {
+                    if audio_bytes.len() > 44 {
+                        let sender = event_stream.sender();
+                        let api_key = app.voice.config.api_key.clone();
+                        spawn_voice_transcription(api_key, audio_bytes, sender);
+                    }
+                }
+                Err(e) => {
+                    app.voice_status = Some(format!("Recording failed: {}", e));
+                    app.voice.cancel();
+                }
+            }
+        }
+
         if mouse_captured != app.mouse_enabled {
             mouse_captured = app.mouse_enabled;
             if mouse_captured {
@@ -273,6 +302,15 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                }
+                Event::Input(CEvent::Key(key))
+                    if key.kind == KeyEventKind::Repeat
+                        && (key.code == KeyCode::Char(' ') || key.code == KeyCode::Null)
+                        && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    // Repeat events while holding Ctrl+Space keep the activity timer alive
+                    // so the main-loop timeout doesn't stop recording prematurely.
+                    app.voice_activity_at = Some(Instant::now());
                 }
                 Event::Input(CEvent::Mouse(mouse)) => {
                     use crossterm::event::{MouseButton, MouseEventKind};
@@ -451,8 +489,7 @@ async fn main() -> Result<()> {
                                 }
                                 app.last_voice_key_at = Some(Instant::now());
 
-                                // Intentionally no toggle-off on press: avoids terminal
-                                // autorepeat stopping the recording prematurely.
+                                app.voice_activity_at = Some(Instant::now());
                                 info!("Ctrl+Space: starting recording");
                                 if let Err(e) = app.voice.start_recording(true) {
                                     warn!("Failed to start recording: {}", e);
