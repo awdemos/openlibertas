@@ -78,6 +78,23 @@ fn attach_chat_stream(
     event_stream.attach_chat_stream(stream_rx);
 }
 
+fn spawn_voice_transcription(
+    api_key: Option<openlibertas_core::config::SecretString>,
+    audio_bytes: Vec<u8>,
+    sender: tokio::sync::mpsc::UnboundedSender<Event>,
+) {
+    tokio::spawn(async move {
+        match openlibertas_core::voice::stt_transcribe(api_key, audio_bytes).await {
+            Ok(text) => {
+                let _ = sender.send(Event::VoiceTranscription(text));
+            }
+            Err(e) => {
+                let _ = sender.send(Event::VoiceError(e.to_string()));
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     TerminalGuard::setup_panic_hook();
@@ -181,18 +198,7 @@ async fn main() -> Result<()> {
                     if audio_bytes.len() > 44 {
                         let sender = event_stream.sender();
                         let api_key = app.voice.config.api_key.clone();
-                        tokio::spawn(async move {
-                            match openlibertas_core::voice::stt_transcribe(api_key, audio_bytes)
-                                .await
-                            {
-                                Ok(text) => {
-                                    let _ = sender.send(Event::VoiceTranscription(text));
-                                }
-                                Err(e) => {
-                                    let _ = sender.send(Event::VoiceError(e.to_string()));
-                                }
-                            }
-                        });
+                        spawn_voice_transcription(api_key, audio_bytes, sender);
                     }
                 }
                 Err(e) => {
@@ -246,23 +252,7 @@ async fn main() -> Result<()> {
                                         } else {
                                             let sender = event_stream.sender();
                                             let api_key = app.voice.config.api_key.clone();
-                                            tokio::spawn(async move {
-                                                match openlibertas_core::voice::stt_transcribe(
-                                                    api_key,
-                                                    audio_bytes,
-                                                )
-                                                .await
-                                                {
-                                                    Ok(text) => {
-                                                        let _ = sender
-                                                            .send(Event::VoiceTranscription(text));
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = sender
-                                                            .send(Event::VoiceError(e.to_string()));
-                                                    }
-                                                }
-                                            });
+                                            spawn_voice_transcription(api_key, audio_bytes, sender);
                                         }
                                     }
                                     Err(e) => {
@@ -467,22 +457,7 @@ async fn main() -> Result<()> {
                                             } else {
                                                 let sender = event_stream.sender();
                                                 let api_key = app.voice.config.api_key.clone();
-                                                tokio::spawn(async move {
-                                                    match openlibertas_core::voice::stt_transcribe(
-                                                        api_key, audio_bytes,
-                                                    )
-                                                    .await
-                                                    {
-                                                        Ok(text) => {
-                                                            let _ = sender
-                                                                .send(Event::VoiceTranscription(text));
-                                                        }
-                                                        Err(e) => {
-                                                            let _ = sender
-                                                                .send(Event::VoiceError(e.to_string()));
-                                                        }
-                                                    }
-                                                });
+                                                spawn_voice_transcription(api_key, audio_bytes, sender);
                                             }
                                         }
                                         Err(e) => {
@@ -619,12 +594,7 @@ async fn main() -> Result<()> {
                                                     app.voice_status = None;
                                                     let sender = event_stream.sender();
                                                     let api_key = app.voice.config.api_key.clone();
-                                                    tokio::spawn(async move {
-                                                        match openlibertas_core::voice::stt_transcribe(api_key, audio_bytes).await {
-                                                            Ok(text) => { let _ = sender.send(Event::VoiceTranscription(text)); }
-                                                            Err(e) => { let _ = sender.send(Event::VoiceError(e.to_string())); }
-                                                        }
-                                                    });
+                                                    spawn_voice_transcription(api_key, audio_bytes, sender);
                                                 }
                                             }
                                             Err(e) => {
