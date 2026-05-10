@@ -33,6 +33,51 @@ use openlibertas_core::state::State;
 use terminal::TerminalGuard;
 use unicode_width::UnicodeWidthStr;
 
+fn attach_chat_stream(
+    app: &mut App,
+    registry: &BackendRegistry,
+    event_stream: &mut EventStream,
+) {
+    use openlibertas_core::engine::AgentStatus;
+    let messages = app.engine.chat.messages.clone();
+    let messages = if app.engine.agents.status == AgentStatus::Active {
+        let compacted = app.engine.chat.compactor.compact(&messages);
+        if compacted.len() < messages.len() {
+            app.add_system_message(format!(
+                "[Context compacted: {} → {} messages]",
+                messages.len(),
+                compacted.len()
+            ));
+        }
+        compacted
+    } else {
+        messages
+    };
+    let model = app.models.current.clone().unwrap_or_default();
+    let max_tokens = app.config.max_tokens;
+    let tools = app.get_tools_for_request();
+    let backend = registry
+        .get(&app.models.provider)
+        .or_else(|| registry.default_backend())
+        .cloned()
+        .unwrap_or_else(|| {
+            Arc::new(OpenAiBackend::new(
+                "".to_string(),
+                openlibertas_core::config::SecretString::new("".to_string()),
+            ))
+        });
+    app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
+    app.engine.tools.pending_tool_calls.clear();
+    let stream_rx = backend.chat(
+        model,
+        messages,
+        max_tokens,
+        tools,
+        app.engine.chat.cancel_token.clone(),
+    );
+    event_stream.attach_chat_stream(stream_rx);
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     TerminalGuard::setup_panic_hook();
@@ -45,7 +90,7 @@ async fn main() -> Result<()> {
     let mut app = App::new(config.clone());
     let registry = BackendRegistry::new(&config.providers);
 
-    let (event_stream, mut event_rx) = EventStream::new();
+    let (mut event_stream, mut event_rx) = EventStream::new();
 
     for provider in &config.providers {
         if !provider.enabled {
@@ -652,53 +697,12 @@ async fn main() -> Result<()> {
                                         {
                                             app.start_agent_loop();
                                         }
-                        let messages = app.push_user_message();
+                        let _ = app.push_user_message();
                         let _ = app.autosave();
-
-                        let messages = if app.engine.agents.status
-                            == openlibertas_core::engine::AgentStatus::Active
-                        {
-                                            let compacted =
-                                                app.engine.chat.compactor.compact(&messages);
-                                            if compacted.len() < messages.len() {
-                                                app.add_system_message(format!(
-                                                    "[Context compacted: {} → {} messages]",
-                                                    messages.len(),
-                                                    compacted.len()
-                                                ));
-                                            }
-                                            compacted
-                                        } else {
-                                            messages
-                                        };
-
-                                        let model = app.models.current.clone().unwrap_or_default();
-                                        let max_tokens = app.config.max_tokens;
-                                        let tools = app.get_tools_for_request();
-                                        let backend = registry
-                                            .get(&app.models.provider)
-                                            .or_else(|| registry.default_backend())
-                                            .cloned()
-                                            .unwrap_or_else(|| {
-                                Arc::new(OpenAiBackend::new(
-                                    "".to_string(),
-                                    openlibertas_core::config::SecretString::new("".to_string()),
-                                ))
-                                            });
-                                        app.engine.chat.cancel_token =
-                                            tokio_util::sync::CancellationToken::new();
-                                        app.engine.tools.pending_tool_calls.clear();
-                                        let stream_rx = backend.chat(
-                                            model,
-                                            messages,
-                                            max_tokens,
-                                            tools,
-                                            app.engine.chat.cancel_token.clone(),
-                                        );
-                                        event_stream.attach_chat_stream(stream_rx);
-                                        app.engine.input.buffer.clear();
-                                        app.engine.input.cursor_pos = 0;
-                                        app.engine.input.selection_anchor = None;
+                        attach_chat_stream(&mut app, &registry, &mut event_stream);
+                        app.engine.input.buffer.clear();
+                        app.engine.input.cursor_pos = 0;
+                        app.engine.input.selection_anchor = None;
                                     }
                                 }
                             }
@@ -895,47 +899,9 @@ async fn main() -> Result<()> {
                         {
                             app.start_agent_loop();
                         }
-                        let messages = app.push_user_message();
+                        let _ = app.push_user_message();
                         let _ = app.autosave();
-
-                        let messages = if app.engine.agents.status
-                            == openlibertas_core::engine::AgentStatus::Active
-                        {
-                            let compacted = app.engine.chat.compactor.compact(&messages);
-                            if compacted.len() < messages.len() {
-                                app.add_system_message(format!(
-                                    "[Context compacted: {} → {} messages]",
-                                    messages.len(),
-                                    compacted.len()
-                                ));
-                            }
-                            compacted
-                        } else {
-                            messages
-                        };
-                        let model = app.models.current.clone().unwrap_or_default();
-                        let max_tokens = app.config.max_tokens;
-                        let tools = app.get_tools_for_request();
-                        let backend = registry
-                            .get(&app.models.provider)
-                            .or_else(|| registry.default_backend())
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                Arc::new(OpenAiBackend::new(
-                                    "".to_string(),
-                                    openlibertas_core::config::SecretString::new("".to_string()),
-                                ))
-                            });
-                        app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
-                        app.engine.tools.pending_tool_calls.clear();
-                        let stream_rx = backend.chat(
-                            model,
-                            messages,
-                            max_tokens,
-                            tools,
-                            app.engine.chat.cancel_token.clone(),
-                        );
-                        event_stream.attach_chat_stream(stream_rx);
+                        attach_chat_stream(&mut app, &registry, &mut event_stream);
                     }
                 }
                 Event::VoiceError(err) => {
