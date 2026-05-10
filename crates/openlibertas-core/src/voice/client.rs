@@ -13,9 +13,9 @@ pub struct ElevenLabsClient {
 }
 
 impl ElevenLabsClient {
-    pub fn new(api_key: crate::config::SecretString, voice_id: String) -> Result<Self, crate::voice::VoiceError> {
+    pub fn new(api_key: crate::config::SecretString, voice_id: String) -> Result<Self, crate::voice::error::VoiceError> {
         if api_key.expose_secret().is_empty() {
-            return Err(crate::voice::VoiceError::MissingApiKey);
+            return Err(crate::voice::error::VoiceError::MissingApiKey);
         }
         Ok(Self {
             api_key,
@@ -26,13 +26,13 @@ impl ElevenLabsClient {
 
     /// Transcribe audio bytes to text using ElevenLabs STT.
     /// Audio should be in WAV, MP3, or other supported format.
-    pub async fn transcribe(&self, audio_bytes: Vec<u8>) -> Result<String, crate::voice::VoiceError> {
+    pub async fn transcribe(&self, audio_bytes: Vec<u8>) -> Result<String, crate::voice::error::VoiceError> {
         let url = format!("{}/speech-to-text", ELEVENLABS_API_BASE);
 
         let file_part = multipart::Part::bytes(audio_bytes)
             .file_name("audio.wav")
             .mime_str("audio/wav")
-            .map_err(|e| crate::voice::VoiceError::SerializationError(e.to_string()))?;
+            .map_err(|e| crate::voice::error::VoiceError::SerializationError(e.to_string()))?;
 
         let model_part = multipart::Part::text(DEFAULT_STT_MODEL.to_string());
 
@@ -47,7 +47,7 @@ impl ElevenLabsClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| crate::voice::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -55,7 +55,7 @@ impl ElevenLabsClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(crate::voice::VoiceError::SttError(format!(
+            return Err(crate::voice::error::VoiceError::SttError(format!(
                 "HTTP {}: {}",
                 status, body
             )));
@@ -64,16 +64,16 @@ impl ElevenLabsClient {
         let json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| crate::voice::VoiceError::SerializationError(e.to_string()))?;
+            .map_err(|e| crate::voice::error::VoiceError::SerializationError(e.to_string()))?;
 
         let text = json.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-            crate::voice::VoiceError::SttError("Missing 'text' in STT response".to_string())
+            crate::voice::error::VoiceError::SttError("Missing 'text' in STT response".to_string())
         })?;
 
         Ok(text.to_string())
     }
 
-    pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>, crate::voice::VoiceError> {
+    pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>, crate::voice::error::VoiceError> {
         let url = format!(
             "{}/text-to-speech/{}/stream?output_format=mp3_44100_128",
             ELEVENLABS_API_BASE, self.voice_id
@@ -92,7 +92,7 @@ impl ElevenLabsClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| crate::voice::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -100,7 +100,7 @@ impl ElevenLabsClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(crate::voice::VoiceError::TtsError(format!(
+            return Err(crate::voice::error::VoiceError::TtsError(format!(
                 "HTTP {}: {}",
                 status, body
             )));
@@ -109,7 +109,7 @@ impl ElevenLabsClient {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| crate::voice::VoiceError::NetworkError(e.to_string()))?;
+            .map_err(|e| crate::voice::error::VoiceError::NetworkError(e.to_string()))?;
 
         Ok(bytes.to_vec())
     }
@@ -124,7 +124,7 @@ mod tests {
         let result = ElevenLabsClient::new(crate::config::SecretString::new("".to_string()), "voice-id".to_string());
         assert!(matches!(
             result,
-            Err(crate::voice::VoiceError::MissingApiKey)
+            Err(crate::voice::error::VoiceError::MissingApiKey)
         ));
     }
 
