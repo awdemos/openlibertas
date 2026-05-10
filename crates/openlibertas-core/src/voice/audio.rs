@@ -190,7 +190,6 @@ impl AudioRecorder {
         }
     }
 
-    /// Returns a clone of the shared buffer for external access.
     pub fn buffer(&self) -> Arc<Mutex<Vec<f32>>> {
         Arc::clone(&self.buffer)
     }
@@ -203,8 +202,6 @@ impl AudioRecorder {
         self.channels
     }
 
-    /// Start recording from the selected or default input device.
-    /// Returns a cpal stream that must be kept alive.
     pub fn start(&mut self) -> Result<cpal::Stream, super::VoiceError> {
         let host = cpal::default_host();
         let device = match &self.device_name {

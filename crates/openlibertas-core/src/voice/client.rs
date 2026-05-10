@@ -73,8 +73,6 @@ impl ElevenLabsClient {
         Ok(text.to_string())
     }
 
-    /// Convert text to speech using ElevenLabs TTS streaming API.
-    /// Returns raw MP3 audio bytes.
     pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>, super::VoiceError> {
         let url = format!(
             "{}/text-to-speech/{}/stream?output_format=mp3_44100_128",

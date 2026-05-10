@@ -85,6 +85,7 @@ impl Default for AgentState {
     }
 }
 
+#[derive(Default)]
 pub struct ChatEngine {
     pub chat: ChatState,
     pub input: InputState,
@@ -95,23 +96,9 @@ pub struct ChatEngine {
     pub env_context: Option<EnvContext>,
 }
 
-impl Default for ChatEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ChatEngine {
     pub fn new() -> Self {
-        Self {
-            chat: ChatState::default(),
-            input: InputState::default(),
-            agents: AgentState::default(),
-            tools: ToolRegistry::default(),
-            system_prompt: None,
-            agent_prompt: None,
-            env_context: None,
-        }
+        Self::default()
     }
 
     pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {

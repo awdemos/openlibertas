@@ -84,7 +84,6 @@ pub struct Model {
 
 impl Model {
     /// Infer capabilities from model name patterns.
-    /// Returns (supports_tools, supports_voice).
     pub fn infer_capabilities(id: &str) -> (bool, bool) {
         let lower = id.to_lowercase();
 

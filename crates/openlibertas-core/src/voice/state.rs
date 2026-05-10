@@ -18,7 +18,6 @@ pub enum VoiceState {
 }
 
 impl VoiceState {
-    /// Returns a human-readable label for display in the UI.
     pub fn label(&self) -> &'static str {
         match self {
             VoiceState::Idle => "Idle",
@@ -31,8 +30,6 @@ impl VoiceState {
         }
     }
 
-    /// Returns true if the voice system is actively doing something
-    /// (recording, processing, or playing).
     pub fn is_active(&self) -> bool {
         matches!(
             self,

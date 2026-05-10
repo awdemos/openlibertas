@@ -192,10 +192,7 @@ impl OpenAiBackend {
                 }
             }
 
-            let Some(resp) = resp else {
-                let _ = tx.send(ChatEvent::Error("[Unknown error]".to_string()));
-                return;
-            };
+            let resp = resp.expect("loop invariant: resp always Some after break");
 
             let mut stream = resp.bytes_stream();
             let mut buf: Vec<u8> = Vec::new();
