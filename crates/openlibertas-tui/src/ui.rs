@@ -1547,6 +1547,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
             vec![
                 ("/model [name]", "Switch model or open picker"),
                 ("/theme [name]", "Change color theme"),
+                ("/temp [0.0-2.0]", "Set LLM temperature"),
             ],
         ),
         (

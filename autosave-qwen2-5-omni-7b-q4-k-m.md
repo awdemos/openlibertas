@@ -2,67 +2,63 @@
 
 **Model:** qwen2.5-omni-7b-q4-k-m
 
-**Date:** 2026-05-10T22:45:36.384238728Z
-
----
-
-## System
-
-Voice mode enabled. Hold Ctrl+Space to record, release to send.
-
----
-
-## System
-
-[Voice] Recording stopped — maximum duration reached.
+**Date:** 2026-05-10T23:15:21.463201082Z
 
 ---
 
 ## User
 
-Which is the ones that you like the best? Calculus books. There are so many calculus books out there, and it's really hard for me to say what-
+hi
 
 ---
 
 ## qwen2.5-omni-7b-q4-k-m
 
-It's great that you're interested in calculus books! There are indeed many excellent ones out there. Some popular and highly recommended calculus books include:
-
-1. **"Calculus" by Michael Spivak** - This book is known for its rigorous approach and is highly regarded by many students and mathematicians. It's excellent for students who want to build a strong foundation in calculus and who are comfortable with a challenging and detailed approach.
-
-2. **"Calculus" by James Stewart** - This book is widely used in many calculus courses and is known for its clear explanations and numerous examples. It's a good choice for students who are looking for a balance between theory and practice.
-
-3. **"Calculus" by Thomas Calculus** - This book is another popular choice in many calculus courses. It's known for its clear and concise explanations and is often used in engineering and science courses.
-
-4. **"Calculus" by Ron Larson and Bruce H. Edwards** - This book is known for its clear and accessible explanations. It's a good choice for students who are looking for a book that is easy to follow and that provides a good balance between theory and practice.
-
-5. **"Calculus" by H. Anton, B. Davis, and B. Davis** - This book is known for its clear and concise explanations and is a good choice for students who are looking for a book that is easy to follow and that provides a good balance between theory and practice.
-
-Each of these books has its own strengths, so the best one for you will depend on your learning style and the specific needs of your course. If you have a specific area of calculus that you're interested in, you might want to look for a book that focuses on that area.
+Hello! How can I assist you today?
 
 ---
 
 ## User
 
-Which is the ones that you like the best? Calculus books. There are so many calculus books out there, and it's really hard for me to say what-
+run ls command and print findings
 
 ---
 
 ## qwen2.5-omni-7b-q4-k-m
 
-It's great that you're interested in calculus books! There are indeed many excellent ones out there. Some popular and highly recommended calculus books include:
+I'm sorry, but I can't execute commands on your system. I'm here to assist you with information and answer your questions. If you have any questions or need help with something, feel free to ask!
 
-1. **"Calculus" by Michael Spivak** - This book is known for its rigorous approach and is highly regarded by many students and mathematicians. It's excellent for students who want to build a strong foundation in calculus and who are comfortable with a challenging and detailed approach.
+---
 
-2. **"Calculus" by James Stewart** - This book is widely used in many calculus courses and is known for its clear explanations and numerous examples. It's a good choice for students who are looking for a balance between theory and practice.
+## System
 
-3. **"Calculus" by Thomas Calculus** - This book is another popular choice in many calculus courses. It's known for its clear and concise explanations and is often used in engineering and science courses.
+Available input devices:
 
-4. **"Calculus" by Ron Larson and Bruce H. Edwards** - This book is known for its clear and accessible explanations. It's a good choice for students who are looking for a book that is easy to follow and that provides a good balance between theory and practice.
+  1. default [default] — 44100Hz, 2ch, F32
 
-5. **"Calculus" by H. Anton, B. Davis, and B. Davis** - This book is known for its clear and concise explanations and is a good choice for students who are looking for a book that is easy to follow and that provides a good balance between theory and practice.
+  2. front:CARD=Speaker,DEV=0 — 48000Hz, 2ch, I16
 
-Each of these books has its own strengths, so the best one for you will depend on your learning style and the specific needs of your course. If you have a specific area of calculus that you're interested in, you might want to look for a book that focuses on that area.
+  3. iec958:CARD=Speaker,DEV=0 — 48000Hz, 2ch, I16
+
+  4. pipewire — 44100Hz, 2ch, F32
+
+  5. surround40:CARD=Speaker,DEV=0 — 48000Hz, 2ch, I16
+
+  6. sysdefault:CARD=Speaker — 44100Hz, 2ch, F32
+
+Use /voice_device <name> to select a device.
+
+---
+
+## User
+
+ls
+
+---
+
+## qwen2.5-omni-7b-q4-k-m
+
+It seems like you're trying to run the `ls` command, but I don't have the ability to execute commands on your system. I can, however, help you understand what the `ls` command does or provide information on how to use it. If you have any specific questions or need help with something else, feel free to ask!
 
 ---
 

@@ -75,6 +75,7 @@ fn attach_chat_stream(
         max_tokens,
         tools,
         app.engine.chat_mut().cancel_token.clone(),
+        app.temperature,
     );
     event_stream.attach_chat_stream(stream_rx);
 }
@@ -1002,7 +1003,8 @@ async fn main() -> Result<()> {
                             tool_messages,
                             max_tokens,
                             tools,
-        app.engine.chat_mut().cancel_token.clone(),
+                            app.engine.chat_mut().cancel_token.clone(),
+                            app.temperature,
                         );
                         event_stream.attach_chat_stream(stream_rx);
                     } else {

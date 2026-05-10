@@ -117,14 +117,19 @@ impl OpenAiBackend {
         max_tokens: u32,
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
+        temperature: Option<f32>,
     ) -> mpsc::UnboundedReceiver<ChatEvent> {
+        let mut extra_params = self.extra_params.clone().unwrap_or_default();
+        if let Some(temp) = temperature {
+            extra_params.insert("temperature".to_string(), serde_json::json!(temp));
+        }
         let req = ChatRequest {
             model: model.clone(),
             messages: messages.clone(),
             stream: true,
             max_tokens: Some(max_tokens),
             tools: if self.supports_tools { tools } else { None },
-            extra_params: self.extra_params.clone(),
+            extra_params: Some(extra_params),
         };
 
         let (tx, rx) = mpsc::unbounded_channel();

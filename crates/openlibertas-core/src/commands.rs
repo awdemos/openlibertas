@@ -10,6 +10,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
     // Config
     "/model",
     "/theme",
+    "/temp",
     // Session
     "/new",
     "/clear",
@@ -43,7 +44,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
 pub fn command_category(cmd: &str) -> &'static str {
     match cmd {
         "/help" | "/version" => "Info",
-        "/model" | "/theme" => "Config",
+        "/model" | "/theme" | "/temp" => "Config",
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
         | "/title" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
@@ -64,6 +65,7 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/version" => "Show version info",
         "/model" => "Switch model (or open picker)",
         "/theme" => "Change color theme",
+        "/temp" => "Set LLM temperature (0.0-2.0)",
         "/new" => "Start new session",
         "/clear" => "Clear conversation history",
         "/save" => "Save session to disk",
@@ -96,6 +98,7 @@ pub enum SlashCommand {
     Version,
     Model(String),
     Theme(String),
+    Temperature(f32),
     New,
     Clear,
     Save(String),
@@ -163,6 +166,13 @@ impl SlashCommand {
                 }
             }
             "/mouse" => Some(SlashCommand::Mouse),
+            "/temp" => {
+                if parts.len() > 1 {
+                    parts[1].parse::<f32>().ok().map(SlashCommand::Temperature)
+                } else {
+                    Some(SlashCommand::Temperature(0.7))
+                }
+            }
             "/save" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Save(parts[1..].join(" ")))
@@ -311,7 +321,7 @@ pub fn build_help_message() -> String {
 
     let categories = [
         ("Info", &["/help", "/version"][..]),
-        ("Config", &["/model", "/theme"][..]),
+        ("Config", &["/model", "/theme", "/temp"][..]),
         (
             "Session",
             &[

@@ -88,6 +88,7 @@ pub struct App {
     pub last_click_pos: Option<(u16, u16)>,
     pub last_voice_key_at: Option<Instant>,
     pub voice_activity_at: Option<Instant>,
+    pub temperature: Option<f32>,
 }
 
 impl App {
@@ -146,6 +147,7 @@ impl App {
             last_click_pos: None,
             last_voice_key_at: None,
             voice_activity_at: None,
+            temperature: None,
         }
     }
 
@@ -571,6 +573,10 @@ impl App {
                     }
                     Some(msg)
                 }
+            }
+            SlashCommand::Temperature(temp) => {
+                self.temperature = Some(temp);
+                Some(format!("Temperature set to: {}", temp))
             }
             SlashCommand::Mouse => {
                 self.mouse_enabled = !self.mouse_enabled;

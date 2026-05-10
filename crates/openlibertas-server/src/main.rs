@@ -233,7 +233,7 @@ async fn post_chat(
     };
 
     let cancel_token = CancellationToken::new();
-    let mut stream = backend.chat(model, messages, state.config.max_tokens, None, cancel_token);
+    let mut stream = backend.chat(model, messages, state.config.max_tokens, None, cancel_token, None);
 
     let mut response_text = String::new();
     let mut tool_calls = Vec::new();
@@ -340,6 +340,7 @@ async fn stream_chat(
             state_clone.config.max_tokens,
             None,
             cancel_token,
+            None,
         );
 
         let mut response_text = String::new();
