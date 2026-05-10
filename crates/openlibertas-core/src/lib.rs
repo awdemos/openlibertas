@@ -23,7 +23,7 @@ pub mod tools;
 pub mod voice;
 
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
-pub use config::{Config, Provider};
+pub use config::{Config, Provider, SecretString};
 pub use domain::{
     ChatEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
 };

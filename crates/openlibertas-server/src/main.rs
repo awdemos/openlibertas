@@ -15,9 +15,8 @@ use axum::{
 use futures_util::stream::Stream;
 use openlibertas_core::{
     backend::registry::BackendRegistry,
-    domain::{ChatEvent, Message},
-    config::Config,
-    domain::{ProviderId, Role},
+    config::{Config, SecretString},
+    domain::{ChatEvent, Message, ProviderId, Role},
     store::ConversationStore,
 };
 use serde::{Deserialize, Serialize};
@@ -34,7 +33,7 @@ struct AppState {
     current_provider: Arc<RwLock<ProviderId>>,
     store: Option<ConversationStore>,
     http_client: reqwest::Client,
-    api_key: Option<String>,
+    api_key: Option<SecretString>,
 }
 
 #[derive(Serialize)]
@@ -140,7 +139,7 @@ async fn auth_middleware(
             .get("authorization")
             .and_then(|h| h.to_str().ok());
         let provided = auth_header.and_then(|h| h.strip_prefix("Bearer "));
-        if provided != Some(expected) {
+        if provided != Some(expected.expose_secret()) {
             return err(StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response();
         }
     }
@@ -647,7 +646,7 @@ async fn main() -> Result<()> {
         .map(|p| ProviderId::new(&p.name))
         .unwrap_or_else(|| ProviderId::new("local"));
 
-    let api_key = std::env::var("SERVER_API_KEY").ok();
+    let api_key = std::env::var("SERVER_API_KEY").ok().map(SecretString::new);
 
     let state = AppState {
         registry,
@@ -678,7 +677,14 @@ async fn main() -> Result<()> {
                 .route("/voice/tts", post(voice_tts))
                 .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware)),
         )
-        .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(
+            tower_http::cors::CorsLayer::new()
+                .allow_origin(tower_http::cors::AllowOrigin::exact(
+                    "http://localhost:3000".parse().unwrap(),
+                ))
+                .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]),
+        )
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
