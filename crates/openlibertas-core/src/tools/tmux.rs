@@ -1,7 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::Deserialize;
 use serde_json::Value;
-use std::process::Stdio;
 
 use crate::tools::BuiltinTool;
 
@@ -81,24 +80,7 @@ pub fn tmux(args: Value) -> Result<String> {
         _ => {}
     }
 
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let output = cmd
-        .output()
-        .with_context(|| format!("Failed to run tmux {}", args.subcommand))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    let mut result = String::new();
-    if !stdout.is_empty() {
-        result.push_str(&stdout);
-    }
-    if !stderr.is_empty() {
-        result.push_str(&format!("stderr: {}\n", stderr));
-    }
-
-    Ok(result.trim().to_string())
+    crate::tools::run_command(&mut cmd).map(|s| s.trim().to_string())
 }
 
 #[cfg(test)]

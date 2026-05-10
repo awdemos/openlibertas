@@ -1,6 +1,7 @@
 use crate::domain::{FunctionDefinition, ToolDefinition};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
+use std::process::Command;
 
 pub mod agent;
 pub mod filesystem;
@@ -83,6 +84,28 @@ pub fn builtin_tools() -> Vec<BuiltinTool> {
         git::git_tool(),
         tmux::tmux_tool(),
     ]
+}
+
+pub fn run_command(cmd: &mut Command) -> Result<String> {
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output = cmd.output().with_context(|| "Failed to run command")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    let mut result = String::new();
+    if !stdout.is_empty() {
+        result.push_str(&stdout);
+    }
+    if !stderr.is_empty() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str("stderr: ");
+        result.push_str(&stderr);
+    }
+    Ok(result)
 }
 
 /// Check if a tool name is a built-in tool.
