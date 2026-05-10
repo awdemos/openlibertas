@@ -6,13 +6,49 @@ const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
 
+/// A string that redacts its contents in Debug, Display, and serde::Serialize.
+/// Use `expose_secret()` to access the plaintext value for authentication.
+#[derive(Clone, Deserialize, PartialEq, Default)]
+pub struct SecretString(String);
+
+impl SecretString {
+    pub fn new(s: String) -> Self {
+        Self(s)
+    }
+
+    pub fn expose_secret(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SecretString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+impl std::fmt::Display for SecretString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+impl Serialize for SecretString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str("[REDACTED]")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Provider {
     pub name: String,
     pub base_url: String,
     #[serde(default)]
-    pub api_key: String,
+    pub api_key: SecretString,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_supports_tools")]
@@ -30,7 +66,7 @@ impl Provider {
         Self {
             name: "local".to_string(),
             base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: DEFAULT_API_KEY.to_string(),
+            api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
             supports_tools: true,
             extra_params: None,
@@ -47,7 +83,7 @@ pub struct Config {
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
     #[serde(default)]
-    pub elevenlabs_api_key: Option<String>,
+    pub elevenlabs_api_key: Option<SecretString>,
     #[serde(default)]
     pub elevenlabs_voice_id: Option<String>,
     #[serde(default = "default_models_dir")]
@@ -117,7 +153,7 @@ impl Config {
         }
         if let Ok(key) = std::env::var("OPENLIBERTAS_API_KEY") {
             if let Some(first) = config.providers.first_mut() {
-                first.api_key = key;
+                first.api_key = SecretString::new(key);
             }
         }
         if let Ok(model) = std::env::var("OPENLIBERTAS_MODEL") {
@@ -129,7 +165,7 @@ impl Config {
             }
         }
         if let Ok(key) = std::env::var("ELEVENLABS_API_KEY") {
-            config.elevenlabs_api_key = Some(key);
+            config.elevenlabs_api_key = Some(SecretString::new(key));
         }
         if let Ok(voice_id) = std::env::var("ELEVENLABS_VOICE_ID") {
             config.elevenlabs_voice_id = Some(voice_id);
@@ -173,27 +209,31 @@ mod tests {
         let p = Provider::local_default();
         assert_eq!(p.name, "local");
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
-        assert_eq!(p.api_key, DEFAULT_API_KEY);
+        assert_eq!(p.api_key.expose_secret(), DEFAULT_API_KEY);
         assert!(p.enabled);
         assert!(p.supports_tools);
         assert!(p.extra_params.is_none());
     }
 
     #[test]
-    fn provider_serialization_roundtrip() {
+    fn provider_serialization_redacts_api_key() {
         let p = Provider {
             name: "test".to_string(),
             base_url: "http://test:8080/v1".to_string(),
-            api_key: "sk-test".to_string(),
+            api_key: SecretString::new("sk-test".to_string()),
             enabled: false,
             supports_tools: false,
             extra_params: None,
         };
         let toml_str = toml::to_string(&p).unwrap();
+        assert!(
+            toml_str.contains("[REDACTED]"),
+            "api_key should be redacted in serialization: {}",
+            toml_str
+        );
         let deserialized: Provider = toml::from_str(&toml_str).unwrap();
         assert_eq!(deserialized.name, p.name);
         assert_eq!(deserialized.base_url, p.base_url);
-        assert_eq!(deserialized.api_key, p.api_key);
         assert!(!deserialized.enabled);
         assert!(!deserialized.supports_tools);
     }
@@ -215,7 +255,7 @@ mod tests {
         let p = Provider {
             name: "test".to_string(),
             base_url: "http://test:8080/v1".to_string(),
-            api_key: DEFAULT_API_KEY.to_string(),
+            api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
             supports_tools: true,
             extra_params: Some(extra),

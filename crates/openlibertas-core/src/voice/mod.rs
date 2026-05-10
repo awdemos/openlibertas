@@ -18,13 +18,13 @@ const DEFAULT_VOICE_ID: &str = "21m00Tcm4TlvDq8ikWAM";
 /// Configuration for the voice system.
 #[derive(Debug, Clone)]
 pub struct VoiceConfig {
-    pub api_key: Option<String>,
+    pub api_key: Option<crate::config::SecretString>,
     pub voice_id: String,
     pub input_device: Option<String>,
 }
 
 impl VoiceConfig {
-    pub fn new(api_key: Option<String>, voice_id: Option<String>) -> Self {
+    pub fn new(api_key: Option<crate::config::SecretString>, voice_id: Option<String>) -> Self {
         Self {
             api_key,
             voice_id: voice_id.unwrap_or_else(|| DEFAULT_VOICE_ID.to_string()),
@@ -89,7 +89,7 @@ pub enum VoiceError {
 }
 
 impl VoiceManager {
-    pub fn new(api_key: Option<String>, voice_id: Option<String>) -> Self {
+    pub fn new(api_key: Option<crate::config::SecretString>, voice_id: Option<String>) -> Self {
         Self {
             enabled: false,
             state: VoiceState::Idle,
@@ -325,7 +325,7 @@ impl VoiceManager {
 }
 
 pub async fn stt_transcribe(
-    api_key: Option<String>,
+    api_key: Option<crate::config::SecretString>,
     audio_bytes: Vec<u8>,
 ) -> Result<String, VoiceError> {
     if audio_bytes.is_empty() {
@@ -337,7 +337,7 @@ pub async fn stt_transcribe(
 }
 
 pub async fn tts_synthesize(
-    api_key: Option<String>,
+    api_key: Option<crate::config::SecretString>,
     voice_id: String,
     text: &str,
 ) -> Result<Vec<u8>, VoiceError> {

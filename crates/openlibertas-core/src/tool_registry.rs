@@ -126,7 +126,10 @@ impl ToolRegistry {
             let key_arg =
                 extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
 
-            if !yolo_mode && tool_needs_approval(&tool_call.function.name) {
+            if !yolo_mode
+                && (!tools::is_builtin(&tool_call.function.name)
+                    || tool_needs_approval(&tool_call.function.name))
+            {
                 results.push(ToolExecutionResult::Skipped {
                     tool_name: tool_call.function.name.clone(),
                     reason: format!(

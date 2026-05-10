@@ -81,11 +81,12 @@ mod tests {
     use super::*;
 
     fn test_providers() -> Vec<Provider> {
+        use crate::config::SecretString;
         vec![
             Provider {
                 name: "local".to_string(),
                 base_url: "http://localhost:11434/v1".to_string(),
-                api_key: "sk-test".to_string(),
+                api_key: SecretString::new("sk-test".to_string()),
                 enabled: true,
                 supports_tools: true,
                 extra_params: None,
@@ -93,7 +94,7 @@ mod tests {
             Provider {
                 name: "kimi".to_string(),
                 base_url: "https://api.kimi.com/v1".to_string(),
-                api_key: "sk-kimi".to_string(),
+                api_key: SecretString::new("sk-kimi".to_string()),
                 enabled: true,
                 supports_tools: true,
                 extra_params: None,
@@ -122,7 +123,7 @@ mod tests {
         let providers = vec![Provider {
             name: "disabled".to_string(),
             base_url: "http://example.com".to_string(),
-            api_key: "sk-test".to_string(),
+            api_key: crate::config::SecretString::new("sk-test".to_string()),
             enabled: false,
             supports_tools: false,
             extra_params: None,

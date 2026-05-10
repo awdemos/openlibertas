@@ -51,23 +51,23 @@ struct FunctionCallDelta {
 pub struct OpenAiBackend {
     client: Client,
     base_url: String,
-    api_key: String,
+    api_key: crate::config::SecretString,
     supports_tools: bool,
     extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl OpenAiBackend {
-    pub fn new(base_url: String, api_key: String) -> Self {
+    pub fn new(base_url: String, api_key: crate::config::SecretString) -> Self {
         Self::with_tools(base_url, api_key, true)
     }
 
-    pub fn with_tools(base_url: String, api_key: String, supports_tools: bool) -> Self {
+    pub fn with_tools(base_url: String, api_key: crate::config::SecretString, supports_tools: bool) -> Self {
         Self::with_tools_and_params(base_url, api_key, supports_tools, None)
     }
 
     pub fn with_tools_and_params(
         base_url: String,
-        api_key: String,
+        api_key: crate::config::SecretString,
         supports_tools: bool,
         extra_params: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Self {
@@ -89,7 +89,7 @@ impl OpenAiBackend {
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.api_key)
+            .bearer_auth(self.api_key.expose_secret())
             .send()
             .await
             .context("Failed to fetch models")?;
@@ -140,7 +140,7 @@ impl OpenAiBackend {
             loop {
                 match client
                     .post(&url)
-                    .bearer_auth(&api_key)
+                    .bearer_auth(api_key.expose_secret())
                     .json(&req)
                     .send()
                     .await

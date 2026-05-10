@@ -7,14 +7,14 @@ const DEFAULT_STT_MODEL: &str = "scribe_v1";
 /// Client for ElevenLabs voice APIs.
 #[derive(Debug, Clone)]
 pub struct ElevenLabsClient {
-    api_key: String,
+    api_key: crate::config::SecretString,
     voice_id: String,
     http: reqwest::Client,
 }
 
 impl ElevenLabsClient {
-    pub fn new(api_key: String, voice_id: String) -> Result<Self, super::VoiceError> {
-        if api_key.is_empty() {
+    pub fn new(api_key: crate::config::SecretString, voice_id: String) -> Result<Self, super::VoiceError> {
+        if api_key.expose_secret().is_empty() {
             return Err(super::VoiceError::MissingApiKey);
         }
         Ok(Self {
@@ -43,7 +43,7 @@ impl ElevenLabsClient {
         let response = self
             .http
             .post(&url)
-            .header("xi-api-key", &self.api_key)
+            .header("xi-api-key", self.api_key.expose_secret())
             .multipart(form)
             .send()
             .await
@@ -87,7 +87,7 @@ impl ElevenLabsClient {
         let response = self
             .http
             .post(&url)
-            .header("xi-api-key", &self.api_key)
+            .header("xi-api-key", self.api_key.expose_secret())
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn client_creation_requires_api_key() {
-        let result = ElevenLabsClient::new("".to_string(), "voice-id".to_string());
+        let result = ElevenLabsClient::new(crate::config::SecretString::new("".to_string()), "voice-id".to_string());
         assert!(matches!(
             result,
             Err(crate::voice::VoiceError::MissingApiKey)
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn client_creation_success() {
-        let client = ElevenLabsClient::new("test-key".to_string(), "voice-id".to_string()).unwrap();
+        let client = ElevenLabsClient::new(crate::config::SecretString::new("test-key".to_string()), "voice-id".to_string()).unwrap();
         assert_eq!(client.voice_id, "voice-id");
     }
 

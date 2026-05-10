@@ -512,7 +512,7 @@ async fn voice_stt(
     match state
         .http_client
         .post("https://api.elevenlabs.io/v1/speech-to-text")
-        .header("xi-api-key", api_key)
+        .header("xi-api-key", api_key.expose_secret())
         .multipart(form)
         .send()
         .await
@@ -575,7 +575,7 @@ async fn voice_tts(
             "https://api.elevenlabs.io/v1/text-to-speech/{}/stream",
             voice_id
         ))
-        .header("xi-api-key", api_key)
+        .header("xi-api-key", api_key.expose_secret())
         .header("Content-Type", "application/json")
         .query(&[("output_format", "mp3_44100_128")])
         .json(&body)

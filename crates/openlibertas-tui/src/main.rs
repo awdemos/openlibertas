@@ -678,10 +678,10 @@ async fn main() -> Result<()> {
                                             .or_else(|| registry.default_backend())
                                             .cloned()
                                             .unwrap_or_else(|| {
-                                                Arc::new(OpenAiBackend::new(
-                                                    "".to_string(),
-                                                    "".to_string(),
-                                                ))
+                                Arc::new(OpenAiBackend::new(
+                                    "".to_string(),
+                                    openlibertas_core::config::SecretString::new("".to_string()),
+                                ))
                                             });
                                         app.engine.chat.cancel_token =
                                             tokio_util::sync::CancellationToken::new();
@@ -921,7 +921,7 @@ async fn main() -> Result<()> {
                             .unwrap_or_else(|| {
                                 Arc::new(OpenAiBackend::new(
                                     "".to_string(),
-                                    "".to_string(),
+                                    openlibertas_core::config::SecretString::new("".to_string()),
                                 ))
                             });
                         app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
@@ -1115,7 +1115,7 @@ async fn main() -> Result<()> {
                             .unwrap_or_else(|| {
                                 Arc::new(OpenAiBackend::new(
                                     "".to_string(),
-                                    "".to_string(),
+                                    openlibertas_core::config::SecretString::new("".to_string()),
                                 ))
                             });
                         app.engine.chat.cancel_token = tokio_util::sync::CancellationToken::new();
