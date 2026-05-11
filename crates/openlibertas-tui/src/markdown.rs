@@ -146,10 +146,7 @@ impl MarkdownRenderer {
                     if !current_spans.is_empty() {
                         lines.push(Line::from(std::mem::take(&mut current_spans)));
                     }
-                    lines.push(Line::from(vec![Span::styled(
-                        "─".repeat(40),
-                        Style::default().fg(theme.border_color()),
-                    )]));
+                    lines.push(Line::from(""));
                 }
                 _ => {}
             }

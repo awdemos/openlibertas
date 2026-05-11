@@ -7,6 +7,7 @@
 //! - File context loading
 //! - Voice mode state coordination
 
+use crate::avatar::{AnimatedAvatar, IDLE_FRAMES};
 use crate::markdown::MarkdownRenderer;
 use crate::theme::Theme;
 use openlibertas_core::domain::{Message, Model};
@@ -48,6 +49,7 @@ pub enum Overlay {
     Themes,
     Help,
     Agents,
+    AvatarMenu,
 }
 
 pub struct SearchState {
@@ -85,6 +87,9 @@ pub struct App {
     pub voice_status: Option<String>,
     pub pending_voice_generation: Option<u64>,
     pub mouse_enabled: bool,
+    pub avatar_enabled: bool,
+    pub avatars: Vec<AnimatedAvatar>,
+    pub avatar_menu_selected: usize,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
     pub last_voice_key_at: Option<Instant>,
@@ -144,6 +149,9 @@ impl App {
             voice_status: None,
             pending_voice_generation: None,
             mouse_enabled: true,
+            avatar_enabled: false,
+            avatars: vec![AnimatedAvatar::new("default", &IDLE_FRAMES)],
+            avatar_menu_selected: 0,
             last_click_time: None,
             last_click_pos: None,
             last_voice_key_at: None,
@@ -267,6 +275,22 @@ impl App {
                 }
                 self.overlay = Overlay::Agents;
                 self.agent_selected = 0;
+                None
+            }
+            SlashCommand::Avatar(name) => {
+                let arg = name.as_deref().unwrap_or("");
+                if arg == "off" || (arg.is_empty() && self.avatar_enabled) {
+                    self.avatar_enabled = false;
+                    Some("Avatars disabled".to_string())
+                } else if arg == "on" || (arg.is_empty() && !self.avatar_enabled) {
+                    self.avatar_enabled = true;
+                    Some("Avatars enabled".to_string())
+                } else {
+                    None
+                }
+            }
+            SlashCommand::AvatarMenu => {
+                self.overlay = Overlay::AvatarMenu;
                 None
             }
             SlashCommand::Yolo => {
@@ -631,6 +655,7 @@ impl App {
 
     pub fn finish_stream(&mut self) {
         self.engine.finish_stream();
+        self.engine.sanitize_assistant_content();
         let _ = self.autosave();
     }
 
@@ -838,7 +863,55 @@ available tools to refine and polish your work."
     }
 
     pub fn agent_next(&mut self) {
-        self.agent_selected = (self.agent_selected + 1).min(2);
+        let count = self.agent_personas().len().saturating_add(3);
+        self.agent_selected = (self.agent_selected + 1) % count.max(1);
+    }
+
+    pub fn avatar_menu_prev(&mut self) {
+        self.avatar_menu_selected = self.avatar_menu_selected.saturating_sub(1);
+    }
+
+    pub fn avatar_menu_next(&mut self) {
+        self.avatar_menu_selected = (self.avatar_menu_selected + 1) % 4;
+    }
+
+    pub fn avatar_menu_select(&mut self) {
+        match self.avatar_menu_selected {
+            0 => {
+                self.avatar_enabled = !self.avatar_enabled;
+            }
+            1 => {
+                if let Some(avatar) = self.avatars.first_mut() {
+                    avatar.anim_speed = match avatar.anim_speed as u32 {
+                        120 => 240.0,
+                        240 => 480.0,
+                        480 => 960.0,
+                        _ => 120.0,
+                    };
+                }
+            }
+            2 => {
+                if let Some(avatar) = self.avatars.first_mut() {
+                    avatar.velocity.0 = match (avatar.velocity.0 * 100.0) as i32 {
+                        0 => 0.3,
+                        30 => 0.6,
+                        60 => 1.2,
+                        _ => 0.0,
+                    };
+                }
+            }
+            3 => {
+                if let Some(avatar) = self.avatars.first_mut() {
+                    avatar.velocity.1 = match (avatar.velocity.1 * 100.0) as i32 {
+                        0 => 0.15,
+                        15 => 0.3,
+                        30 => 0.6,
+                        _ => 0.0,
+                    };
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn select_agent_option(&mut self) {

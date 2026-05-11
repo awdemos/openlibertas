@@ -231,7 +231,14 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         Overlay::Themes => draw_themes_panel(frame, app),
         Overlay::Agents => draw_agents_panel(frame, app),
         Overlay::Help => draw_help_panel(frame, app),
+        Overlay::AvatarMenu => draw_avatar_menu(frame, app),
         Overlay::None => {}
+    }
+
+    if app.avatar_enabled {
+        for avatar in &app.avatars {
+            frame.render_widget(avatar, frame.area());
+        }
     }
 }
 
@@ -442,46 +449,14 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default()
             };
 
-            if let Some(ref tool_calls) = msg.tool_calls {
-                let mut lines = vec![];
-                for tc in tool_calls {
-                    let key_arg = openlibertas_core::tool_registry::extract_key_argument(
-                        &tc.function.name,
-                        &tc.function.arguments,
-                    );
-                    let display = if key_arg.is_empty() {
-                        format!("Using tool: {}", tc.function.name)
-                    } else {
-                        format!("{}: {}", tc.function.name, key_arg)
-                    };
-                    lines.push(Line::from(vec![
-                        Span::styled("🔧 ", Style::default().fg(app.theme.tool_color())),
-                        Span::styled(
-                            display,
-                            Style::default()
-                                .fg(app.theme.tool_color())
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    ]));
-                    if key_arg.is_empty() {
-                        lines.push(Line::from(vec![Span::styled(
-                            format!("   Args: {}", tc.function.arguments),
-                            Style::default().fg(app.theme.system_color()),
-                        )]));
-                    }
-                }
-                lines.push(Line::from(""));
-                if is_current_match || has_match {
-                    for line in &mut lines {
-                        *line = Line::from(line.spans.clone()).style(bg_style);
-                    }
-                }
-                lines
+            let mut lines = vec![Line::from(vec![Span::styled(
+                format!("{}: ", label),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            )])];
+
+            if msg.tool_calls.is_some() && msg.content.is_empty() {
+                vec![]
             } else {
-                let mut lines = vec![Line::from(vec![Span::styled(
-                    format!("{}: ", label),
-                    Style::default().fg(color).add_modifier(Modifier::BOLD),
-                )])];
                 let viewport_width = area.width.saturating_sub(2) as usize;
 
                 if msg.role == Role::Assistant {
@@ -531,14 +506,16 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                     }
                 }
 
-                let wrapped_content = if viewport_width > 10 {
-                    crate::markdown::wrap_markdown(&msg.content, viewport_width)
-                } else {
-                    msg.content.clone()
-                };
-                let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
-                for line in rendered.lines {
-                    lines.push(line);
+                {
+                    let wrapped_content = if viewport_width > 10 {
+                        crate::markdown::wrap_markdown(&msg.content, viewport_width)
+                    } else {
+                        msg.content.clone()
+                    };
+                    let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
+                    for line in rendered.lines {
+                        lines.push(line);
+                    }
                 }
                 if is_last && is_last_msg_streaming && msg.role == Role::Assistant {
                     lines.push(Line::from(vec![
@@ -1505,6 +1482,119 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
     frame.render_widget(footer, footer_area);
 }
 
+fn draw_avatar_menu(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+    let popup_area = centered_rect(50, 50, area);
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Avatar Configuration ")
+        .title_style(
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(app.theme.border_color()));
+
+    let inner = popup_area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+    let content_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height.saturating_sub(1),
+    };
+
+    let first_avatar = app.avatars.first();
+    let options = [
+        (
+            "Status",
+            if app.avatar_enabled {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+            .to_string(),
+        ),
+        (
+            "Animation Speed",
+            first_avatar
+                .map(|a| format!("{:.0} ms", a.anim_speed))
+                .unwrap_or_else(|| "N/A".to_string()),
+        ),
+        (
+            "Velocity X",
+            first_avatar
+                .map(|a| format!("{:.2}", a.velocity.0))
+                .unwrap_or_else(|| "N/A".to_string()),
+        ),
+        (
+            "Velocity Y",
+            first_avatar
+                .map(|a| format!("{:.2}", a.velocity.1))
+                .unwrap_or_else(|| "N/A".to_string()),
+        ),
+    ];
+
+    let items: Vec<ListItem> = options
+        .iter()
+        .enumerate()
+        .map(|(i, (label, value))| {
+            let is_selected = i == app.avatar_menu_selected;
+            let style = if is_selected {
+                Style::default()
+                    .bg(app.theme.primary())
+                    .fg(app.theme.panel_bg())
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.foreground())
+            };
+            let marker = if is_selected { "▸ " } else { "  " };
+            ListItem::new(format!("{}{}: {}", marker, label, value)).style(style)
+        })
+        .collect();
+
+    let list = List::new(items).highlight_style(Style::default().add_modifier(Modifier::BOLD));
+    frame.render_widget(list, content_area);
+    frame.render_widget(block, popup_area);
+
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled(
+            "↑/↓",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Toggle/Adjust  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Close", Style::default().fg(app.theme.system_color())),
+    ]))
+    .alignment(Alignment::Center);
+    let footer_area = Rect {
+        x: inner.x,
+        y: inner.y + inner.height.saturating_sub(1),
+        width: inner.width,
+        height: 1,
+    };
+    frame.render_widget(footer, footer_area);
+}
+
 fn draw_help_panel(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let popup_area = centered_rect(85, 85, area);
@@ -1555,6 +1645,8 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
                 ("/model [name]", "Switch model or open picker"),
                 ("/theme [name]", "Change color theme"),
                 ("/temp [0.0-2.0]", "Set LLM temperature"),
+                ("/avatar [on/off]", "Toggle avatar display"),
+                ("/avatar-menu", "Open avatar configuration"),
             ],
         ),
         (

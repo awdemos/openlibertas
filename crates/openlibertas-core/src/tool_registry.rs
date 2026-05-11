@@ -5,6 +5,7 @@ use crate::mcp::{McpClient, McpTool};
 use crate::tools;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 #[derive(Debug)]
 pub struct ToolRegistry {
@@ -176,8 +177,10 @@ impl ToolRegistry {
 
     pub async fn execute_pending_tools(&mut self, yolo_mode: bool) -> Vec<ToolExecutionResult> {
         let mut results = Vec::new();
+        info!("Executing {} pending tool calls (yolo={})", self.pending_tool_calls.len(), yolo_mode);
 
         for tool_call in &self.pending_tool_calls {
+            info!("Tool call: {}({})", tool_call.function.name, tool_call.function.arguments);
             let key_arg =
                 extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
 
@@ -246,6 +249,18 @@ impl ToolRegistry {
                         error: format!("Parse error: {}", e),
                     },
                 };
+            match &result {
+                ToolExecutionResult::Success { tool_name, output, .. } => {
+                    info!("Tool {} succeeded: {} chars output", tool_name, output.len());
+                    debug!("Tool {} output: {}", tool_name, output);
+                }
+                ToolExecutionResult::Error { tool_name, error, .. } => {
+                    warn!("Tool {} failed: {}", tool_name, error);
+                }
+                ToolExecutionResult::Skipped { tool_name, reason, .. } => {
+                    info!("Tool {} skipped: {}", tool_name, reason);
+                }
+            }
             results.push(result);
         }
 

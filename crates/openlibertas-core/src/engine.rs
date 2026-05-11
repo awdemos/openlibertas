@@ -6,13 +6,14 @@
 //! - `InputState` — buffer, cursor, history, autocomplete, selection
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
-use crate::domain::{Message, ToolCall, ToolDefinition};
+use crate::domain::{FunctionCall, Message, ToolCall, ToolDefinition};
 use crate::conversation::{parse_file_context, ContextCompactor};
 use crate::domain::{now_timestamp, Role};
 use crate::env_context::EnvContext;
 use crate::mcp::McpClient;
 use crate::tool_registry::ToolRegistry;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use tracing::info;
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -262,6 +263,98 @@ impl ChatEngine {
             last.content.push_str(chunk);
         }
         self.chat.auto_scroll = true;
+    }
+
+    pub fn sanitize_assistant_content(&mut self) {
+        if let Some(last) = self.chat.messages.last_mut() {
+            if last.role != Role::Assistant {
+                return;
+            }
+            let content = &last.content;
+            let trimmed = content.trim();
+
+            let json_text = if trimmed.starts_with("```") {
+                trimmed
+                    .trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim()
+            } else {
+                trimmed
+            };
+
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(json_text) {
+                if let Some(thought) = json_val.get("thought").and_then(|v| v.as_str()) {
+                    info!("Sanitizer extracted thought: {} chars", thought.len());
+                    last.content = thought.to_string();
+                    return;
+                }
+
+                let mut found_tools = false;
+
+                if let Some(arr) = json_val.as_array() {
+                    info!("Sanitizer detected JSON array with {} items, checking for tool calls", arr.len());
+                    for item in arr {
+                        if Self::extract_tool_call_from_json(item, &mut self.tools) {
+                            found_tools = true;
+                        }
+                    }
+                }
+
+                if json_val.is_object() {
+                    info!("Sanitizer detected JSON object, checking for tool call");
+                    if Self::extract_tool_call_from_json(&json_val, &mut self.tools) {
+                        found_tools = true;
+                    }
+                }
+
+                if found_tools {
+                    let tool_count = self.tools.pending_tool_calls().len();
+                    info!("Sanitizer extracted {} tool calls from content JSON", tool_count);
+                    last.content = String::new();
+                    last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
+                    return;
+                }
+            }
+        }
+    }
+
+    fn extract_tool_call_from_json(
+        item: &serde_json::Value,
+        tools: &mut ToolRegistry,
+    ) -> bool {
+        if let (Some(name), Some(args)) = (
+            item.get("name").and_then(|v| v.as_str()),
+            item.get("arguments").or_else(|| item.get("args")),
+        ) {
+            let args_str = serde_json::to_string(args).unwrap_or_default();
+            tools.add_tool_call(ToolCall {
+                id: format!("extracted_{}", tools.pending_tool_calls().len()),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: name.to_string(),
+                    arguments: args_str,
+                },
+            });
+            return true;
+        }
+
+        if let (Some(name), Some(args_str)) = (
+            item.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str()),
+            item.get("function").and_then(|f| f.get("arguments")).and_then(|v| v.as_str()),
+        ) {
+            tools.add_tool_call(ToolCall {
+                id: format!("extracted_{}", tools.pending_tool_calls().len()),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: name.to_string(),
+                    arguments: args_str.to_string(),
+                },
+            });
+            return true;
+        }
+
+        false
     }
 
     pub fn append_reasoning_chunk(&mut self, chunk: &str) {

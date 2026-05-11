@@ -131,7 +131,7 @@ impl Model {
 #[derive(Debug, Serialize, Clone)]
 pub struct ChatRequest {
     pub model: String,
-    pub messages: Vec<Message>,
+    pub messages: Vec<ApiMessage>,
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
@@ -153,6 +153,27 @@ pub struct Message {
     pub timestamp: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ApiMessage {
+    pub role: Role,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl From<Message> for ApiMessage {
+    fn from(msg: Message) -> Self {
+        Self {
+            role: msg.role,
+            content: msg.content,
+            tool_calls: msg.tool_calls,
+            tool_call_id: msg.tool_call_id,
+        }
+    }
 }
 
 pub fn now_timestamp() -> String {

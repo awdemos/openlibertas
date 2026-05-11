@@ -27,6 +27,8 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/remove",
     // Agent
     "/agents",
+    "/avatar",
+    "/avatar-menu",
     "/yolo",
     "/compact",
     // Tools
@@ -44,7 +46,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
 pub fn command_category(cmd: &str) -> &'static str {
     match cmd {
         "/help" | "/version" => "Info",
-        "/model" | "/theme" | "/temp" => "Config",
+        "/model" | "/theme" | "/temp" | "/avatar" | "/avatar-menu" => "Config",
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
         | "/title" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
@@ -64,6 +66,8 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/help" => "Show help panel",
         "/version" => "Show version info",
         "/model" => "Switch model (or open picker)",
+        "/avatar" => "Toggle avatar display",
+        "/avatar-menu" => "Open avatar configuration menu",
         "/theme" => "Change color theme",
         "/temp" => "Set LLM temperature (0.0-2.0)",
         "/new" => "Start new session",
@@ -112,6 +116,8 @@ pub enum SlashCommand {
     Edit(usize),
     Remove(usize),
     Agents,
+    Avatar(Option<String>),
+    AvatarMenu,
     Yolo,
     Compact,
     Mcp,
@@ -154,6 +160,14 @@ impl SlashCommand {
             "/quit" => Some(SlashCommand::Quit),
             "/mcp" => Some(SlashCommand::Mcp),
             "/agents" => Some(SlashCommand::Agents),
+            "/avatar" => {
+                if parts.len() > 1 {
+                    Some(SlashCommand::Avatar(Some(parts[1..].join(" "))))
+                } else {
+                    Some(SlashCommand::Avatar(None))
+                }
+            }
+            "/avatar-menu" => Some(SlashCommand::AvatarMenu),
             "/yolo" => Some(SlashCommand::Yolo),
             "/compact" => Some(SlashCommand::Compact),
             "/tools" => Some(SlashCommand::Tools),
@@ -321,7 +335,7 @@ pub fn build_help_message() -> String {
 
     let categories = [
         ("Info", &["/help", "/version"][..]),
-        ("Config", &["/model", "/theme", "/temp"][..]),
+        ("Config", &["/model", "/avatar", "/theme", "/temp"][..]),
         (
             "Session",
             &[

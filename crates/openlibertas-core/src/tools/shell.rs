@@ -79,23 +79,24 @@ pub fn shell(args: Value) -> Result<String> {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     let mut result = String::new();
-
-    if !stdout.is_empty() {
-        result.push_str(&format!("stdout:\n{}\n", stdout));
-    }
-
+    result.push_str(&stdout);
     if !stderr.is_empty() {
-        result.push_str(&format!("stderr:\n{}\n", stderr));
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&stderr);
     }
-
     if output.status.code() != Some(0) {
+        if !result.is_empty() {
+            result.push('\n');
+        }
         result.push_str(&format!(
-            "exit code: {}\n",
+            "[exit code: {}]",
             output.status.code().unwrap_or(-1)
         ));
     }
 
-    Ok(result.trim().to_string())
+    Ok(result)
 }
 
 #[cfg(test)]

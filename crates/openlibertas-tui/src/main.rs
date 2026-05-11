@@ -9,13 +9,14 @@ use base64::Engine;
 use crossterm::event::{Event as CEvent, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
 use std::io::{stdout, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 mod app;
+mod avatar;
 mod event;
 mod markdown;
 mod terminal;
@@ -257,6 +258,16 @@ async fn main() -> Result<()> {
                 let _ = stdout().execute(crossterm::event::EnableMouseCapture);
             } else {
                 let _ = stdout().execute(crossterm::event::DisableMouseCapture);
+            }
+        }
+
+        if app.avatar_enabled {
+            if let Ok(size) = terminal.size() {
+                let area = Rect::new(0, 0, size.width, size.height);
+                for avatar in &mut app.avatars {
+                    avatar.set_bounds(area);
+                    avatar.update(120.0);
+                }
             }
         }
 
@@ -505,6 +516,13 @@ async fn main() -> Result<()> {
                                 app.last_voice_key_at = Some(Instant::now());
 
                                 app.voice_activity_at = Some(Instant::now());
+                                if matches!(
+                                    app.voice.state(),
+                                    openlibertas_core::voice::VoiceState::Recording
+                                ) {
+                                    debug!("Ctrl+Space pressed while already recording");
+                                    continue;
+                                }
                                 info!("Ctrl+Space: starting recording");
                                 match app.voice.start_recording(true) {
                                     Ok(generation) => {
@@ -526,11 +544,7 @@ async fn main() -> Result<()> {
 
                     match app.screen {
                         Screen::Models => match key.code {
-                            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                                let _ = state.save();
-                                break;
-                            }
-                            KeyCode::Esc => {
+                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                                 app.screen = Screen::Chat;
                             }
                             KeyCode::Down => app.select_next_model(),
@@ -607,6 +621,7 @@ async fn main() -> Result<()> {
                             KeyCode::Enter => {
                                 match app.overlay {
                                     Overlay::Agents => app.select_agent_option(),
+                                    Overlay::AvatarMenu => app.avatar_menu_select(),
                                     Overlay::Themes => app.select_theme(),
                                     Overlay::Palette => {
                                         if let Some(cmd) = app.select_palette_command() {
@@ -753,12 +768,14 @@ async fn main() -> Result<()> {
                             }
                             KeyCode::Up => match app.overlay {
                                 Overlay::Agents => app.agent_prev(),
+                                Overlay::AvatarMenu => app.avatar_menu_prev(),
                                 Overlay::Themes => app.theme_prev(),
                                 Overlay::Palette => app.palette_prev(),
                                 _ => app.engine.history_prev(),
                             },
                             KeyCode::Down => match app.overlay {
                                 Overlay::Agents => app.agent_next(),
+                                Overlay::AvatarMenu => app.avatar_menu_next(),
                                 Overlay::Themes => app.theme_next(),
                                 Overlay::Palette => app.palette_next(),
                                 _ => app.engine.history_next(),
