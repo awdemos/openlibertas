@@ -83,6 +83,7 @@ pub struct App {
     pub agent_selected: usize,
     pub(crate) voice: VoiceManager,
     pub voice_status: Option<String>,
+    pub pending_voice_generation: Option<u64>,
     pub mouse_enabled: bool,
     pub last_click_time: Option<Instant>,
     pub last_click_pos: Option<(u16, u16)>,
@@ -93,8 +94,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> Self {
-        let store = std::env::current_dir()
-            .ok()
+        let store = Config::data_dir()
             .and_then(|d| ConversationStore::new(d).ok());
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
@@ -142,6 +142,7 @@ impl App {
                 vm
             },
             voice_status: None,
+            pending_voice_generation: None,
             mouse_enabled: true,
             last_click_time: None,
             last_click_pos: None,
@@ -152,7 +153,7 @@ impl App {
     }
 
     pub fn voice_key_debounce(&self) -> bool {
-        const DEBOUNCE_MS: u128 = 1000;
+        const DEBOUNCE_MS: u128 = 200;
         self.last_voice_key_at
             .is_some_and(|t| t.elapsed().as_millis() < DEBOUNCE_MS)
     }
@@ -368,15 +369,10 @@ impl App {
                     } else {
                         name
                     };
-                    let id = if id.ends_with(".md") {
-                        id
-                    } else {
-                        format!("{}.md", id)
-                    };
-                    match store.save_markdown(
+                    match store.save(
                         &id,
                         self.models.current.as_deref(),
-                &self.engine.chat().messages,
+                        &self.engine.chat().messages,
                     ) {
                         Ok(_) => Some(format!("Session '{}' saved", id)),
                         Err(e) => Some(format!("Failed to save: {}", e)),
@@ -645,12 +641,12 @@ impl App {
         if let Some(ref store) = self.store {
             let model = self.models.current.as_deref().unwrap_or("unknown");
             let id = format!(
-                "autosave-{}.md",
+                "autosave-{}",
                 model
                     .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
                     .replace("--", "-")
             );
-            match store.save_markdown(
+            match store.save(
                 &id,
                 self.models.current.as_deref(),
                 &self.engine.chat().messages,

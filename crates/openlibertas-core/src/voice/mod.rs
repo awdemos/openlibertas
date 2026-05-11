@@ -61,6 +61,14 @@ pub struct VoiceManager {
     /// Used to distinguish from Space toggle mode so the release handler
     /// only stops push-to-talk recordings.
     pub push_to_talk_active: bool,
+    /// Monotonically increasing counter to track recording generations.
+    /// Each start_recording() increments this. Transcription events carry
+    /// the generation so stale transcriptions from cancelled/timeout recordings
+    /// can be safely discarded.
+    recording_generation: u64,
+    /// True while a recording is in progress. Prevents double-start and
+    /// provides a reliable way to check recording status independent of state.
+    recording_in_progress: bool,
 }
 
 impl std::fmt::Debug for VoiceManager {
@@ -89,6 +97,8 @@ impl VoiceManager {
             tts_playing: false,
             cancel_flag: Arc::new(AtomicBool::new(false)),
             push_to_talk_active: false,
+            recording_generation: 0,
+            recording_in_progress: false,
         }
     }
 
@@ -97,10 +107,8 @@ impl VoiceManager {
         if self.enabled {
             self.state = VoiceState::Ready;
         } else {
+            self.cancel();
             self.state = VoiceState::Idle;
-            self.recorder = None;
-            self.stream = None;
-            self.recording_start = None;
         }
         self.enabled
     }
@@ -113,8 +121,16 @@ impl VoiceManager {
         self.state
     }
 
-    pub fn start_recording(&mut self, push_to_talk: bool) -> Result<(), VoiceError> {
+    pub fn start_recording(&mut self, push_to_talk: bool) -> Result<u64, VoiceError> {
+        if self.recording_in_progress {
+            tracing::warn!("start_recording called while already recording");
+            return Err(VoiceError::AudioError(
+                "Recording already in progress".to_string(),
+            ));
+        }
         self.reset_cancel();
+        self.recording_generation = self.recording_generation.wrapping_add(1);
+        let generation = self.recording_generation;
         let device_name = self.config.input_device.clone();
         let mut recorder = match &device_name {
             Some(name) => AudioRecorder::with_device(name.clone()),
@@ -125,21 +141,25 @@ impl VoiceManager {
         self.recorder = Some(recorder);
         self.stream = Some(stream);
         self.recording_start = Some(std::time::Instant::now());
+        self.recording_in_progress = true;
         self.state = VoiceState::Recording;
         tracing::info!(
             device = ?device_name,
             push_to_talk,
+            generation,
             "Voice recording started"
         );
-        Ok(())
+        Ok(generation)
     }
 
-    pub fn stop_recording(&mut self) -> Result<Vec<u8>, VoiceError> {
+    pub fn stop_recording(&mut self) -> Result<(u64, Vec<u8>), VoiceError> {
+        let generation = self.recording_generation;
         self.stream = None;
         let recorder = self.recorder.take();
         let _elapsed = self.recording_start.map(|s| s.elapsed());
         self.recording_start = None;
         self.push_to_talk_active = false;
+        self.recording_in_progress = false;
         self.state = VoiceState::ProcessingStt;
 
         let recording = match recorder {
@@ -148,7 +168,7 @@ impl VoiceManager {
                 .map_err(|e| VoiceError::AudioError(format!("Failed to stop recording: {e}")))?,
             None => {
                 tracing::warn!("stop_recording called with no active recorder");
-                return Ok(Vec::new());
+                return Ok((generation, Vec::new()));
             }
         };
 
@@ -158,6 +178,7 @@ impl VoiceManager {
             recording.channels,
         );
         tracing::info!(
+            generation,
             duration_ms = stats.duration_ms,
             peak = stats.peak_amplitude,
             rms = stats.rms_amplitude,
@@ -167,12 +188,12 @@ impl VoiceManager {
         );
 
         if recording.samples.is_empty() {
-            return Ok(Vec::new());
+            return Ok((generation, Vec::new()));
         }
 
         if audio::is_silence(&recording.samples, SILENCE_THRESHOLD) {
-            tracing::info!("Recording rejected: silence detected");
-            return Ok(Vec::new());
+            tracing::info!(generation, "Recording rejected: silence detected");
+            return Ok((generation, Vec::new()));
         }
 
         let mut samples = recording.samples;
@@ -191,7 +212,7 @@ impl VoiceManager {
         };
 
         let wav = encode_wav(&recording)?;
-        Ok(wav)
+        Ok((generation, wav))
     }
 
     pub fn has_min_recording_duration(&self) -> bool {
@@ -206,6 +227,10 @@ impl VoiceManager {
             Some(start) => start.elapsed().as_millis() >= MAX_RECORDING_MS,
             None => false,
         }
+    }
+
+    pub fn current_generation(&self) -> u64 {
+        self.recording_generation
     }
 
     pub fn is_recording_silent(&self) -> bool {
@@ -240,6 +265,10 @@ impl VoiceManager {
         self.recorder = None;
         self.recording_start = None;
         self.push_to_talk_active = false;
+        self.recording_in_progress = false;
+        // Increment generation so any in-flight transcriptions from this
+        // cancelled recording are discarded when they arrive.
+        self.recording_generation = self.recording_generation.wrapping_add(1);
         if let Some(ref player) = self.player {
             player.stop();
         }

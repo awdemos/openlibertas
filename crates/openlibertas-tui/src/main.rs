@@ -83,15 +83,16 @@ fn attach_chat_stream(
 fn spawn_voice_transcription(
     api_key: Option<openlibertas_core::config::SecretString>,
     audio_bytes: Vec<u8>,
+    generation: u64,
     sender: tokio::sync::mpsc::UnboundedSender<Event>,
 ) {
     tokio::spawn(async move {
         match openlibertas_core::voice::stt_transcribe(api_key, audio_bytes).await {
             Ok(text) => {
-                let _ = sender.send(Event::VoiceTranscription(text));
+                let _ = sender.send(Event::VoiceTranscription(text, generation));
             }
             Err(e) => {
-                let _ = sender.send(Event::VoiceError(e.to_string()));
+                let _ = sender.send(Event::VoiceError(e.to_string(), generation));
             }
         }
     });
@@ -199,11 +200,15 @@ async fn main() -> Result<()> {
             );
             app.voice_status = None;
             match app.voice.stop_recording() {
-                Ok(audio_bytes) => {
+                Ok((generation, audio_bytes)) => {
                     if audio_bytes.len() > 44 {
+                        app.pending_voice_generation = Some(generation);
                         let sender = event_stream.sender();
                         let api_key = app.voice.config.api_key.clone();
-                        spawn_voice_transcription(api_key, audio_bytes, sender);
+                        spawn_voice_transcription(api_key, audio_bytes, generation, sender);
+                    } else {
+                        app.voice_status = Some("No audio captured — check microphone".to_string());
+                        app.voice.cancel();
                     }
                 }
                 Err(e) => {
@@ -228,11 +233,15 @@ async fn main() -> Result<()> {
             info!("Voice activity timeout: stopping recording");
             app.voice_status = None;
             match app.voice.stop_recording() {
-                Ok(audio_bytes) => {
+                Ok((generation, audio_bytes)) => {
                     if audio_bytes.len() > 44 {
+                        app.pending_voice_generation = Some(generation);
                         let sender = event_stream.sender();
                         let api_key = app.voice.config.api_key.clone();
-                        spawn_voice_transcription(api_key, audio_bytes, sender);
+                        spawn_voice_transcription(api_key, audio_bytes, generation, sender);
+                    } else {
+                        app.voice_status = Some("No audio captured — check microphone".to_string());
+                        app.voice.cancel();
                     }
                 }
                 Err(e) => {
@@ -283,16 +292,17 @@ async fn main() -> Result<()> {
                             app.voice.cancel();
                         } else {
                             match app.voice.stop_recording() {
-                                Ok(audio_bytes) => {
+                                Ok((generation, audio_bytes)) => {
                                     if audio_bytes.len() <= 44 {
                                         app.voice_status = Some(
                                             "No audio captured — check microphone".to_string(),
                                         );
                                         app.voice.cancel();
                                     } else {
+                                        app.pending_voice_generation = Some(generation);
                                         let sender = event_stream.sender();
                                         let api_key = app.voice.config.api_key.clone();
-                                        spawn_voice_transcription(api_key, audio_bytes, sender);
+                                        spawn_voice_transcription(api_key, audio_bytes, generation, sender);
                                     }
                                 }
                                 Err(e) => {
@@ -492,13 +502,17 @@ async fn main() -> Result<()> {
 
                                 app.voice_activity_at = Some(Instant::now());
                                 info!("Ctrl+Space: starting recording");
-                                if let Err(e) = app.voice.start_recording(true) {
-                                    warn!("Failed to start recording: {}", e);
-                                    app.voice_status =
-                                        Some(format!("Failed to start recording: {}", e));
-                                } else {
-                                    app.voice_status =
-                                        Some("Recording... 🎙  (release to stop)".to_string());
+                                match app.voice.start_recording(true) {
+                                    Ok(generation) => {
+                                        app.pending_voice_generation = Some(generation);
+                                        app.voice_status =
+                                            Some("Recording... 🎙  (release to stop)".to_string());
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to start recording: {}", e);
+                                        app.voice_status =
+                                            Some(format!("Failed to start recording: {}", e));
+                                    }
                                 }
                                 continue;
                             }
@@ -792,29 +806,57 @@ async fn main() -> Result<()> {
                 Event::McpToolsLoaded(Err(e)) => {
                     app.error = Some(format!("MCP discovery failed: {}", e));
                 }
-                Event::VoiceTranscription(text) => {
-                    if text.trim().is_empty() {
+                Event::VoiceTranscription(text, generation) => {
+                    // Discard stale transcriptions from cancelled or superseded recordings
+                    if let Some(expected) = app.pending_voice_generation {
+                        if generation != expected {
+                            debug!(generation, expected, "Discarding stale voice transcription");
+                            continue;
+                        }
+                    }
+                    app.pending_voice_generation = None;
+
+                    // Validate UTF-8 and filter out garbled content
+                    let text = text.trim();
+                    if text.is_empty() || !text.is_char_boundary(0) || !text.is_char_boundary(text.len()) {
                         app.voice_status =
                             Some("No speech detected — check mic and speak louder".to_string());
                         app.voice.cancel();
-                    } else {
-                        app.voice_status = None;
-                        app.voice.state = openlibertas_core::voice::VoiceState::Ready;
-                        app.engine.input_mut().buffer = text;
-                        app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
-                        app.engine.input_mut().selection_anchor = None;
-                        let input = app.engine.input_mut().buffer.trim().to_string();
-                        app.engine.push_to_history(input.clone());
-                        if app.engine.agents_mut().status == openlibertas_core::engine::AgentStatus::Idle
-                        {
-                            app.engine.start_agent_loop();
-                        }
-                        let _ = app.push_user_message();
-                        let _ = app.autosave();
-                        attach_chat_stream(&mut app, &registry, &mut event_stream);
+                        continue;
                     }
+                    // Reject text with excessive replacement characters (indicates encoding corruption)
+                    let replacement_count = text.matches('\u{FFFD}').count();
+                    if replacement_count > 2 || replacement_count * 10 > text.len() {
+                        app.voice_status =
+                            Some("Speech garbled — try speaking more clearly".to_string());
+                        app.voice.cancel();
+                        continue;
+                    }
+
+                    app.voice_status = None;
+                    app.voice.state = openlibertas_core::voice::VoiceState::Ready;
+                    app.engine.input_mut().buffer = text.to_string();
+                    app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
+                    app.engine.input_mut().selection_anchor = None;
+                    let input = app.engine.input_mut().buffer.trim().to_string();
+                    app.engine.push_to_history(input.clone());
+                    if app.engine.agents_mut().status == openlibertas_core::engine::AgentStatus::Idle
+                    {
+                        app.engine.start_agent_loop();
+                    }
+                    let _ = app.push_user_message();
+                    let _ = app.autosave();
+                    attach_chat_stream(&mut app, &registry, &mut event_stream);
                 }
-                Event::VoiceError(err) => {
+                Event::VoiceError(err, generation) => {
+                    // Discard stale errors from cancelled or superseded recordings
+                    if let Some(expected) = app.pending_voice_generation {
+                        if generation != expected {
+                            debug!(generation, expected, "Discarding stale voice error");
+                            continue;
+                        }
+                    }
+                    app.pending_voice_generation = None;
                     app.voice_status = Some(format!("Voice error: {}", err));
                     if err.contains("MissingApiKey") || err.contains("No ElevenLabs API key") {
                         app.voice.clear_tts_queue();
@@ -836,12 +878,12 @@ async fn main() -> Result<()> {
                                             let _ = sender.send(Event::VoicePlaybackComplete);
                                         }
                                         Err(e) => {
-                                            let _ = sender.send(Event::VoiceError(e.to_string()));
+                                            let _ = sender.send(Event::VoiceError(e.to_string(), 0));
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    let _ = sender.send(Event::VoiceError(e.to_string()));
+                                    let _ = sender.send(Event::VoiceError(e.to_string(), 0));
                                 }
                             }
                         });
@@ -860,19 +902,22 @@ async fn main() -> Result<()> {
                             {
                                 Ok(audio_bytes) => {
                                     match openlibertas_core::voice::play_audio_cancellable(
-                                        audio_bytes,
-                                        cancel_flag,
-                                    ) {
+                                        audio_bytes, cancel_flag,
+                                    )
+                                    {
                                         Ok(_) => {
-                                            let _ = sender.send(Event::VoicePlaybackComplete);
+                                            let _ = sender
+                                                .send(Event::VoicePlaybackComplete);
                                         }
                                         Err(e) => {
-                                            let _ = sender.send(Event::VoiceError(e.to_string()));
+                                            let _ = sender
+                                                .send(Event::VoiceError(e.to_string(), 0));
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    let _ = sender.send(Event::VoiceError(e.to_string()));
+                                    let _ =
+                                        sender.send(Event::VoiceError(e.to_string(), 0));
                                 }
                             }
                         });
@@ -1038,13 +1083,13 @@ async fn main() -> Result<()> {
                                                         }
                                                         Err(e) => {
                                                             let _ = sender
-                                                                .send(Event::VoiceError(e.to_string()));
+                                                                .send(Event::VoiceError(e.to_string(), 0));
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
                                                     let _ =
-                                                        sender.send(Event::VoiceError(e.to_string()));
+                                                        sender.send(Event::VoiceError(e.to_string(), 0));
                                                 }
                                             }
                                         });

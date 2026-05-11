@@ -118,6 +118,7 @@ impl Model {
             "mistral",   // Mistral instruct
             "mixtral",   // Mixtral instruct
             "nemotron",  // NVIDIA Nemotron
+            "trinity",
             "glm4",      // GLM-4
             "command-r", // Cohere Command-R
         ];

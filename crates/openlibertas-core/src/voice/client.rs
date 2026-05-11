@@ -84,6 +84,16 @@ impl ElevenLabsClient {
             crate::voice::error::VoiceError::SttError("Missing 'text' in STT response".to_string())
         })?;
 
+        let text = text.trim();
+        // Validate UTF-8: reject strings with replacement characters that indicate
+        // encoding corruption from the STT service.
+        if text.contains('\u{FFFD}') {
+            error!("STT response contains UTF-8 replacement characters");
+            return Err(crate::voice::error::VoiceError::SttError(
+                "Transcription contains corrupted characters".to_string(),
+            ));
+        }
+
         info!("STT success: '{}'", text);
         Ok(text.to_string())
     }

@@ -13,9 +13,9 @@ pub enum Event {
     ChatEvent(ChatEvent),
     ModelsLoaded(Result<Vec<Model>, String>),
     McpToolsLoaded(Result<(Vec<McpTool>, HashMap<String, McpServerStatus>), String>),
-    VoiceTranscription(String),
+    VoiceTranscription(String, u64),
     VoicePlaybackComplete,
-    VoiceError(String),
+    VoiceError(String, u64),
 }
 
 pub struct EventStream {

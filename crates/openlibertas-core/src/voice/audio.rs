@@ -223,7 +223,18 @@ impl AudioRecorder {
         self.channels
     }
 
+    /// Clear the internal buffer to ensure a fresh recording.
+    pub fn clear_buffer(&mut self) {
+        if let Ok(mut buf) = self.buffer.lock() {
+            buf.clear();
+        }
+    }
+
     pub fn start(&mut self) -> Result<cpal::Stream, crate::voice::VoiceError> {
+        // Always clear the buffer before starting to prevent any accumulated
+        // samples from a previous recording from being included.
+        self.clear_buffer();
+
         let host = cpal::default_host();
         let device = match &self.device_name {
             Some(name) => {
