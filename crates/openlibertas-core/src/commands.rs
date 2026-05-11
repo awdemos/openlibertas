@@ -30,6 +30,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/avatar",
     "/avatar-menu",
     "/yolo",
+    "/plan",
     "/compact",
     // Tools
     "/mcp",
@@ -50,7 +51,7 @@ pub fn command_category(cmd: &str) -> &'static str {
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
         | "/title" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
-        "/agents" | "/yolo" | "/compact" => "Agent",
+        "/agents" | "/yolo" | "/plan" | "/compact" => "Agent",
         "/mcp" | "/tools" => "Tools",
         "/voice" => "Voice",
         "/voice_device" => "Voice",
@@ -84,6 +85,7 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/remove" => "Remove a message by index",
         "/agents" => "Open agent configuration",
         "/yolo" => "Toggle auto-approval for tools",
+        "/plan" => "Toggle plan mode (read-only research)",
         "/compact" => "Compact conversation context",
         "/mcp" => "Show MCP server status",
         "/tools" => "Toggle tools panel",
@@ -119,6 +121,7 @@ pub enum SlashCommand {
     Avatar(Option<String>),
     AvatarMenu,
     Yolo,
+    Plan,
     Compact,
     Mcp,
     Tools,
@@ -169,6 +172,7 @@ impl SlashCommand {
             }
             "/avatar-menu" => Some(SlashCommand::AvatarMenu),
             "/yolo" => Some(SlashCommand::Yolo),
+            "/plan" => Some(SlashCommand::Plan),
             "/compact" => Some(SlashCommand::Compact),
             "/tools" => Some(SlashCommand::Tools),
             "/voice" => Some(SlashCommand::Voice),

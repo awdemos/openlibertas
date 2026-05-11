@@ -110,25 +110,37 @@ pub fn parse_file_context(input: &str) -> String {
     let mut result = input.to_string();
     let mut failed_files = Vec::new();
 
-    let re = match regex::Regex::new(r"@(\S+)") {
+    let re = match regex::Regex::new(r#"(?:^|[\s\("'])@(?:"([^"]+)"|(\S+))"#) {
         Ok(re) => re,
         Err(_) => return input.to_string(),
     };
     let mut replacements = Vec::new();
 
     for cap in re.captures_iter(input) {
-        let path_str = cap[1].to_string();
+        let path_str = cap
+            .get(1)
+            .or_else(|| cap.get(2))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+
+        let full_match = cap.get(0).map(|m| m.as_str().to_string()).unwrap_or_default();
+
+        if path_str.is_empty() {
+            continue;
+        }
+
+        let path_str = strip_trailing_punctuation(&path_str);
         let path = std::path::Path::new(&path_str);
 
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let expanded = format!("--- {} ---\n```\n{}\n```", path_str, content);
-                replacements.push((cap[0].to_string(), expanded));
+                replacements.push((full_match, expanded));
             }
             Err(e) => {
                 failed_files.push(format!("{}: {}", path_str, e));
                 replacements.push((
-                    cap[0].to_string(),
+                    full_match,
                     format!("[Error reading {}: {}]", path_str, e),
                 ));
             }
@@ -146,6 +158,10 @@ pub fn parse_file_context(input: &str) -> String {
     }
 
     result
+}
+
+fn strip_trailing_punctuation(s: &str) -> String {
+    s.trim_end_matches(|c: char| c == ',' || c == '.' || c == ';' || c == ':' || c == '!' || c == '?' || c == ')' || c == ']' || c == '}' || c == '"' || c == '\'').to_string()
 }
 
 /// Build chat request messages including system prompt and user input
@@ -677,5 +693,41 @@ reasoning_content: None,
             .find(|m| m.role == Role::System && m.content.contains("compacted"))
             .unwrap();
         assert!(summary.content.contains("1 tool"));
+    }
+
+    #[test]
+    fn parse_file_context_ignores_email_addresses() {
+        let input = "Contact me at user@example.com for details";
+        let result = parse_file_context(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn parse_file_context_strips_trailing_punctuation() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("test_punct.txt");
+        std::fs::write(&file_path, "punct content").unwrap();
+
+        let input = format!("Check @{} for details.", file_path.display());
+        let result = parse_file_context(&input);
+
+        assert!(result.contains("punct content"));
+        assert!(!result.contains("[Error reading"));
+
+        std::fs::remove_file(&file_path).unwrap();
+    }
+
+    #[test]
+    fn parse_file_context_quoted_path_with_spaces() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("test spaced file.txt");
+        std::fs::write(&file_path, "spaced content").unwrap();
+
+        let input = format!("Read @\"{}\" now", file_path.display());
+        let result = parse_file_context(&input);
+
+        assert!(result.contains("spaced content"));
+
+        std::fs::remove_file(&file_path).unwrap();
     }
 }

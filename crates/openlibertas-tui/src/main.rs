@@ -639,9 +639,18 @@ async fn main() -> Result<()> {
                                         openlibertas_core::voice::VoiceState::Recording
                                     );
                                 if !app.engine.input_mut().buffer.trim().is_empty()
-                                    && !app.engine.chat_mut().streaming
                                     && !voice_recording
                                 {
+                                    if app.engine.chat_mut().streaming {
+                                        if app.engine.agents_mut().status
+                                            == openlibertas_core::engine::AgentStatus::Active
+                                        {
+                                            app.engine.chat_mut().cancel_token.cancel();
+                                            app.finish_stream();
+                                        } else {
+                                            continue;
+                                        }
+                                    }
                                     app.voice_status = None;
                                     app.engine.input_mut().show_autocomplete = false;
                                     let input = app.engine.input_mut().buffer.trim().to_string();
@@ -1003,22 +1012,33 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        let switch_requests: Vec<String> = app.engine.tools_mut().pending_tool_calls().iter().filter_map(|tc| {
+                        let switch_requests: Vec<(String, bool)> = app.engine.tools_mut().pending_tool_calls().iter().filter_map(|tc| {
                             if tc.function.name == "switch_persona" {
                                 serde_json::from_str::<serde_json::Value>(&tc.function.arguments).ok()
-                                    .and_then(|args| args.get("persona").and_then(|v| v.as_str()).map(String::from))
+                                    .and_then(|args| {
+                                        let persona = args.get("persona").and_then(|v| v.as_str()).map(String::from)?;
+                                        let isolate = args.get("isolate").and_then(|v| v.as_bool()).unwrap_or(false);
+                                        Some((persona, isolate))
+                                    })
                             } else {
                                 None
                             }
                         }).collect();
 
-                        for persona in switch_requests {
+                        for (persona, isolate) in switch_requests {
                             let current_persona = app.engine.agents_mut().persona.clone();
                             if persona.eq_ignore_ascii_case(&current_persona) {
                                 continue;
                             }
                             if let Some(prompt) = app.get_persona_prompt(&persona) {
                                 app.switch_agent_persona(&persona, &prompt);
+                                if isolate {
+                                    app.engine.isolate_session();
+                                    app.engine.add_system_message(format!(
+                                        "[Session isolated for '{}']",
+                                        persona
+                                    ));
+                                }
                             } else {
                                 app.engine.add_system_message(format!(
                                     "[Agent: persona '{}' not found, staying as '{}']",
@@ -1028,6 +1048,9 @@ async fn main() -> Result<()> {
                         }
 
                         let tool_messages = app.engine.assemble_tool_result_messages();
+
+                        app.engine.tools_mut().clear_pending_tool_calls();
+                        app.engine.tools_mut().clear_tool_results();
 
                         let tool_messages = if app.engine.agents_mut().status
                             == openlibertas_core::engine::AgentStatus::Active
@@ -1051,7 +1074,6 @@ async fn main() -> Result<()> {
 
                         app.engine.chat_mut().messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
                         app.engine.chat_mut().streaming = true;
-                        app.engine.tools_mut().clear_pending_tool_calls();
 
                         let backend = registry
                             .get(&app.models.provider)

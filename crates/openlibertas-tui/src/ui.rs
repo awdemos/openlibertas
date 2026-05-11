@@ -261,17 +261,23 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         " [MCP: ✗]"
     };
 
+    let plan_indicator = if app.engine.agents().mode == openlibertas_core::engine::AgentMode::Plan {
+        " [Plan]"
+    } else {
+        ""
+    };
     let agent_indicator = match app.engine.agents().status {
         openlibertas_core::engine::AgentStatus::Disabled => String::new(),
         openlibertas_core::engine::AgentStatus::Idle => {
-            format!(" [Agents: ○ {} Ready]", app.engine.agents().persona)
+            format!(" [Agents: ○ {} Ready{}]", app.engine.agents().persona, plan_indicator)
         }
         openlibertas_core::engine::AgentStatus::Active => {
             format!(
-                " [Agents: ● {}/{} {}]",
+                " [Agents: ● {}/{} {}{}]",
                 app.engine.agents().current_iteration,
                 app.engine.agents().max_iterations,
-                app.engine.agents().persona
+                app.engine.agents().persona,
+                plan_indicator
             )
         }
     };

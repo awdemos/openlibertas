@@ -22,8 +22,16 @@ pub fn web_search(args: Value) -> Result<String> {
 
 pub fn fetch_url(args: Value) -> Result<String> {
     let args: FetchArgs = serde_json::from_value(args)?;
-    let rt = tokio::runtime::Runtime::new().map_err(|e| anyhow::anyhow!(e))?;
-    rt.block_on(fetch_url_async(args.url))
+
+    // If already inside a tokio runtime (e.g. called from async main loop),
+    // use block_in_place to avoid "Cannot start a runtime from within a runtime".
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fetch_url_async(args.url))),
+        Err(_) => {
+            let rt = tokio::runtime::Runtime::new().map_err(|e| anyhow::anyhow!(e))?;
+            rt.block_on(fetch_url_async(args.url))
+        }
+    }
 }
 
 async fn fetch_url_async(url: String) -> Result<String> {

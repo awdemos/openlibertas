@@ -17,11 +17,47 @@ use tracing::info;
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum AgentStatus {
+    #[default]
     Disabled,
     Idle,
     Active,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AgentMode {
+    Auto,
+    Plan,
+}
+
+impl Default for AgentMode {
+    fn default() -> Self {
+        AgentMode::Auto
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AgentState {
+    pub status: AgentStatus,
+    pub max_iterations: usize,
+    pub current_iteration: usize,
+    pub persona: String,
+    pub yolo_mode: bool,
+    pub mode: AgentMode,
+}
+
+impl Default for AgentState {
+    fn default() -> Self {
+        Self {
+            status: AgentStatus::Disabled,
+            max_iterations: 10,
+            current_iteration: 0,
+            persona: "Orchestrator".to_string(),
+            yolo_mode: false,
+            mode: AgentMode::Auto,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -66,25 +102,6 @@ impl Default for ChatState {
     }
 }
 
-pub struct AgentState {
-    pub status: AgentStatus,
-    pub max_iterations: usize,
-    pub current_iteration: usize,
-    pub persona: String,
-    pub yolo_mode: bool,
-}
-
-impl Default for AgentState {
-    fn default() -> Self {
-        Self {
-            status: AgentStatus::Disabled,
-            max_iterations: 10,
-            current_iteration: 0,
-            persona: "Orchestrator".to_string(),
-            yolo_mode: false,
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct ChatEngine {
@@ -174,6 +191,14 @@ impl ChatEngine {
         self.env_context.as_ref()
     }
 
+    pub fn set_plan_mode(&mut self, mode: AgentMode) {
+        self.agents.mode = mode;
+    }
+
+    pub fn plan_mode(&self) -> AgentMode {
+        self.agents.mode
+    }
+
     pub fn set_env_context(&mut self, ctx: EnvContext) {
         self.env_context = Some(ctx);
     }
@@ -183,6 +208,7 @@ impl ChatEngine {
         let prompt = prompt.into();
         self.agents.persona = persona.clone();
         self.agent_prompt = Some(prompt);
+        self.agents.current_iteration = 0;
     }
 
     pub fn with_mcp_client(mut self, client: McpClient) -> Self {
@@ -261,8 +287,22 @@ impl ChatEngine {
     pub fn append_stream_chunk(&mut self, chunk: &str) {
         if let Some(last) = self.chat.messages.last_mut() {
             last.content.push_str(chunk);
+            Self::strip_think_tags(&mut last.content);
         }
         self.chat.auto_scroll = true;
+    }
+
+    fn strip_think_tags(text: &mut String) {
+        loop {
+            let start = text.find("<think>");
+            let end = text.rfind("</think>");
+            match (start, end) {
+                (Some(s), Some(e)) if s < e => {
+                    text.replace_range(s..=e + 7, "");
+                }
+                _ => break,
+            }
+        }
     }
 
     pub fn sanitize_assistant_content(&mut self) {
@@ -270,6 +310,7 @@ impl ChatEngine {
             if last.role != Role::Assistant {
                 return;
             }
+            Self::strip_think_tags(&mut last.content);
             let content = &last.content;
             let trimmed = content.trim();
 
@@ -414,10 +455,17 @@ impl ChatEngine {
         self.agents.current_iteration += 1;
     }
 
+    pub fn isolate_session(&mut self) {
+        self.chat.messages.retain(|m| m.role == Role::System);
+        self.chat.scroll = 0;
+        self.chat.streaming = false;
+    }
+
     // -- Tool execution --
 
     pub fn tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
-        self.tools.tools_for_request()
+        let plan_mode = self.agents.mode == AgentMode::Plan;
+        self.tools.tools_for_request(plan_mode)
     }
 
     /// Assemble tool result messages with agent context.
@@ -1086,6 +1134,27 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_extracts_tool_call_from_json_content() {
+        let mut engine = ChatEngine::new();
+        engine.push_user_message("Calculate 15 + 27");
+        engine.append_stream_chunk(r#"{
+  "name": "calculate",
+  "arguments": {
+    "expression": "15 + 27"
+  }
+}"#);
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(last.content.is_empty(), "content should be cleared, got: {:?}", last.content);
+        assert!(last.tool_calls.is_some(), "tool_calls should be present");
+        let tcs = last.tool_calls.as_ref().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0].function.name, "calculate");
+        assert!(tcs[0].function.arguments.contains("15 + 27"));
+    }
+
+    #[test]
     fn compact_context_reduces_messages() {
         let mut engine = ChatEngine::new();
         for i in 0..10 {
@@ -1173,5 +1242,26 @@ mod tests {
         engine.switch_persona("Research", "You are a researcher");
         assert_eq!(engine.agents.persona, "Research");
         assert_eq!(engine.agent_prompt, Some("You are a researcher".to_string()));
+    }
+
+    #[test]
+    fn strip_think_tags_removes_blocks() {
+        let mut text = "before <think>thinking</think> after".to_string();
+        ChatEngine::strip_think_tags(&mut text);
+        assert_eq!(text, "before  after");
+    }
+
+    #[test]
+    fn strip_think_tags_handles_nested() {
+        let mut text = "a <think>b <think>c</think> d</think> e".to_string();
+        ChatEngine::strip_think_tags(&mut text);
+        assert_eq!(text, "a  e");
+    }
+
+    #[test]
+    fn strip_think_tags_noop_when_missing() {
+        let mut text = "no think tags here".to_string();
+        ChatEngine::strip_think_tags(&mut text);
+        assert_eq!(text, "no think tags here");
     }
 }

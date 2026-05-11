@@ -221,6 +221,9 @@ impl OpenAiBackend {
         if let Some(temp) = temperature {
             extra_params.insert("temperature".to_string(), serde_json::json!(temp));
         }
+        for key in &["model", "messages", "stream", "max_tokens", "tools"] {
+            extra_params.remove(*key);
+        }
         let msg_count = messages.len();
         let api_messages: Vec<crate::domain::ApiMessage> = messages.into_iter().map(Into::into).collect();
         let tools_for_req = if self.supports_tools { tools.clone() } else { None };

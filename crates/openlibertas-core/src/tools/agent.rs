@@ -7,12 +7,14 @@ use serde_json::Value;
 struct SwitchPersonaArgs {
     persona: String,
     reason: String,
+    isolate: Option<bool>,
 }
 
 /// Switch to a different agent persona mid-conversation.
 /// This allows the active agent to delegate work to a specialist.
 pub fn switch_persona(args: Value) -> Result<String> {
     let args: SwitchPersonaArgs = serde_json::from_value(args)?;
+    let _ = args.isolate;
     Ok(format!(
         "Switched to '{}' persona. Reason: {}. \
         The new agent will continue from here with the appropriate expertise.",
@@ -39,6 +41,10 @@ pub fn switch_persona_tool() -> BuiltinTool {
                 "reason": {
                     "type": "string",
                     "description": "Brief explanation of why you're delegating to this persona and what you expect them to do."
+                },
+                "isolate": {
+                    "type": "boolean",
+                    "description": "If true, start a fresh conversation context for the new persona. The new agent will not see previous tool calls and results, avoiding confusion. Recommended when switching to a completely different task."
                 }
             },
             "required": ["persona", "reason"]

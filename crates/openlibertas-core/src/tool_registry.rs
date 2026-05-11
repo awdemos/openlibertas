@@ -96,19 +96,27 @@ impl ToolRegistry {
         self.pending_tool_calls.clear();
     }
 
-    pub fn tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
+    pub fn tools_for_request(&self, plan_mode: bool) -> Option<Vec<ToolDefinition>> {
         let mut all_tools = Vec::new();
-        for tool in &self.available_tools {
-            all_tools.push(ToolDefinition {
-                tool_type: "function".to_string(),
-                function: crate::domain::FunctionDefinition {
-                    name: tool.name.clone(),
-                    description: tool.description.clone(),
-                    parameters: tool.input_schema.clone(),
-                },
-            });
+        if !plan_mode {
+            for tool in &self.available_tools {
+                all_tools.push(ToolDefinition {
+                    tool_type: "function".to_string(),
+                    function: crate::domain::FunctionDefinition {
+                        name: tool.name.clone(),
+                        description: tool.description.clone(),
+                        parameters: tool.input_schema.clone(),
+                    },
+                });
+            }
         }
+        let read_only_builtins: &[&str] = &[
+            "read_file", "glob", "grep", "web_search", "fetch_url", "think", "git",
+        ];
         for tool in &self.builtin_tools {
+            if plan_mode && !read_only_builtins.contains(&tool.name.as_str()) {
+                continue;
+            }
             all_tools.push(tool.to_tool_definition());
         }
         if all_tools.is_empty() {
@@ -364,20 +372,20 @@ mod tests {
     #[test]
     fn tools_for_request_includes_builtins() {
         let registry = ToolRegistry::default();
-        let result = registry.tools_for_request().unwrap();
+        let result = registry.tools_for_request(false).unwrap();
         assert!(!result.is_empty(), "builtin tools should be present");
     }
 
     #[test]
     fn tools_for_request_converts_available_tools() {
         let mut registry = ToolRegistry::default();
-        let builtin_count = registry.tools_for_request().unwrap().len();
+        let builtin_count = registry.tools_for_request(false).unwrap().len();
         registry.available_tools.push(crate::mcp::McpTool {
             name: "test_tool".to_string(),
             description: "A test tool".to_string(),
             input_schema: serde_json::json!({}),
         });
-        let result = registry.tools_for_request().unwrap();
+        let result = registry.tools_for_request(false).unwrap();
         assert_eq!(result.len(), builtin_count + 1);
         assert!(result.iter().any(|t| t.function.name == "test_tool"));
     }

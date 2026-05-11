@@ -307,6 +307,25 @@ impl App {
                     )
                 }
             }
+            SlashCommand::Plan => {
+                let new_mode = match self.engine.plan_mode() {
+                    openlibertas_core::engine::AgentMode::Auto => {
+                        openlibertas_core::engine::AgentMode::Plan
+                    }
+                    openlibertas_core::engine::AgentMode::Plan => {
+                        openlibertas_core::engine::AgentMode::Auto
+                    }
+                };
+                self.engine.set_plan_mode(new_mode);
+                match new_mode {
+                    openlibertas_core::engine::AgentMode::Plan => {
+                        Some("Plan mode enabled. Only read-only tools available.".to_string())
+                    }
+                    openlibertas_core::engine::AgentMode::Auto => {
+                        Some("Plan mode disabled. All tools available.".to_string())
+                    }
+                }
+            }
             SlashCommand::Compact => {
                 let (before, after) = self.engine.compact_context();
                 if after < before {
