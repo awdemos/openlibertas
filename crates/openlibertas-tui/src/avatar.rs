@@ -252,6 +252,9 @@ mod tests {
         assert_eq!(avatar.frame_idx, 1);
         assert!(avatar.accumulator < 100.0);
 
+        avatar.update(100.0);
+        assert_eq!(avatar.frame_idx, 2);
+
         // Should wrap back to frame 0.
         avatar.update(100.0);
         assert_eq!(avatar.frame_idx, 0);

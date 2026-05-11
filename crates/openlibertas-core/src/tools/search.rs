@@ -19,6 +19,10 @@ struct GrepArgs {
     path: Option<String>,
     #[serde(default)]
     glob: Option<String>,
+    #[serde(default)]
+    output_mode: Option<String>,
+    #[serde(default)]
+    head_limit: Option<usize>,
 }
 
 pub fn glob_tool() -> BuiltinTool {
@@ -61,6 +65,14 @@ pub fn grep_tool() -> BuiltinTool {
                 "glob": {
                     "type": "string",
                     "description": "Optional glob filter for files (e.g., '*.rs')"
+                },
+                "output_mode": {
+                    "type": "string",
+                    "description": "Output format: 'content' (default, lines with matches), 'files_with_matches' (just file paths), 'count' (match counts per file)"
+                },
+                "head_limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (default: 250)"
                 }
             },
             "required": ["pattern"]
@@ -96,17 +108,18 @@ pub fn grep(args: Value) -> Result<String> {
     let args: GrepArgs = serde_json::from_value(args)?;
     let pattern = args.pattern;
     let base = args.path.as_deref().unwrap_or(".");
+    let output_mode = args.output_mode.as_deref().unwrap_or("content");
+    let head_limit = args.head_limit.unwrap_or(250);
 
     let regex = regex::Regex::new(&pattern)
         .with_context(|| format!("Invalid regex pattern: {}", pattern))?;
 
     let mut results = Vec::new();
     let base_path = Path::new(base);
-
     let mut errors = Vec::new();
 
     if base_path.is_file() {
-        search_file(base_path, &regex, &mut results)?;
+        search_file(base_path, &regex, &mut results, output_mode)?;
     } else if base_path.is_dir() {
         let glob_pattern = args.glob.as_deref().unwrap_or("*");
         let pattern_str = format!("{}/{}", base, glob_pattern);
@@ -120,7 +133,7 @@ pub fn grep(args: Value) -> Result<String> {
         };
         for path in glob_iter.flatten() {
             if path.is_file() {
-                if let Err(e) = search_file(&path, &regex, &mut results) {
+                if let Err(e) = search_file(&path, &regex, &mut results, output_mode) {
                     errors.push(format!("{}: {}", path.display(), e));
                 }
             }
@@ -139,18 +152,44 @@ pub fn grep(args: Value) -> Result<String> {
     if results.is_empty() {
         Ok("No matches found.".to_string())
     } else {
+        let total = results.len();
+        if total > head_limit {
+            results.truncate(head_limit);
+            results.push(format!(
+                "\n[Truncated: {} results total, showing first {}]",
+                total, head_limit
+            ));
+        }
         Ok(results.join("\n"))
     }
 }
 
-fn search_file(path: &Path, regex: &regex::Regex, results: &mut Vec<String>) -> Result<()> {
+fn search_file(
+    path: &Path,
+    regex: &regex::Regex,
+    results: &mut Vec<String>,
+    output_mode: &str,
+) -> Result<()> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read: {}", path.display()))?;
 
+    let mut match_count = 0;
     for (line_num, line) in content.lines().enumerate() {
         if regex.is_match(line) {
-            results.push(format!("{}:{}: {}", path.display(), line_num + 1, line));
+            match_count += 1;
+            if output_mode == "files_with_matches" {
+                results.push(path.display().to_string());
+                return Ok(());
+            } else if output_mode == "count" {
+                continue;
+            } else {
+                results.push(format!("{}:{}: {}", path.display(), line_num + 1, line));
+            }
         }
+    }
+
+    if output_mode == "count" && match_count > 0 {
+        results.push(format!("{}: {}", path.display(), match_count));
     }
 
     Ok(())

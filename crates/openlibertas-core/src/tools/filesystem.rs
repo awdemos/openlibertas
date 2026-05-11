@@ -98,6 +98,10 @@ pub fn write_file_tool() -> BuiltinTool {
     )
 }
 
+const MAX_LINES: usize = 1000;
+const MAX_LINE_LENGTH: usize = 2000;
+const MAX_BYTES: usize = 100_000;
+
 pub fn read_file(args: Value) -> Result<String> {
     let args: ReadFileArgs = serde_json::from_value(args)?;
     let path = verify_sandbox(Path::new(&args.path))?;
@@ -113,10 +117,18 @@ pub fn read_file(args: Value) -> Result<String> {
     let content =
         fs::read_to_string(&path).with_context(|| format!("Failed to read file: {}", args.path))?;
 
+    if content.len() > MAX_BYTES {
+        return Err(anyhow::anyhow!(
+            "File exceeds {} bytes ({} bytes). Use offset/limit to read partially.",
+            MAX_BYTES,
+            content.len()
+        ));
+    }
+
     let lines: Vec<&str> = content.lines().collect();
 
     let offset = args.offset.unwrap_or(0);
-    let limit = args.limit.unwrap_or(lines.len());
+    let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
 
     if offset >= lines.len() {
         return Ok(String::new());
@@ -125,7 +137,30 @@ pub fn read_file(args: Value) -> Result<String> {
     let end = (offset + limit).min(lines.len());
     let selected = &lines[offset..end];
 
-    Ok(selected.join("\n"))
+    let mut result = String::new();
+    for (i, line) in selected.iter().enumerate() {
+        let line_num = offset + i + 1;
+        let display_line = if line.len() > MAX_LINE_LENGTH {
+            format!(
+                "{}... [truncated: {} chars total]",
+                &line[..MAX_LINE_LENGTH],
+                line.len()
+            )
+        } else {
+            line.to_string()
+        };
+        result.push_str(&format!("{:4} | {}\n", line_num, display_line));
+    }
+
+    if lines.len() > MAX_LINES && offset == 0 && limit == MAX_LINES {
+        result.push_str(&format!(
+            "\n[Truncated: {} lines total, showing first {}]",
+            lines.len(),
+            MAX_LINES
+        ));
+    }
+
+    Ok(result)
 }
 
 pub fn write_file(args: Value) -> Result<String> {
@@ -153,6 +188,8 @@ struct StrReplaceFileArgs {
     path: String,
     old_str: String,
     new_str: String,
+    #[serde(default)]
+    replace_all: bool,
 }
 
 pub fn str_replace_file_tool() -> BuiltinTool {
@@ -173,6 +210,10 @@ pub fn str_replace_file_tool() -> BuiltinTool {
                 "new_str": {
                     "type": "string",
                     "description": "Replacement string"
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "If true, replace all occurrences. If false (default), old_str must be unique."
                 }
             },
             "required": ["path", "old_str", "new_str"]
@@ -199,9 +240,9 @@ pub fn str_replace_file(args: Value) -> Result<String> {
     }
 
     let count = content.matches(&args.old_str).count();
-    if count > 1 {
+    if count > 1 && !args.replace_all {
         return Err(anyhow::anyhow!(
-            "old_str appears {} times in the file. Must be unique for replacement.",
+            "old_str appears {} times in the file. Must be unique for replacement, or set replace_all=true.",
             count
         ));
     }
@@ -209,7 +250,14 @@ pub fn str_replace_file(args: Value) -> Result<String> {
     let new_content = content.replace(&args.old_str, &args.new_str);
     fs::write(path, new_content).with_context(|| format!("Failed to write file: {}", args.path))?;
 
-    Ok(format!("Successfully replaced text in {}", args.path))
+    if args.replace_all {
+        Ok(format!(
+            "Successfully replaced {} occurrence(s) in {}",
+            count, args.path
+        ))
+    } else {
+        Ok(format!("Successfully replaced text in {}", args.path))
+    }
 }
 
 use std::io::Write;

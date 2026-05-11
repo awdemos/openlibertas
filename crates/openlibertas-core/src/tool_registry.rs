@@ -281,9 +281,6 @@ impl ToolRegistry {
 
 pub fn tool_needs_approval(tool_name: &str) -> bool {
     let destructive = [
-        "write_file",
-        "writefile",
-        "writeFile",
         "edit_file",
         "editfile",
         "editFile",
@@ -291,9 +288,6 @@ pub fn tool_needs_approval(tool_name: &str) -> bool {
         "deletefile",
         "deleteFile",
         "remove_file",
-        "create_file",
-        "createfile",
-        "createFile",
         "patch",
         "apply_patch",
         "applyPatch",
@@ -341,7 +335,7 @@ mod tests {
 
     #[test]
     fn tool_needs_approval_detects_destructive() {
-        assert!(tool_needs_approval("write_file"));
+        assert!(!tool_needs_approval("write_file"));
         assert!(!tool_needs_approval("shell"));
         assert!(tool_needs_approval("str_replace_file"));
         assert!(tool_needs_approval("strReplaceFile"));

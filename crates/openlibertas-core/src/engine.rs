@@ -927,9 +927,10 @@ mod tests {
 
     #[test]
     fn tool_needs_approval_detects_destructive() {
-        assert!(crate::tool_registry::tool_needs_approval("write_file"));
+        assert!(!crate::tool_registry::tool_needs_approval("write_file"));
         assert!(!crate::tool_registry::tool_needs_approval("shell"));
         assert!(!crate::tool_registry::tool_needs_approval("read_file"));
+        assert!(crate::tool_registry::tool_needs_approval("str_replace_file"));
     }
 
     #[test]
