@@ -1,5 +1,7 @@
 # OpenLibertas
 
+![OpenLibertas](image.png)
+
 A terminal-based AI chat client with multi-provider support, MCP tools, session management, and intuitive TUI navigation.
 
 ## Features
