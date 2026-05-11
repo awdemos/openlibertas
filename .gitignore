@@ -30,3 +30,7 @@ Thumbs.db
 # Test artifacts
 /test-output
 .desloppify/
+
+# Autosaved conversations
+autosave-*.md
+*-20*.md
