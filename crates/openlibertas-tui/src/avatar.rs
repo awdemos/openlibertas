@@ -191,34 +191,41 @@ pub fn hash_to_color(hash: u64) -> Color {
 // Predefined frame sets
 // ---------------------------------------------------------------------------
 
-/// A small creature/face drawn with braille patterns — frame 1.
-static IDLE_FRAME_1: SpriteFrame = SpriteFrame(&[
+static HUMAN_FRAME_1: SpriteFrame = SpriteFrame(&[
+    "⠀⠀⠀⠀⣀⣀⠀⠀⠀⠀⠀",
+    "⠀⠀⠀⣰⣿⣿⣆⠀⠀⠀⠀",
+    "⠀⠀⣰⣿⣿⣿⣆⠀⠀⠀⠀",
+    "⠀⢀⣿⣿⣿⣿⣿⡀⠀⠀⠀",
+    "⠀⠈⢻⣿⣿⡟⠁⠀⠀⠀⠀",
+    "⠀⠀⠀⠻⠟⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-    "⠀⠀⠀⣠⣤⣤⣄⠀⠀⠀⠀",
-    "⠀⠀⣴⣿⣿⣿⣿⣦⠀⠀⠀",
-    "⠀⣼⣿⣿⠈⠙⣿⣿⣧⠀⠀",
-    "⠀⣿⣿⣿⣀⣀⣿⣿⣿⠀⠀",
-    "⠀⠸⣿⣿⣿⣿⣿⣿⠇⠀⠀",
-    "⠀⠀⠙⠻⠿⠿⠟⠋⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
 ]);
 
-/// A small creature/face drawn with braille patterns — frame 2.
-static IDLE_FRAME_2: SpriteFrame = SpriteFrame(&[
+static HUMAN_FRAME_2: SpriteFrame = SpriteFrame(&[
+    "⠀⠀⠀⠀⣀⣀⠀⠀⠀⠀⠀",
+    "⠀⠀⢰⣿⣿⣿⣆⠀⠀⠀⠀",
+    "⠀⢰⣿⣿⣿⣿⣆⠀⠀⠀⠀",
+    "⠀⣿⣿⣿⣿⣿⣿⡀⠀⠀⠀",
+    "⠀⠈⢻⣿⣿⡟⠁⠀⠀⠀⠀",
+    "⠀⠀⠀⠻⠟⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-    "⠀⠀⠀⣠⣤⣤⣄⠀⠀⠀⠀",
-    "⠀⠀⣴⣿⣿⣿⣿⣦⠀⠀⠀",
-    "⠀⣼⣿⣿⠀⠀⣿⣿⣧⠀⠀",
-    "⠀⣿⣿⣿⣀⣀⣿⣿⣿⠀⠀",
-    "⠀⠸⣿⣿⣿⣿⣿⣿⠇⠀⠀",
-    "⠀⠀⠙⠻⠿⠿⠟⠋⠀⠀⠀",
+    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+]);
+
+static HUMAN_FRAME_3: SpriteFrame = SpriteFrame(&[
+    "⠀⠀⠀⠀⣀⣀⠀⠀⠀⠀⠀",
+    "⠀⠀⠀⣰⣿⣿⣆⢰⠀⠀⠀",
+    "⠀⠀⣰⣿⣿⣿⣆⠀⠀⠀⠀",
+    "⠀⢀⣿⣿⣿⣿⣿⡀⠀⠀⠀",
+    "⠀⠈⢻⣿⣿⡟⠁⠀⠀⠀⠀",
+    "⠀⠀⠀⠻⠟⠀⠀⠀⠀⠀⠀",
+    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
 ]);
 
 /// Predefined idle animation frames.
-///
-/// Two frames of a small braille creature that subtly changes its eye shape.
-pub const IDLE_FRAMES: &[SpriteFrame] = &[IDLE_FRAME_1, IDLE_FRAME_2];
+pub const IDLE_FRAMES: &[SpriteFrame] = &[HUMAN_FRAME_1, HUMAN_FRAME_2, HUMAN_FRAME_3];
 
 // ---------------------------------------------------------------------------
 // Tests
