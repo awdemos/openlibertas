@@ -4,6 +4,8 @@
 
 A terminal-based AI chat client with multi-provider support, MCP tools, session management, and intuitive TUI navigation.
 
+> **Warning:** This project is under active development and is buggy. PRs welcome.
+
 ## Features
 
 - **Multi-Provider Support** - Connect to any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, Kimi, GLM) for local or remote inference
