@@ -7,8 +7,11 @@ A terminal-based AI chat client with multi-provider support, MCP tools, session 
 ## Features
 
 - **Multi-Provider Support** - Connect to any OpenAI-compatible endpoint (llama.cpp, Ollama, vLLM, Kimi, GLM) for local or remote inference
+- **Voice Mode** - Push-to-talk with Ctrl+Space using ElevenLabs STT/TTS. Speak naturally, hear responses read aloud.
 - **MCP Tool Integration** - Discover and use tools from Model Context Protocol servers (web search, browser automation, docker, etc.)
+- **Built-in Tools** - Native tools for file operations, shell commands, git, web search, and more — no MCP server required
 - **Autonomous Agents** - 15 agent personas for different tasks: coding, research, orchestration, code review, and more. Agents use tools autonomously to complete multi-step workflows.
+- **Dynamic Temperature** - Adjust model creativity on the fly with `/temp 0.2` for precise code or `/temp 0.8` for creative writing
 - **Session Management** - Save, load, and manage chat sessions with auto-generated names (model + timestamp)
 - **File Context** - Attach files inline with `@path/to/file` syntax
 - **Agent Personas** - 15 specialized agent personalities loaded from `personas/*.md` files
@@ -70,8 +73,8 @@ Config file: `~/.config/openlibertas/config.toml`
 
 ```toml
 [[providers]]
-name = "local"
-base_url = "http://127.0.0.1:11435/v1"
+name = "ollama"
+base_url = "http://127.0.0.1:11434/v1"
 api_key = "sk-local"
 enabled = true
 supports_tools = true
@@ -83,8 +86,27 @@ api_key = "sk-local"
 enabled = true
 supports_tools = true
 
+model = "qwen2.5-coder:14b"
 max_tokens = 4096
+auto_save = true
+
+# Optional: ElevenLabs voice configuration
+elevenlabs_api_key = "your-key-here"
+elevenlabs_voice_id = "your-voice-id"
+
+# Optional: Preferred audio input device
+input_device = "Bose Bluetooth Speaker"
 ```
+
+### Config Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `model` | none | Default model to use |
+| `max_tokens` | 2048 | Maximum tokens per response |
+| `auto_save` | false | Automatically save conversations |
+| `input_device` | none | Preferred audio input device for voice |
+| `filter_require_voice_and_tools` | false | Only show models that support both voice and tools |
 
 Environment variables override config values:
 - `OPENLIBERTAS_URL` - Override base URL
@@ -246,6 +268,9 @@ Startup skips the model menu if you have a previous session. Goes straight to ch
 | `/tools` | Toggle MCP tools panel |
 | `/model <name>` | Switch to specific model |
 | `/models` | Open model selection menu |
+| `/temp <0.0-2.0>` | Set model temperature (e.g., `/temp 0.2` for precise, `/temp 0.8` for creative) |
+| `/voice` | Toggle voice mode (STT/TTS) |
+| `/voice_device` | Select audio input device |
 | `/clear` | Clear current conversation |
 | `/new` | Start new empty session |
 | `/save [name]` | Save session (auto-names if no name given) |
@@ -257,6 +282,56 @@ Startup skips the model menu if you have a previous session. Goes straight to ch
 | `/agents` | Open agent configuration panel |
 | `/poke` | Toggle poke mode (send [POKE] on click) |
 | `/quit` | Quit |
+
+## Voice Mode
+
+OpenLibertas supports voice input and output via ElevenLabs:
+
+- **Ctrl+Space** - Hold to record, release to send (push-to-talk)
+- **Voice is processed locally** through your configured provider (Ollama, llama.cpp, etc.)
+- **Responses are read aloud** via ElevenLabs TTS
+
+### Setup
+
+Add to your `~/.config/openlibertas/config.toml`:
+
+```toml
+elevenlabs_api_key = "your-key-here"
+elevenlabs_voice_id = "your-voice-id"
+```
+
+### Commands
+
+- `/voice` - Toggle voice mode on/off
+- `/voice_device` - Select audio input device (persists to config)
+
+## Built-in Tools
+
+OpenLibertas includes native tools that work without any MCP servers:
+
+| Tool | Description |
+|------|-------------|
+| `shell` | Execute shell commands (sandboxed with validation) |
+| `read_file` | Read file contents |
+| `write_file` | Write or overwrite files |
+| `str_replace_file` | Find-and-replace in files |
+| `glob` | Find files by pattern |
+| `grep` | Search file contents |
+| `git` | Run git commands |
+| `web_search` | Search the web |
+| `fetch_url` | Fetch and read a URL |
+| `tmux` | Interact with tmux sessions |
+| `think` | Step-by-step reasoning before acting |
+| `switch_persona` | Change agent persona mid-task |
+| `spawn_subagent` | Delegate to a specialist agent |
+
+Shell commands execute with validation and safety checks. Destructive operations (write, replace) require YOLO mode (`/yolo`). Read-only operations execute immediately.
+
+## Native Tool Support
+
+When `supports_tools = true` (default), OpenLibertas uses native function calling via the OpenAI API `tools` parameter. Models that support native tools (Qwen2.5, Llama3.1, GPT-4, Claude) receive tool definitions through the standard API.
+
+For models that don't support function calling, set `supports_tools = false` and OpenLibertas falls back to text-based tool instructions.
 
 ### Session Names
 
