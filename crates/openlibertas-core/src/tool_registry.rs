@@ -1,6 +1,6 @@
-use crate::domain::{Message, ToolCall, ToolDefinition};
 use crate::conversation::build_tool_result_messages;
 use crate::domain::{now_timestamp, Role, ToolExecutionResult};
+use crate::domain::{Message, ToolCall, ToolDefinition};
 use crate::mcp::{McpClient, McpTool};
 use crate::tools;
 use std::collections::HashMap;
@@ -84,12 +84,20 @@ impl ToolRegistry {
         &self.server_statuses
     }
 
-    pub fn set_server_statuses(&mut self, statuses: HashMap<String, crate::domain::McpServerStatus>) {
+    pub fn set_server_statuses(
+        &mut self,
+        statuses: HashMap<String, crate::domain::McpServerStatus>,
+    ) {
         self.server_statuses = statuses;
     }
 
     pub fn has_pending_tool_calls(&self) -> bool {
         !self.pending_tool_calls.is_empty()
+    }
+
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.available_tools.iter().any(|t| t.name == name)
+            || self.builtin_tools.iter().any(|t| t.name == name)
     }
 
     pub fn clear_pending(&mut self) {
@@ -111,7 +119,13 @@ impl ToolRegistry {
             }
         }
         let read_only_builtins: &[&str] = &[
-            "read_file", "glob", "grep", "web_search", "fetch_url", "think", "git",
+            "read_file",
+            "glob",
+            "grep",
+            "web_search",
+            "fetch_url",
+            "think",
+            "git",
         ];
         for tool in &self.builtin_tools {
             if plan_mode && !read_only_builtins.contains(&tool.name.as_str()) {
@@ -175,7 +189,14 @@ impl ToolRegistry {
             if agent_status == Some("active") {
                 result.insert(
                     0,
-                    Message { role: Role::System, content: prompt.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                    Message {
+                        role: Role::System,
+                        content: prompt.to_string(),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        timestamp: None,
+                        reasoning_content: None,
+                    },
                 );
             }
         }
@@ -185,10 +206,17 @@ impl ToolRegistry {
 
     pub async fn execute_pending_tools(&mut self, yolo_mode: bool) -> Vec<ToolExecutionResult> {
         let mut results = Vec::new();
-        info!("Executing {} pending tool calls (yolo={})", self.pending_tool_calls.len(), yolo_mode);
+        info!(
+            "Executing {} pending tool calls (yolo={})",
+            self.pending_tool_calls.len(),
+            yolo_mode
+        );
 
         for tool_call in &self.pending_tool_calls {
-            info!("Tool call: {}({})", tool_call.function.name, tool_call.function.arguments);
+            info!(
+                "Tool call: {}({})",
+                tool_call.function.name, tool_call.function.arguments
+            );
             let key_arg =
                 extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
 
@@ -258,14 +286,24 @@ impl ToolRegistry {
                     },
                 };
             match &result {
-                ToolExecutionResult::Success { tool_name, output, .. } => {
-                    info!("Tool {} succeeded: {} chars output", tool_name, output.len());
+                ToolExecutionResult::Success {
+                    tool_name, output, ..
+                } => {
+                    info!(
+                        "Tool {} succeeded: {} chars output",
+                        tool_name,
+                        output.len()
+                    );
                     debug!("Tool {} output: {}", tool_name, output);
                 }
-                ToolExecutionResult::Error { tool_name, error, .. } => {
+                ToolExecutionResult::Error {
+                    tool_name, error, ..
+                } => {
                     warn!("Tool {} failed: {}", tool_name, error);
                 }
-                ToolExecutionResult::Skipped { tool_name, reason, .. } => {
+                ToolExecutionResult::Skipped {
+                    tool_name, reason, ..
+                } => {
                     info!("Tool {} skipped: {}", tool_name, reason);
                 }
             }
@@ -280,7 +318,14 @@ impl ToolRegistry {
         let mut messages = Vec::new();
         for (i, result) in self.tool_results.iter().enumerate() {
             if let Some(tool_call) = self.pending_tool_calls.get(i) {
-                messages.push(Message { role: Role::Tool, content: result.clone(), tool_calls: None, tool_call_id: Some(tool_call.id.clone()), timestamp: Some(now_timestamp()), reasoning_content: None });
+                messages.push(Message {
+                    role: Role::Tool,
+                    content: result.clone(),
+                    tool_calls: None,
+                    tool_call_id: Some(tool_call.id.clone()),
+                    timestamp: Some(now_timestamp()),
+                    reasoning_content: None,
+                });
             }
         }
         messages

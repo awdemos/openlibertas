@@ -117,7 +117,11 @@ impl OpenAiBackend {
         Self::with_tools(base_url, api_key, true)
     }
 
-    pub fn with_tools(base_url: String, api_key: crate::config::SecretString, supports_tools: bool) -> Self {
+    pub fn with_tools(
+        base_url: String,
+        api_key: crate::config::SecretString,
+        supports_tools: bool,
+    ) -> Self {
         Self::with_tools_and_params(base_url, api_key, supports_tools, None)
     }
 
@@ -225,8 +229,13 @@ impl OpenAiBackend {
             extra_params.remove(*key);
         }
         let msg_count = messages.len();
-        let api_messages: Vec<crate::domain::ApiMessage> = messages.into_iter().map(Into::into).collect();
-        let tools_for_req = if self.supports_tools { tools.clone() } else { None };
+        let api_messages: Vec<crate::domain::ApiMessage> =
+            messages.into_iter().map(Into::into).collect();
+        let tools_for_req = if self.supports_tools {
+            tools.clone()
+        } else {
+            None
+        };
         let req = ChatRequest {
             model: model.clone(),
             messages: api_messages.clone(),
@@ -243,11 +252,20 @@ impl OpenAiBackend {
         let supports_tools = self.supports_tools;
 
         let tools_count = req.tools.as_ref().map(|t| t.len()).unwrap_or(0);
-        info!("Chat request: model={}, messages={}, max_tokens={}, tools={} ({} definitions)",
-            model, msg_count, max_tokens, req.tools.is_some(), tools_count);
+        info!(
+            "Chat request: model={}, messages={}, max_tokens={}, tools={} ({} definitions)",
+            model,
+            msg_count,
+            max_tokens,
+            req.tools.is_some(),
+            tools_count
+        );
         if let Some(ref tools) = req.tools {
             for tool in tools {
-                debug!("Tool available: {} - {}", tool.function.name, tool.function.description);
+                debug!(
+                    "Tool available: {} - {}",
+                    tool.function.name, tool.function.description
+                );
             }
         }
 
@@ -282,7 +300,10 @@ impl OpenAiBackend {
                         if is_transient && retries < MAX_RETRIES {
                             retries += 1;
                             let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                            warn!("Chat HTTP {} — retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
+                            warn!(
+                                "Chat HTTP {} — retrying {}/{} in {:?}",
+                                status, retries, MAX_RETRIES, delay
+                            );
                             let _ = tx.send(ChatEvent::Error(format!(
                                 "[HTTP {} — retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
@@ -307,7 +328,10 @@ impl OpenAiBackend {
                         if retries < MAX_RETRIES {
                             retries += 1;
                             let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                            warn!("Chat connection error — retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
+                            warn!(
+                                "Chat connection error — retrying {}/{} in {:?}: {}",
+                                retries, MAX_RETRIES, delay, e
+                            );
                             let _ = tx.send(ChatEvent::Error(format!(
                                 "[Connection error — retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
@@ -315,7 +339,10 @@ impl OpenAiBackend {
                             tokio::time::sleep(delay).await;
                             continue;
                         }
-                        error!("Chat connection failed after {} retries: {}", MAX_RETRIES, e);
+                        error!(
+                            "Chat connection failed after {} retries: {}",
+                            MAX_RETRIES, e
+                        );
                         let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
@@ -330,7 +357,11 @@ impl OpenAiBackend {
                     messages: api_messages,
                     stream: true,
                     options: Some(OllamaOptions {
-                        num_predict: if max_tokens > 0 { Some(max_tokens as i32) } else { None },
+                        num_predict: if max_tokens > 0 {
+                            Some(max_tokens as i32)
+                        } else {
+                            None
+                        },
                         temperature,
                     }),
                     tools: if supports_tools { tools } else { None },
@@ -351,7 +382,11 @@ impl OpenAiBackend {
                             let _ = tx.send(ChatEvent::Error(format!(
                                 "[Ollama HTTP {}: {}]",
                                 status,
-                                if body.is_empty() { "Unknown error".to_string() } else { body }
+                                if body.is_empty() {
+                                    "Unknown error".to_string()
+                                } else {
+                                    body
+                                }
                             )));
                             return;
                         }
@@ -412,8 +447,7 @@ impl OpenAiBackend {
                             if data == "[DONE]" {
                                 break;
                             }
-                            if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data)
-                            {
+                            if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) {
                                 if let Some(choice) = chunk.choices.first() {
                                     if let Some(content) = &choice.delta.content {
                                         if !content.is_empty() {
@@ -422,7 +456,8 @@ impl OpenAiBackend {
                                     }
                                     if let Some(reasoning) = &choice.delta.reasoning_content {
                                         if !reasoning.is_empty() {
-                                            let _ = tx.send(ChatEvent::Reasoning(reasoning.clone()));
+                                            let _ =
+                                                tx.send(ChatEvent::Reasoning(reasoning.clone()));
                                         }
                                     } else if let Some(thinking) = &choice.delta.thinking {
                                         if !thinking.is_empty() {
@@ -438,9 +473,7 @@ impl OpenAiBackend {
                                                     call_type: tc
                                                         .call_type
                                                         .clone()
-                                                        .unwrap_or_else(|| {
-                                                            "function".to_string()
-                                                        }),
+                                                        .unwrap_or_else(|| "function".to_string()),
                                                     function: FunctionCall {
                                                         name: String::new(),
                                                         arguments: String::new(),
@@ -466,6 +499,14 @@ impl OpenAiBackend {
                     }
                 }
                 Err(e) => {
+                    // Graceful recovery: send accumulated tool calls before error
+                    let tool_count = accumulated_tool_calls.len();
+                    if tool_count > 0 {
+                        info!("Stream error recovery: sending {} accumulated tool calls", tool_count);
+                        for (_, tool_call) in accumulated_tool_calls {
+                            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                        }
+                    }
                     error!("Chat stream error: {}", e);
                     let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
                     return;
@@ -532,9 +573,18 @@ impl OpenAiBackend {
                                 }
                                 if let Some(tool_calls) = msg.tool_calls {
                                     for tc in tool_calls {
-                                        let args_str = serde_json::to_string(&tc.function.arguments).unwrap_or_default();
+                                        let args_str =
+                                            serde_json::to_string(&tc.function.arguments)
+                                                .unwrap_or_default();
                                         let tool_call = ToolCall {
-                                            id: format!("ollama_{}_{}", tc.function.name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
+                                            id: format!(
+                                                "ollama_{}_{}",
+                                                tc.function.name,
+                                                std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis()
+                                            ),
                                             call_type: "function".to_string(),
                                             function: FunctionCall {
                                                 name: tc.function.name,
@@ -571,7 +621,14 @@ mod tests {
 
     #[test]
     fn message_serializes_correctly() {
-        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None };
+        let msg = Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\":\"user\""));
         assert!(json.contains("\"content\":\"hello\""));
@@ -579,14 +636,21 @@ mod tests {
 
     #[test]
     fn message_with_tool_calls_serializes() {
-        let msg = Message { role: Role::Assistant, content: "".to_string(), tool_calls: Some(vec![ToolCall {
-            id: "call_1".to_string(),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "test".to_string(),
-                arguments: "{}".to_string(),
-            },
-        }]), tool_call_id: None, timestamp: None, reasoning_content: None };
+        let msg = Message {
+            role: Role::Assistant,
+            content: "".to_string(),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "test".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"tool_calls\""));
         assert!(json.contains("\"call_1\""));

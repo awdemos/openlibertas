@@ -13,7 +13,20 @@ pub struct Conversation {
     pub title: Option<String>,
     pub model: Option<String>,
     pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
     pub messages: Vec<Message>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionMeta {
+    pub id: String,
+    pub title: Option<String>,
+    pub model: Option<String>,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+    pub message_count: usize,
+    pub preview: String,
 }
 
 #[derive(Clone)]
@@ -33,11 +46,35 @@ impl ConversationStore {
         let model_clean = model
             .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
             .replace("--", "-");
-        format!("{}-{:04}-{:02}-{:02}-{:02}{:02}", model_clean, now.year(), now.month() as u8, now.day(), now.hour(), now.minute())
+        format!(
+            "{}-{:04}-{:02}-{:02}-{:02}{:02}",
+            model_clean,
+            now.year(),
+            now.month() as u8,
+            now.day(),
+            now.hour(),
+            now.minute()
+        )
+    }
+
+    fn derive_title(messages: &[Message]) -> Option<String> {
+        let first_user = messages.iter().find(|m| m.role == Role::User)?;
+        let content = first_user.content.trim();
+        if content.is_empty() || content.eq_ignore_ascii_case("untitled") {
+            return None;
+        }
+        let title = if content.len() > 40 {
+            format!("{}...", &content[..40])
+        } else {
+            content.to_string()
+        };
+        Some(title)
     }
 
     pub fn save_markdown(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
-        let now = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default();
+        let now = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
         let mut md = String::new();
         md.push_str("# Chat Session\n\n");
         if let Some(m) = model {
@@ -70,21 +107,17 @@ impl ConversationStore {
     }
 
     pub fn save(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
-        let now = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default();
-        let title = messages.first().map(|m| {
-            let content = &m.content;
-            if content.len() > 40 {
-                format!("{}...", &content[..40])
-            } else {
-                content.clone()
-            }
-        });
+        let now = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let title = Self::derive_title(messages);
 
         let conversation = Conversation {
             id: id.to_string(),
             title,
             model: model.map(|s| s.to_string()),
-            created_at: now,
+            created_at: now.clone(),
+            updated_at: Some(now),
             messages: messages.to_vec(),
         };
 
@@ -110,7 +143,7 @@ impl ConversationStore {
         Ok(conversation.messages)
     }
 
-    pub fn list_with_meta(&self) -> Result<Vec<(String, Option<String>, String)>> {
+    pub fn list_with_meta(&self) -> Result<Vec<SessionMeta>> {
         let mut sessions = Vec::new();
         for entry in fs::read_dir(&self.data_dir)
             .with_context(|| format!("Failed to read data directory: {:?}", self.data_dir))?
@@ -122,19 +155,46 @@ impl ConversationStore {
                     let id = stem.to_string_lossy().to_string();
                     if let Ok(contents) = fs::read_to_string(&path) {
                         if let Ok(conv) = serde_json::from_str::<Conversation>(&contents) {
-                            sessions.push((id, conv.model, conv.created_at));
+                            let message_count = conv.messages.len();
+                            let preview = conv
+                                .messages
+                                .iter()
+                                .rev()
+                                .find(|m| m.role != Role::System)
+                                .map(|m| {
+                                    let content = m.content.trim();
+                                    if content.len() > 100 {
+                                        format!("{}...", &content[..100])
+                                    } else {
+                                        content.to_string()
+                                    }
+                                })
+                                .unwrap_or_default();
+                            sessions.push(SessionMeta {
+                                id,
+                                title: conv.title,
+                                model: conv.model,
+                                created_at: conv.created_at,
+                                updated_at: conv.updated_at,
+                                message_count,
+                                preview,
+                            });
                         }
                     }
                 }
             }
         }
-        sessions.sort_by(|a, b| b.2.cmp(&a.2));
+        sessions.sort_by(|a, b| {
+            let a_time = a.updated_at.as_ref().unwrap_or(&a.created_at);
+            let b_time = b.updated_at.as_ref().unwrap_or(&b.created_at);
+            b_time.cmp(a_time)
+        });
         Ok(sessions)
     }
 
     pub fn list(&self) -> Result<Vec<String>> {
         self.list_with_meta()
-            .map(|v| v.into_iter().map(|(id, _, _)| id).collect())
+            .map(|v| v.into_iter().map(|meta| meta.id).collect())
     }
 
     pub fn delete(&self, id: &str) -> Result<()> {
@@ -151,10 +211,35 @@ impl ConversationStore {
     }
 }
 
+pub fn format_relative_time(iso_str: &str) -> String {
+    use time::OffsetDateTime;
+    let now = OffsetDateTime::now_utc();
+    let parsed =
+        OffsetDateTime::parse(iso_str, &time::format_description::well_known::Rfc3339).ok();
+
+    if let Some(dt) = parsed {
+        let duration = now - dt;
+        let seconds = duration.whole_seconds();
+        if seconds < 60 {
+            "just now".to_string()
+        } else if seconds < 3600 {
+            format!("{}m ago", seconds / 60)
+        } else if seconds < 86400 {
+            format!("{}h ago", seconds / 3600)
+        } else if seconds < 604800 {
+            format!("{}d ago", seconds / 86400)
+        } else {
+            format!("{:02}-{:02}", dt.month() as u8, dt.day())
+        }
+    } else {
+        iso_str.chars().take(10).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::domain::Message;
+    use crate::domain::Message;
     use crate::domain::Role;
 
     #[test]
@@ -182,7 +267,7 @@ use crate::domain::Message;
             tool_calls: None,
             tool_call_id: None,
             timestamp: None,
-reasoning_content: None,
+            reasoning_content: None,
         }];
 
         store
@@ -205,7 +290,7 @@ reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             timestamp: None,
-reasoning_content: None,
+            reasoning_content: None,
         }];
 
         store.save("session-a", Some("model-a"), &messages).unwrap();
@@ -226,7 +311,7 @@ reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             timestamp: None,
-reasoning_content: None,
+            reasoning_content: None,
         }];
 
         store.save("to-delete", None, &messages).unwrap();

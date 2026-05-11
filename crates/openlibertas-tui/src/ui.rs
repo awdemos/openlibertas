@@ -191,10 +191,7 @@ fn draw_models(frame: &mut Frame, app: &App) {
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            " Quit",
-            Style::default().fg(app.theme.system_color()),
-        ),
+        Span::styled(" Quit", Style::default().fg(app.theme.system_color())),
     ];
     let help = Paragraph::new(Line::from(footer_spans))
         .style(Style::default().fg(app.theme.system_color()))
@@ -235,6 +232,10 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         Overlay::None => {}
     }
 
+    if app.completion_active() && app.screen == Screen::Chat {
+        draw_completions_popup(frame, app, main_chunks[3]);
+    }
+
     if app.avatar_enabled {
         for avatar in &app.avatars {
             frame.render_widget(avatar, frame.area());
@@ -269,7 +270,11 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let agent_indicator = match app.engine.agents().status {
         openlibertas_core::engine::AgentStatus::Disabled => String::new(),
         openlibertas_core::engine::AgentStatus::Idle => {
-            format!(" [Agents: ○ {} Ready{}]", app.engine.agents().persona, plan_indicator)
+            format!(
+                " [Agents: ○ {} Ready{}]",
+                app.engine.agents().persona,
+                plan_indicator
+            )
         }
         openlibertas_core::engine::AgentStatus::Active => {
             format!(
@@ -476,17 +481,18 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                                         .fg(app.theme.system_color())
                                         .add_modifier(Modifier::BOLD),
                                 ),
-                                Span::styled(
-                                    " ─",
-                                    Style::default().fg(app.theme.system_color()),
-                                ),
+                                Span::styled(" ─", Style::default().fg(app.theme.system_color())),
                             ]));
                             let wrapped_reasoning = if viewport_width > 10 {
-                                crate::markdown::wrap_markdown(reasoning, viewport_width.saturating_sub(2))
+                                crate::markdown::wrap_markdown(
+                                    reasoning,
+                                    viewport_width.saturating_sub(2),
+                                )
                             } else {
                                 reasoning.clone()
                             };
-                            let reasoning_rendered = app.markdown_renderer.render(&wrapped_reasoning, app.theme);
+                            let reasoning_rendered =
+                                app.markdown_renderer.render(&wrapped_reasoning, app.theme);
                             for line in reasoning_rendered.lines {
                                 let dimmed_line = Line::from(
                                     line.spans
@@ -513,14 +519,20 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 }
 
                 {
-                    let wrapped_content = if viewport_width > 10 {
-                        crate::markdown::wrap_markdown(&msg.content, viewport_width)
+                    if msg.role == Role::Tool {
+                        for text_line in msg.content.lines() {
+                            lines.push(Line::from(Span::raw(text_line)));
+                        }
                     } else {
-                        msg.content.clone()
-                    };
-                    let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
-                    for line in rendered.lines {
-                        lines.push(line);
+                        let wrapped_content = if viewport_width > 10 {
+                            crate::markdown::wrap_markdown(&msg.content, viewport_width)
+                        } else {
+                            msg.content.clone()
+                        };
+                        let rendered = app.markdown_renderer.render(&wrapped_content, app.theme);
+                        for line in rendered.lines {
+                            lines.push(line);
+                        }
                     }
                 }
                 if is_last && is_last_msg_streaming && msg.role == Role::Assistant {
@@ -881,6 +893,71 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((cursor_x, area.y + 1));
 }
 
+
+fn draw_completions_popup(frame: &mut Frame, app: &App, input_area: Rect) {
+    let items = app.completion_items();
+    if items.is_empty() {
+        return;
+    }
+
+    let count = items.len().min(10) as u16;
+    let height = count + 2; // items + borders
+    let area = Rect {
+        x: input_area.x,
+        y: input_area.y.saturating_sub(height),
+        width: input_area.width,
+        height,
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(match items.first().map(|i| i.kind) {
+            Some(openlibertas_core::completion::CompletionType::SlashCommand) => " Commands ",
+            Some(openlibertas_core::completion::CompletionType::FilePath) => " Files ",
+            Some(openlibertas_core::completion::CompletionType::Model) => " Models ",
+            None => " ",
+        })
+        .title_style(
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(app.theme.border_color()));
+
+    let inner = area.inner(Margin {
+        horizontal: 1,
+        vertical: 0,
+    });
+
+    let list_items: Vec<ListItem> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = if i == app.completion_selected() {
+                Style::default()
+                    .bg(app.theme.primary())
+                    .fg(app.theme.panel_bg())
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.foreground())
+            };
+
+            let marker = if i == app.completion_selected() { "▸ " } else { "  " };
+            let text = if item.description.is_empty() {
+                format!("{}{}", marker, item.label)
+            } else {
+                format!("{}{}  {}", marker, item.label, item.description)
+            };
+            ListItem::new(text).style(style)
+        })
+        .collect();
+
+    let list = List::new(list_items).highlight_style(Style::default().add_modifier(Modifier::BOLD));
+    frame.render_widget(Clear, area);
+    frame.render_widget(list, inner);
+    frame.render_widget(block, area);
+}
+
 fn draw_tools_panel(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let popup_area = centered_rect(80, 80, area);
@@ -1093,13 +1170,16 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Clear, popup_area);
 
-    let sessions = app.store.as_ref().map_or(Vec::new(), |store| {
-        store.list_with_meta().unwrap_or_default()
-    });
+    let sessions = app.filtered_sessions();
+    let total_sessions = sessions.len();
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Saved Sessions ({}) ", sessions.len()))
+        .title(if app.session_search.is_empty() {
+            format!(" Saved Sessions ({}) ", total_sessions)
+        } else {
+            format!(" Saved Sessions ({} / {}) ", total_sessions, app.session_search)
+        })
         .title_style(
             Style::default()
                 .fg(app.theme.primary())
@@ -1111,82 +1191,142 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
         horizontal: 1,
         vertical: 1,
     });
+
+    let footer_height = 1u16;
     let content_area = Rect {
         x: inner.x,
         y: inner.y,
         width: inner.width,
-        height: inner.height.saturating_sub(1),
+        height: inner.height.saturating_sub(footer_height),
     };
 
     if sessions.is_empty() {
-        let content =
-            Paragraph::new("No saved sessions.\nUse /save to save the current conversation.")
-                .alignment(Alignment::Center);
+        let msg = if app.session_search.is_empty() {
+            "No saved sessions.\nUse /save to save the current conversation."
+        } else {
+            "No sessions match your search."
+        };
+        let content = Paragraph::new(msg)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(app.theme.system_color()));
         frame.render_widget(content, content_area);
     } else {
-        let lines: Vec<Line> = sessions
-            .into_iter()
-            .map(|(id, model, created)| {
-                let model_str = model.as_deref().unwrap_or("unknown");
-                let date = &created[..created.find('T').unwrap_or(created.len())];
-                let time = &created[created.find('T').map(|i| i + 1).unwrap_or(0)
-                    ..created.find('.').unwrap_or(created.len())];
-                Line::from(vec![
-                    Span::styled("● ", Style::default().fg(app.theme.user_color())),
+        let items: Vec<ListItem> = sessions
+            .iter()
+            .enumerate()
+            .map(|(i, meta)| {
+                let is_selected = i == app.session_selected;
+
+                let title = meta.title.as_deref().unwrap_or("Untitled");
+                let model_str = meta.model.as_deref().unwrap_or("unknown");
+                let time_str = meta.updated_at.as_ref()
+                    .or(Some(&meta.created_at))
+                    .map(|s| openlibertas_core::store::format_relative_time(s))
+                    .unwrap_or_default();
+
+                let title_style = if is_selected {
+                    Style::default()
+                        .bg(app.theme.primary())
+                        .fg(app.theme.panel_bg())
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.foreground())
+                };
+
+                let meta_style = if is_selected {
+                    Style::default()
+                        .bg(app.theme.primary())
+                        .fg(app.theme.panel_bg())
+                } else {
+                    Style::default().fg(app.theme.system_color())
+                };
+
+                let preview_style = if is_selected {
+                    Style::default()
+                        .bg(app.theme.primary())
+                        .fg(app.theme.panel_bg())
+                        .add_modifier(Modifier::ITALIC)
+                } else {
+                    Style::default()
+                        .fg(app.theme.secondary())
+                        .add_modifier(Modifier::ITALIC)
+                };
+
+                let marker = if is_selected { "▸ " } else { "  " };
+
+                let title_line = Line::from(vec![
+                    Span::styled(marker, Style::default().fg(app.theme.primary())),
+                    Span::styled(title.to_string(), title_style),
                     Span::styled(
-                        id.to_string(),
-                        Style::default()
-                            .fg(app.theme.secondary())
-                            .add_modifier(Modifier::BOLD),
+                        format!("  {}  {} msgs  {}", model_str, meta.message_count, time_str),
+                        meta_style,
                     ),
-                    Span::styled(
-                        format!("  [{} | {} {}]", model_str, date, time),
-                        Style::default().fg(app.theme.system_color()),
-                    ),
-                ])
+                ]);
+
+                let preview_text = if meta.preview.len() > 80 {
+                    format!("{}...", &meta.preview[..80])
+                } else {
+                    meta.preview.clone()
+                };
+                let preview_line = Line::from(vec![
+                    Span::styled("    ", Style::default()),
+                    Span::styled(preview_text, preview_style),
+                ]);
+
+                ListItem::new(Text::from(vec![title_line, preview_line]))
             })
             .collect();
-        let content = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: true });
-        frame.render_widget(content, content_area);
+
+        let list = List::new(items)
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        frame.render_widget(list, content_area);
     }
 
     frame.render_widget(block, popup_area);
 
     let footer = Paragraph::new(Line::from(vec![
         Span::styled(
+            "↑/↓",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Load  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "Del",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Delete  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
             "Esc",
             Style::default()
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
+        Span::styled(" Close  ", Style::default().fg(app.theme.system_color())),
         Span::styled(
-            " to close  |  ",
-            Style::default().fg(app.theme.system_color()),
-        ),
-        Span::styled(
-            "/load <name>",
+            "Type",
             Style::default()
                 .fg(app.theme.secondary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            " to load  |  ",
-            Style::default().fg(app.theme.system_color()),
-        ),
-        Span::styled(
-            "/sessions",
-            Style::default()
-                .fg(app.theme.secondary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" to toggle", Style::default().fg(app.theme.system_color())),
+        Span::styled(" to search", Style::default().fg(app.theme.system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
         x: inner.x,
-        y: inner.y + inner.height.saturating_sub(1),
+        y: inner.y + inner.height.saturating_sub(footer_height),
         width: inner.width,
-        height: 1,
+        height: footer_height,
     };
     frame.render_widget(footer, footer_area);
 }
@@ -1400,19 +1540,22 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
         height: inner.height.saturating_sub(1),
     };
 
-    let options = [(
+    let options = [
+        (
             "Status",
             (match app.engine.agents().status {
-                    openlibertas_core::engine::AgentStatus::Disabled => "Disabled",
-                    openlibertas_core::engine::AgentStatus::Idle => "Enabled",
-                    openlibertas_core::engine::AgentStatus::Active => "Active",
-                }).to_string(),
+                openlibertas_core::engine::AgentStatus::Disabled => "Disabled",
+                openlibertas_core::engine::AgentStatus::Idle => "Enabled",
+                openlibertas_core::engine::AgentStatus::Active => "Active",
+            })
+            .to_string(),
         ),
         ("Persona", app.engine.agents().persona.clone()),
         (
             "Max Iterations",
             format!("{}", app.engine.agents().max_iterations),
-        )];
+        ),
+    ];
 
     let mut items: Vec<ListItem> = options
         .iter()
@@ -1433,23 +1576,30 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
         .collect();
 
     items.push(ListItem::new(""));
-    items.push(ListItem::new("Available Specialists:").style(
-        Style::default()
-            .fg(app.theme.primary())
-            .add_modifier(Modifier::BOLD),
-    ));
+    items.push(
+        ListItem::new("Available Specialists:").style(
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+    );
 
     let personas = app.agent_personas();
-    for (name, _) in personas.iter().filter(|(n, _)| n != &app.engine.agents().persona) {
-        items.push(ListItem::new(format!("  • {}", name)).style(
-            Style::default().fg(app.theme.secondary()),
-        ));
+    for (name, _) in personas
+        .iter()
+        .filter(|(n, _)| n != &app.engine.agents().persona)
+    {
+        items.push(
+            ListItem::new(format!("  • {}", name))
+                .style(Style::default().fg(app.theme.secondary())),
+        );
     }
 
     items.push(ListItem::new(""));
-    items.push(ListItem::new("Agents can delegate to specialists using the switch_persona tool.").style(
-        Style::default().fg(app.theme.system_color()),
-    ));
+    items.push(
+        ListItem::new("Agents can delegate to specialists using the switch_persona tool.")
+            .style(Style::default().fg(app.theme.system_color())),
+    );
 
     let list = List::new(items).highlight_style(Style::default().add_modifier(Modifier::BOLD));
     frame.render_widget(list, content_area);
@@ -1582,7 +1732,10 @@ fn draw_avatar_menu(frame: &mut Frame, app: &App) {
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Toggle/Adjust  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            " Toggle/Adjust  ",
+            Style::default().fg(app.theme.system_color()),
+        ),
         Span::styled(
             "Esc",
             Style::default()

@@ -5,9 +5,17 @@ use serde_json::Value;
 use crate::tools::BuiltinTool;
 
 const ALLOWED_TMUX_COMMANDS: &[&str] = &[
-    "list-sessions", "list-windows", "list-panes",
-    "capture-pane", "send-keys", "new-session", "kill-session",
-    "attach-session", "detach-client", "has-session", "display-message",
+    "list-sessions",
+    "list-windows",
+    "list-panes",
+    "capture-pane",
+    "send-keys",
+    "new-session",
+    "kill-session",
+    "attach-session",
+    "detach-client",
+    "has-session",
+    "display-message",
 ];
 
 fn validate_tmux_command(subcommand: &str) -> Result<()> {

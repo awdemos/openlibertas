@@ -25,7 +25,10 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
     let host = cpal::default_host();
     let default_device = host.default_input_device();
     let default_name = default_device.as_ref().and_then(|d| d.name().ok());
-    info!("Enumerating audio input devices, default: {:?}", default_name);
+    info!(
+        "Enumerating audio input devices, default: {:?}",
+        default_name
+    );
 
     let mut devices = Vec::new();
     match host.input_devices() {
@@ -67,7 +70,7 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
             error!("Failed to enumerate input devices: {}", e);
             return Err(crate::voice::VoiceError::AudioError(format!(
                 "Failed to enumerate input devices: {e}"
-            )))
+            )));
         }
     }
 
@@ -89,7 +92,8 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
 /// Get the name of the default input device.
 pub fn default_input_device_name() -> Result<String, crate::voice::VoiceError> {
     let host = cpal::default_host();
-    let name = host.default_input_device()
+    let name = host
+        .default_input_device()
         .and_then(|d| d.name().ok())
         .ok_or_else(|| {
             error!("No default input device available");
@@ -140,7 +144,9 @@ pub fn compute_stats(samples: &[f32], sample_rate: u32, channels: u16) -> AudioS
         0
     } else {
         let samples_per_ms = (sample_rate as u64 * channels as u64) / 1000;
-        (samples.len() as u64).checked_div(samples_per_ms).unwrap_or(0)
+        (samples.len() as u64)
+            .checked_div(samples_per_ms)
+            .unwrap_or(0)
     };
 
     AudioStats {
@@ -328,7 +334,7 @@ impl AudioRecorder {
                 return Err(crate::voice::VoiceError::AudioError(format!(
                     "Unsupported sample format: {:?}",
                     config.sample_format()
-                )))
+                )));
             }
         }
         .map_err(|e| {
@@ -358,7 +364,11 @@ impl AudioRecorder {
         let stats = compute_stats(&samples, self.sample_rate, self.channels);
         info!(
             "Recording stopped: {} samples, {} ms, peak={:.3}, rms={:.3}, silence={}",
-            stats.sample_count, stats.duration_ms, stats.peak_amplitude, stats.rms_amplitude, stats.is_silence
+            stats.sample_count,
+            stats.duration_ms,
+            stats.peak_amplitude,
+            stats.rms_amplitude,
+            stats.is_silence
         );
         Ok(Recording {
             samples,
@@ -384,11 +394,10 @@ pub struct AudioPlayer {
 impl AudioPlayer {
     /// Create a new audio player with a shared output stream.
     pub fn new() -> Result<Self, crate::voice::VoiceError> {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default()
-            .map_err(|e| {
-                error!("No audio output device: {}", e);
-                crate::voice::VoiceError::AudioError(format!("No audio output device: {e}"))
-            })?;
+        let (_stream, stream_handle) = rodio::OutputStream::try_default().map_err(|e| {
+            error!("No audio output device: {}", e);
+            crate::voice::VoiceError::AudioError(format!("No audio output device: {e}"))
+        })?;
         let sink = rodio::Sink::try_new(&stream_handle).map_err(|e| {
             error!("Failed to create audio sink: {}", e);
             crate::voice::VoiceError::AudioError(format!("Failed to create audio sink: {e}"))
@@ -406,11 +415,10 @@ impl AudioPlayer {
         let len = audio_bytes.len();
         self.sink.stop();
         let cursor = Cursor::new(audio_bytes);
-        let source = rodio::Decoder::new(cursor)
-            .map_err(|e| {
-                error!("Failed to decode audio: {}", e);
-                crate::voice::VoiceError::AudioError(format!("Failed to decode audio: {e}"))
-            })?;
+        let source = rodio::Decoder::new(cursor).map_err(|e| {
+            error!("Failed to decode audio: {}", e);
+            crate::voice::VoiceError::AudioError(format!("Failed to decode audio: {e}"))
+        })?;
         self.sink.append(source);
         info!("Audio playback started: {} bytes", len);
         Ok(())

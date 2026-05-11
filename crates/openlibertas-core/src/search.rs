@@ -55,7 +55,14 @@ mod tests {
     use crate::domain::Role;
 
     fn create_message(content: &str) -> Message {
-        Message { role: Role::User, content: content.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None }
+        Message {
+            role: Role::User,
+            content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        }
     }
 
     #[test]
@@ -105,7 +112,11 @@ mod tests {
 
     #[test]
     fn search_snippet_empty_on_bounds() {
-        let m = SearchMatch { message_index: 0, char_start: 10, char_end: 5 };
+        let m = SearchMatch {
+            message_index: 0,
+            char_start: 10,
+            char_end: 5,
+        };
         assert_eq!(m.snippet("short"), "");
     }
 

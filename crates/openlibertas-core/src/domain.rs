@@ -101,23 +101,23 @@ impl Model {
 
         // Tool-capable model families (heuristic for local models)
         let tool_patterns = [
-            "instruct",  // Most instruct models support tools
-            "coder",     // Code models usually tool-capable
-            "tool",      // Explicitly fine-tuned for tools
-            "function",  // Function-calling variants
-            "agent",     // Agent-tuned models
-            "qwen2.5",   // Qwen2.5 series has native tool support
-            "qwen3",     // Qwen3 series
-            "qwen3.5",   // Qwen3.5 series
-            "llama3",    // Llama 3 instruct variants
-            "llama-3",   // Alternate naming
-            "phi4",      // Phi-4 series
-            "phi-4",     // Alternate naming
-            "gemma3",    // Gemma 3
-            "gemma-3",   // Alternate naming
-            "mistral",   // Mistral instruct
-            "mixtral",   // Mixtral instruct
-            "nemotron",  // NVIDIA Nemotron
+            "instruct", // Most instruct models support tools
+            "coder",    // Code models usually tool-capable
+            "tool",     // Explicitly fine-tuned for tools
+            "function", // Function-calling variants
+            "agent",    // Agent-tuned models
+            "qwen2.5",  // Qwen2.5 series has native tool support
+            "qwen3",    // Qwen3 series
+            "qwen3.5",  // Qwen3.5 series
+            "llama3",   // Llama 3 instruct variants
+            "llama-3",  // Alternate naming
+            "phi4",     // Phi-4 series
+            "phi-4",    // Alternate naming
+            "gemma3",   // Gemma 3
+            "gemma-3",  // Alternate naming
+            "mistral",  // Mistral instruct
+            "mixtral",  // Mixtral instruct
+            "nemotron", // NVIDIA Nemotron
             "trinity",
             "glm4",      // GLM-4
             "command-r", // Cohere Command-R
@@ -178,7 +178,15 @@ impl From<Message> for ApiMessage {
 
 pub fn now_timestamp() -> String {
     let now = time::OffsetDateTime::now_utc();
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", now.year(), now.month() as u8, now.day(), now.hour(), now.minute(), now.second())
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -313,7 +321,14 @@ mod tests {
 
     #[test]
     fn message_with_role_serializes() {
-        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None };
+        let msg = Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\""));
         assert!(json.contains("\"user\""));

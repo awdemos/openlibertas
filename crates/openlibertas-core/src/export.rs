@@ -98,7 +98,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -106,7 +106,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ]
     }

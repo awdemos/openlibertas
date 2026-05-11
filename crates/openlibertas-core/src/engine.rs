@@ -6,15 +6,17 @@
 //! - `InputState` — buffer, cursor, history, autocomplete, selection
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
-use crate::domain::{FunctionCall, Message, ToolCall, ToolDefinition};
 use crate::conversation::{parse_file_context, ContextCompactor};
 use crate::domain::{now_timestamp, Role};
+use crate::domain::{FunctionCall, Message, ToolCall, ToolDefinition};
 use crate::env_context::EnvContext;
+use crate::history::HistoryStore;
 use crate::mcp::McpClient;
 use crate::tool_registry::ToolRegistry;
+use tracing::{info, warn};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-use tracing::info;
 
+use crate::completion::{CompletionEngine, CompletionItem, CompletionType};
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -61,7 +63,6 @@ impl Default for AgentState {
 }
 
 #[derive(Debug, PartialEq)]
-#[derive(Default)]
 pub struct InputState {
     pub buffer: String,
     pub cursor_pos: usize,
@@ -75,9 +76,29 @@ pub struct InputState {
     pub selection_anchor: Option<usize>,
     /// Horizontal scroll offset for the input viewport
     pub scroll_offset: usize,
+    /// Current completion candidates
+    pub completion_items: Vec<CompletionItem>,
+    /// Whether the completion popup is currently visible
+    pub completion_active: bool,
 }
 
-
+impl Default for InputState {
+    fn default() -> Self {
+        Self {
+            buffer: String::new(),
+            cursor_pos: 0,
+            history: Vec::new(),
+            history_index: None,
+            history_stash: String::new(),
+            autocomplete_index: 0,
+            show_autocomplete: false,
+            selection_anchor: None,
+            scroll_offset: 0,
+            completion_items: Vec::new(),
+            completion_active: false,
+        }
+    }
+}
 pub struct ChatState {
     pub messages: Vec<Message>,
     pub scroll: usize,
@@ -102,8 +123,6 @@ impl Default for ChatState {
     }
 }
 
-
-#[derive(Default)]
 pub struct ChatEngine {
     chat: ChatState,
     input: InputState,
@@ -113,6 +132,25 @@ pub struct ChatEngine {
     agent_prompt: Option<String>,
     env_context: Option<EnvContext>,
     supports_native_tools: bool,
+    completion_engine: CompletionEngine,
+    history_store: Option<HistoryStore>,
+}
+
+impl Default for ChatEngine {
+    fn default() -> Self {
+        Self {
+            chat: ChatState::default(),
+            input: InputState::default(),
+            agents: AgentState::default(),
+            tools: ToolRegistry::default(),
+            system_prompt: None,
+            agent_prompt: None,
+            env_context: None,
+            supports_native_tools: false,
+            completion_engine: CompletionEngine::new(),
+            history_store: None,
+        }
+    }
 }
 
 impl ChatEngine {
@@ -133,6 +171,17 @@ impl ChatEngine {
     pub fn with_env_context(mut self, ctx: EnvContext) -> Self {
         self.env_context = Some(ctx);
         self
+    }
+    pub fn with_history_store(mut self, store: HistoryStore) -> Self {
+        self.history_store = Some(store);
+        self
+    }
+
+    pub fn load_history(&mut self) {
+        if let Some(ref store) = self.history_store {
+            let entries = store.load();
+            self.input.history.extend(entries);
+        }
     }
 
     pub fn chat(&self) -> &ChatState {
@@ -227,7 +276,14 @@ impl ChatEngine {
             if let Some(prompt) = &self.agent_prompt {
                 messages.insert(
                     0,
-                    Message { role: Role::System, content: prompt.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                    Message {
+                        role: Role::System,
+                        content: prompt.clone(),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        timestamp: None,
+                        reasoning_content: None,
+                    },
                 );
             }
         }
@@ -254,7 +310,14 @@ impl ChatEngine {
                 }
                 messages.insert(
                     0,
-                    Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                    Message {
+                        role: Role::System,
+                        content: full_prompt,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        timestamp: None,
+                        reasoning_content: None,
+                    },
                 );
             }
         } else if let Some(tool_text) = &tool_instructions {
@@ -264,20 +327,55 @@ impl ChatEngine {
             }
             messages.insert(
                 0,
-                Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                Message {
+                    role: Role::System,
+                    content: full_prompt,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    timestamp: None,
+                    reasoning_content: None,
+                },
             );
         } else if let Some(env) = &env_section {
             messages.insert(
                 0,
-                Message { role: Role::System, content: env.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None },
+                Message {
+                    role: Role::System,
+                    content: env.clone(),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    timestamp: None,
+                    reasoning_content: None,
+                },
             );
         }
 
         let ts = Some(now_timestamp());
-        messages.push(Message { role: Role::User, content: parsed.clone(), tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None });
+        messages.push(Message {
+            role: Role::User,
+            content: parsed.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: ts.clone(),
+            reasoning_content: None,
+        });
 
-        self.chat.messages.push(Message { role: Role::User, content: parsed, tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None });
-        self.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: ts, reasoning_content: None });
+        self.chat.messages.push(Message {
+            role: Role::User,
+            content: parsed,
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: ts.clone(),
+            reasoning_content: None,
+        });
+        self.chat.messages.push(Message {
+            role: Role::Assistant,
+            content: String::new(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: ts,
+            reasoning_content: None,
+        });
         self.chat.streaming = true;
         self.chat.auto_scroll = true;
         self.tools.clear_pending();
@@ -334,7 +432,10 @@ impl ChatEngine {
                 let mut found_tools = false;
 
                 if let Some(arr) = json_val.as_array() {
-                    info!("Sanitizer detected JSON array with {} items, checking for tool calls", arr.len());
+                    info!(
+                        "Sanitizer detected JSON array with {} items, checking for tool calls",
+                        arr.len()
+                    );
                     for item in arr {
                         if Self::extract_tool_call_from_json(item, &mut self.tools) {
                             found_tools = true;
@@ -351,7 +452,10 @@ impl ChatEngine {
 
                 if found_tools {
                     let tool_count = self.tools.pending_tool_calls().len();
-                    info!("Sanitizer extracted {} tool calls from content JSON", tool_count);
+                    info!(
+                        "Sanitizer extracted {} tool calls from content JSON",
+                        tool_count
+                    );
                     last.content = String::new();
                     last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
                     return;
@@ -360,14 +464,14 @@ impl ChatEngine {
         }
     }
 
-    fn extract_tool_call_from_json(
-        item: &serde_json::Value,
-        tools: &mut ToolRegistry,
-    ) -> bool {
+    fn extract_tool_call_from_json(item: &serde_json::Value, tools: &mut ToolRegistry) -> bool {
         if let (Some(name), Some(args)) = (
             item.get("name").and_then(|v| v.as_str()),
             item.get("arguments").or_else(|| item.get("args")),
         ) {
+            if !tools.has_tool(name) {
+                return false;
+            }
             let args_str = serde_json::to_string(args).unwrap_or_default();
             tools.add_tool_call(ToolCall {
                 id: format!("extracted_{}", tools.pending_tool_calls().len()),
@@ -381,9 +485,16 @@ impl ChatEngine {
         }
 
         if let (Some(name), Some(args_str)) = (
-            item.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str()),
-            item.get("function").and_then(|f| f.get("arguments")).and_then(|v| v.as_str()),
+            item.get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str()),
+            item.get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|v| v.as_str()),
         ) {
+            if !tools.has_tool(name) {
+                return false;
+            }
             tools.add_tool_call(ToolCall {
                 id: format!("extracted_{}", tools.pending_tool_calls().len()),
                 call_type: "function".to_string(),
@@ -499,11 +610,30 @@ impl ChatEngine {
     // -- Input helpers --
 
     pub fn push_to_history(&mut self, input: String) {
-        if !input.trim().is_empty() {
-            self.input.history.push(input);
+        if input.trim().is_empty() {
+            self.input.history_index = None;
+            self.input.history_stash.clear();
+            return;
         }
+        // Deduplication: skip consecutive duplicates
+        if self.input.history.last() == Some(&input) {
+            self.input.history_index = None;
+            self.input.history_stash.clear();
+            return;
+        }
+        self.input.history.push(input.clone());
         self.input.history_index = None;
         self.input.history_stash.clear();
+
+        // Persist asynchronously to avoid blocking the UI thread
+        if let Some(ref store) = self.history_store {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = store.append(&input) {
+                    warn!("Failed to append history entry: {}", e);
+                }
+            });
+        }
     }
 
     pub fn history_prev(&mut self) {
@@ -786,11 +916,25 @@ impl ChatEngine {
     }
 
     pub fn add_system_message(&mut self, content: impl Into<String>) {
-        self.chat.messages.push(Message { role: Role::System, content: content.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None });
+        self.chat.messages.push(Message {
+            role: Role::System,
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: Some(now_timestamp()),
+            reasoning_content: None,
+        });
     }
 
     pub fn add_error_message(&mut self, error: impl Into<String>) {
-        self.chat.messages.push(Message { role: Role::System, content: error.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None });
+        self.chat.messages.push(Message {
+            role: Role::System,
+            content: error.into(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: Some(now_timestamp()),
+            reasoning_content: None,
+        });
     }
 
     pub fn scroll_page_up(&mut self) {
@@ -845,10 +989,8 @@ impl ChatEngine {
                     if let Some(ref reasoning) = msg.reasoning_content {
                         if !reasoning.is_empty() && viewport_width > 10 {
                             msg_lines += 2;
-                            msg_lines += count_wrapped_lines(
-                                reasoning,
-                                viewport_width.saturating_sub(2),
-                            );
+                            msg_lines +=
+                                count_wrapped_lines(reasoning, viewport_width.saturating_sub(2));
                             msg_lines += 1;
                         }
                     }
@@ -874,6 +1016,64 @@ impl ChatEngine {
             }
         }
         None
+    }
+    // -- Completion --
+
+    pub fn refresh_completions(&mut self, models: &[crate::domain::Model]) {
+        let buffer = self.input.buffer.clone();
+        let cursor = self.input.cursor_pos;
+        self.input.completion_items = self.completion_engine.complete(&buffer, cursor, models);
+        self.input.completion_active = !self.input.completion_items.is_empty();
+        self.input.autocomplete_index = 0;
+    }
+
+    pub fn clear_completions(&mut self) {
+        self.input.completion_active = false;
+        self.input.completion_items.clear();
+        self.input.autocomplete_index = 0;
+    }
+
+    pub fn cycle_completion_next(&mut self) {
+        if !self.input.completion_items.is_empty() {
+            self.input.autocomplete_index =
+                (self.input.autocomplete_index + 1) % self.input.completion_items.len();
+        }
+    }
+
+    pub fn cycle_completion_prev(&mut self) {
+        if !self.input.completion_items.is_empty() {
+            if self.input.autocomplete_index == 0 {
+                self.input.autocomplete_index = self.input.completion_items.len() - 1;
+            } else {
+                self.input.autocomplete_index -= 1;
+            }
+        }
+    }
+
+    pub fn apply_completion(&mut self) -> bool {
+        if !self.input.completion_active || self.input.completion_items.is_empty() {
+            return false;
+        }
+        let idx = self.input.autocomplete_index;
+        if let Some(item) = self.input.completion_items.get(idx).cloned() {
+            crate::completion::accept_completion(
+                &mut self.input.buffer,
+                &mut self.input.cursor_pos,
+                &item,
+            );
+            // For file paths, keep input mode active but clear completions
+            // For slash commands and models, also clear
+            self.input.completion_active = false;
+            self.input.completion_items.clear();
+            self.input.autocomplete_index = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn completion_type(&self) -> Option<CompletionType> {
+        CompletionEngine::detect_completion_type(&self.input.buffer, self.input.cursor_pos)
     }
 }
 
@@ -978,7 +1178,9 @@ mod tests {
         assert!(!crate::tool_registry::tool_needs_approval("write_file"));
         assert!(!crate::tool_registry::tool_needs_approval("shell"));
         assert!(!crate::tool_registry::tool_needs_approval("read_file"));
-        assert!(crate::tool_registry::tool_needs_approval("str_replace_file"));
+        assert!(crate::tool_registry::tool_needs_approval(
+            "str_replace_file"
+        ));
     }
 
     #[test]
@@ -1136,22 +1338,50 @@ mod tests {
     #[test]
     fn sanitize_extracts_tool_call_from_json_content() {
         let mut engine = ChatEngine::new();
-        engine.push_user_message("Calculate 15 + 27");
-        engine.append_stream_chunk(r#"{
+        engine.push_user_message("Read the file");
+        engine.append_stream_chunk(
+            r#"{
+  "name": "read_file",
+  "arguments": {
+    "path": "/tmp/test.txt"
+  }
+}"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(
+            last.content.is_empty(),
+            "content should be cleared, got: {:?}",
+            last.content
+        );
+        assert!(last.tool_calls.is_some(), "tool_calls should be present");
+        let tcs = last.tool_calls.as_ref().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0].function.name, "read_file");
+        assert!(tcs[0].function.arguments.contains("/tmp/test.txt"));
+    }
+
+    #[test]
+    fn sanitize_ignores_unknown_tool_names() {
+        let mut engine = ChatEngine::new();
+        engine.push_user_message("Explain this JSON");
+        engine.append_stream_chunk(
+            r#"{
   "name": "calculate",
   "arguments": {
     "expression": "15 + 27"
   }
-}"#);
+}"#,
+        );
         engine.sanitize_assistant_content();
 
         let last = engine.chat.messages.last().unwrap();
-        assert!(last.content.is_empty(), "content should be cleared, got: {:?}", last.content);
-        assert!(last.tool_calls.is_some(), "tool_calls should be present");
-        let tcs = last.tool_calls.as_ref().unwrap();
-        assert_eq!(tcs.len(), 1);
-        assert_eq!(tcs[0].function.name, "calculate");
-        assert!(tcs[0].function.arguments.contains("15 + 27"));
+        assert!(
+            !last.content.is_empty(),
+            "content should NOT be cleared for unknown tool"
+        );
+        assert!(last.tool_calls.is_none(), "tool_calls should NOT be present for unknown tool");
     }
 
     #[test]
@@ -1241,7 +1471,10 @@ mod tests {
         let mut engine = ChatEngine::new();
         engine.switch_persona("Research", "You are a researcher");
         assert_eq!(engine.agents.persona, "Research");
-        assert_eq!(engine.agent_prompt, Some("You are a researcher".to_string()));
+        assert_eq!(
+            engine.agent_prompt,
+            Some("You are a researcher".to_string())
+        );
     }
 
     #[test]

@@ -265,7 +265,6 @@ use std::io::Write;
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn read_file_reads_content() {

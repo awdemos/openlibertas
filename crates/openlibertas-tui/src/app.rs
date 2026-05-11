@@ -10,13 +10,13 @@
 use crate::avatar::{AnimatedAvatar, IDLE_FRAMES};
 use crate::markdown::MarkdownRenderer;
 use crate::theme::Theme;
-use openlibertas_core::domain::{Message, Model};
-use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::commands::{find_model, get_model_suggestions};
 use openlibertas_core::config::Config;
 use openlibertas_core::domain::ProviderId;
 use openlibertas_core::domain::Role;
+use openlibertas_core::domain::{Message, Model};
 use openlibertas_core::engine::{AgentStatus, ChatEngine};
+use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::export::{self, ExportFormat};
 use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
@@ -95,12 +95,13 @@ pub struct App {
     pub last_voice_key_at: Option<Instant>,
     pub voice_activity_at: Option<Instant>,
     pub temperature: Option<f32>,
+    pub session_selected: usize,
+    pub session_search: String,
 }
 
 impl App {
     pub fn new(config: Config) -> Self {
-        let store = Config::data_dir()
-            .and_then(|d| ConversationStore::new(d).ok());
+        let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
         let voice_input_device = config.input_device.clone();
@@ -133,7 +134,18 @@ impl App {
                 active: false,
             },
             store,
-            engine: ChatEngine::new().with_env_context(EnvContext::detect()),
+            engine: {
+                let mut engine = ChatEngine::new().with_env_context(EnvContext::detect());
+                if let Some(config_dir) =
+                    Config::config_path().and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                {
+                    let history_path = config_dir.join("history.jsonl");
+                    let history_store = openlibertas_core::history::HistoryStore::new(history_path);
+                    engine = engine.with_history_store(history_store);
+                    engine.load_history();
+                }
+                engine
+            },
             prompt_manager: PromptManager::new(),
             palette_commands: Vec::new(),
             palette_selected: 0,
@@ -157,6 +169,8 @@ impl App {
             last_voice_key_at: None,
             voice_activity_at: None,
             temperature: None,
+            session_selected: 0,
+            session_search: String::new(),
         }
     }
 
@@ -170,7 +184,9 @@ impl App {
         let provider = provider.into();
         let prompt = self.prompt_manager.get_prompt(provider.as_str());
         self.engine.set_system_prompt(prompt.to_string());
-        let supports_tools = self.config.providers
+        let supports_tools = self
+            .config
+            .providers
             .iter()
             .find(|p| ProviderId::new(&p.name) == provider)
             .map(|p| p.supports_tools)
@@ -233,13 +249,13 @@ impl App {
                     }
                 } else {
                     match find_model(&self.models.models, &model_name) {
-                        Some((idx, matched_name)) => {
+                        Some((idx, _matched_name)) => {
                             self.models.selected = idx;
-                            self.models.current = Some(matched_name.clone());
+                            self.models.current = Some(_matched_name.clone());
                             if let Some(model) = self.models.models.get(idx) {
                                 self.set_provider(model.provider.clone());
                             }
-                            Some(format!("Switched to model: {}", matched_name))
+                            Some(format!("Switched to model: {}", _matched_name))
                         }
                         None => {
                             let suggestions =
@@ -667,7 +683,14 @@ impl App {
     pub fn load_context_files(&mut self) -> Vec<String> {
         let loaded = openlibertas_core::conversation::read_context_files();
         for (filename, content) in &loaded {
-            self.engine.chat_mut().messages.push(Message { role: Role::System, content: format!("--- {} ---\n{}", filename, content), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+            self.engine.chat_mut().messages.push(Message {
+                role: Role::System,
+                content: format!("--- {} ---\n{}", filename, content),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         }
         loaded.into_iter().map(|(name, _)| name).collect()
     }
@@ -936,21 +959,23 @@ available tools to refine and polish your work."
     pub fn select_agent_option(&mut self) {
         match self.agent_selected {
             0 => {
-                self.engine.agents_mut().status = if self.engine.agents_mut().status == AgentStatus::Disabled {
-                    AgentStatus::Idle
-                } else {
-                    AgentStatus::Disabled
-                };
+                self.engine.agents_mut().status =
+                    if self.engine.agents_mut().status == AgentStatus::Disabled {
+                        AgentStatus::Idle
+                    } else {
+                        AgentStatus::Disabled
+                    };
             }
             1 => {
                 self.cycle_agent_persona();
             }
             2 => {
-                self.engine.agents_mut().max_iterations = if self.engine.agents_mut().max_iterations >= 50 {
-                    5
-                } else {
-                    (self.engine.agents_mut().max_iterations + 5).min(50)
-                };
+                self.engine.agents_mut().max_iterations =
+                    if self.engine.agents_mut().max_iterations >= 50 {
+                        5
+                    } else {
+                        (self.engine.agents_mut().max_iterations + 5).min(50)
+                    };
             }
             _ => {}
         }
@@ -996,6 +1021,127 @@ available tools to refine and polish your work."
         self.overlay = Overlay::None;
     }
 
+    pub fn filtered_sessions(&self) -> Vec<openlibertas_core::store::SessionMeta> {
+        let all = self
+            .store
+            .as_ref()
+            .and_then(|s| s.list_with_meta().ok())
+            .unwrap_or_default();
+
+        if self.session_search.is_empty() {
+            all
+        } else {
+            let search = self.session_search.to_lowercase();
+            all.into_iter()
+                .filter(|meta| {
+                    meta.id.to_lowercase().contains(&search)
+                        || meta
+                            .title
+                            .as_ref()
+                            .map(|t| t.to_lowercase().contains(&search))
+                            .unwrap_or(false)
+                        || meta.preview.to_lowercase().contains(&search)
+                })
+                .collect()
+        }
+    }
+
+    pub fn session_prev(&mut self) {
+        self.session_selected = self.session_selected.saturating_sub(1);
+    }
+
+    pub fn session_next(&mut self, count: usize) {
+        if count > 0 {
+            self.session_selected = (self.session_selected + 1).min(count - 1);
+        }
+    }
+
+    pub fn load_selected_session(&mut self) -> Option<String> {
+        let sessions = self.filtered_sessions();
+        let selected = sessions.get(self.session_selected)?;
+        let id = selected.id.clone();
+
+        if let Some(ref store) = self.store {
+            match openlibertas_core::commands::load_session(store, &id) {
+                Ok(session) => {
+                    self.engine.chat_mut().messages = session.messages;
+                    self.engine.chat_mut().scroll = 0;
+                    if let Some(ref model) = session.model {
+                        self.models.current = Some(model.clone());
+                        if let Some((idx, _matched_name)) = find_model(&self.models.models, model) {
+                            self.models.selected = idx;
+                            if let Some(m) = self.models.models.get(idx) {
+                                self.set_provider(m.provider.clone());
+                            }
+                        }
+                    }
+                    self.overlay = Overlay::None;
+                    self.session_search.clear();
+                    self.session_selected = 0;
+                    Some(format!("Session '{}' loaded", id))
+                }
+                Err(e) => Some(format!("Failed to load: {}", e)),
+            }
+        } else {
+            Some("Store not available".to_string())
+        }
+    }
+
+    pub fn delete_selected_session(&mut self) -> Option<String> {
+        let sessions = self.filtered_sessions();
+        let selected = sessions.get(self.session_selected)?;
+        let id = selected.id.clone();
+
+        if let Some(ref store) = self.store {
+            match store.delete(&id) {
+                Ok(_) => {
+                    if self.session_selected > 0
+                        && self.session_selected >= sessions.len().saturating_sub(1)
+                    {
+                        self.session_selected -= 1;
+                    }
+                    Some(format!("Session '{}' deleted", id))
+                }
+                Err(e) => Some(format!("Failed to delete: {}", e)),
+            }
+        } else {
+            Some("Store not available".to_string())
+        }
+    }
+
+    // -- Completion helpers --
+
+    pub fn refresh_completions(&mut self) {
+        self.engine.refresh_completions(&self.models.models);
+    }
+
+    pub fn clear_completions(&mut self) {
+        self.engine.clear_completions();
+    }
+
+    pub fn cycle_completion_next(&mut self) {
+        self.engine.cycle_completion_next();
+    }
+
+    pub fn cycle_completion_prev(&mut self) {
+        self.engine.cycle_completion_prev();
+    }
+
+    pub fn apply_completion(&mut self) -> bool {
+        self.engine.apply_completion()
+    }
+
+    pub fn completion_active(&self) -> bool {
+        self.engine.input().completion_active
+    }
+
+    pub fn completion_items(&self) -> &[openlibertas_core::completion::CompletionItem] {
+        &self.engine.input().completion_items
+    }
+
+    pub fn completion_selected(&self) -> usize {
+        self.engine.input().autocomplete_index
+    }
 }
 
 #[cfg(test)]

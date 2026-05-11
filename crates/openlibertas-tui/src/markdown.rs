@@ -165,7 +165,8 @@ impl MarkdownRenderer {
     }
 
     fn highlight_code(&self, language: &str, code: &str) -> Vec<Line<'_>> {
-        let default_theme = syntect::highlighting::ThemeSet::load_defaults().themes["base16-ocean.dark"].clone();
+        let default_theme =
+            syntect::highlighting::ThemeSet::load_defaults().themes["base16-ocean.dark"].clone();
         let theme = self
             .theme_set
             .themes

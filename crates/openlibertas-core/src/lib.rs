@@ -6,12 +6,14 @@
 
 pub mod backend;
 pub mod commands;
+pub mod completion;
 pub mod config;
 pub mod conversation;
 pub mod domain;
 pub mod engine;
 pub mod env_context;
 pub mod export;
+pub mod history;
 pub mod mcp;
 pub mod model_scanner;
 pub mod prompt;

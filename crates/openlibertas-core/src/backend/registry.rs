@@ -1,9 +1,22 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::backend::OpenAiBackend;
 use crate::config::Provider;
-use crate::domain::ProviderId;
+use crate::domain::{ChatEvent, Message, ProviderId, ToolDefinition};
+
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+const CIRCUIT_BREAKER_TIMEOUT_SECS: u64 = 60;
+
+#[derive(Debug, Clone)]
+struct ProviderHealth {
+    consecutive_failures: u32,
+    last_failure: Option<Instant>,
+}
 
 /// Registry of initialized backends keyed by provider ID.
 ///
@@ -12,13 +25,17 @@ use crate::domain::ProviderId;
 /// - Named fallback preferences (e.g. prefer "local")
 /// - Default fallback to first registered provider
 /// - Enumeration of available providers
+/// - Circuit-breaker health tracking per provider
+#[derive(Clone)]
 pub struct BackendRegistry {
     backends: HashMap<ProviderId, Arc<OpenAiBackend>>,
+    health: Arc<Mutex<HashMap<ProviderId, ProviderHealth>>>,
 }
 
 impl BackendRegistry {
     pub fn new(providers: &[Provider]) -> Self {
         let mut backends = HashMap::new();
+        let mut health = HashMap::new();
         for provider in providers {
             if provider.enabled {
                 let backend = Arc::new(OpenAiBackend::with_tools_and_params(
@@ -27,10 +44,21 @@ impl BackendRegistry {
                     provider.supports_tools,
                     provider.extra_params.clone(),
                 ));
-                backends.insert(ProviderId::new(&provider.name), backend);
+                let id = ProviderId::new(&provider.name);
+                backends.insert(id.clone(), backend);
+                health.insert(
+                    id,
+                    ProviderHealth {
+                        consecutive_failures: 0,
+                        last_failure: None,
+                    },
+                );
             }
         }
-        Self { backends }
+        Self {
+            backends,
+            health: Arc::new(Mutex::new(health)),
+        }
     }
 
     pub fn get(&self, provider: &ProviderId) -> Option<&Arc<OpenAiBackend>> {
@@ -73,6 +101,180 @@ impl BackendRegistry {
 
     pub fn default_backend(&self) -> Option<&Arc<OpenAiBackend>> {
         self.backends.values().next()
+    }
+
+    /// Check if a provider is healthy (not circuit-broken).
+    pub fn is_provider_healthy(&self, provider: &ProviderId) -> bool {
+        if let Ok(health) = self.health.lock() {
+            if let Some(h) = health.get(provider) {
+                if h.consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD {
+                    if let Some(last) = h.last_failure {
+                        if last.elapsed() < Duration::from_secs(CIRCUIT_BREAKER_TIMEOUT_SECS) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Record a success or failure for a provider.
+    pub fn record_provider_result(&self, provider: &ProviderId, success: bool) {
+        if let Ok(mut health) = self.health.lock() {
+            if let Some(h) = health.get_mut(provider) {
+                if success {
+                    h.consecutive_failures = 0;
+                    h.last_failure = None;
+                } else {
+                    h.consecutive_failures += 1;
+                    h.last_failure = Some(Instant::now());
+                }
+            }
+        }
+    }
+
+    /// Chat with fallback across enabled providers.
+    ///
+    /// Tries the preferred provider first, then falls back to other
+    /// healthy providers. Sends informative text messages when
+    /// switching providers.
+    pub fn chat_with_fallback(
+        &self,
+        preferred_provider: &ProviderId,
+        model: String,
+        messages: Vec<Message>,
+        max_tokens: u32,
+        tools: Option<Vec<ToolDefinition>>,
+        cancel_token: CancellationToken,
+        temperature: Option<f32>,
+    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let preferred = preferred_provider.clone();
+
+        let mut providers: Vec<(ProviderId, Arc<OpenAiBackend>)> = Vec::new();
+        if let Some(backend) = self.backends.get(&preferred) {
+            providers.push((preferred.clone(), backend.clone()));
+        }
+        for (id, backend) in &self.backends {
+            if *id != preferred {
+                providers.push((id.clone(), backend.clone()));
+            }
+        }
+
+        let health = self.health.clone();
+
+        tokio::spawn(async move {
+            let mut tried: Vec<ProviderId> = Vec::new();
+
+            for (provider_id, backend) in providers {
+                let is_healthy = {
+                    if let Ok(h) = health.lock() {
+                        if let Some(record) = h.get(&provider_id) {
+                            if record.consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD {
+                                if let Some(last) = record.last_failure {
+                                    last.elapsed() >= Duration::from_secs(CIRCUIT_BREAKER_TIMEOUT_SECS)
+                                } else {
+                                    true
+                                }
+                            } else {
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        true
+                    }
+                };
+
+                if !is_healthy {
+                    continue;
+                }
+
+                if let Some(prev) = tried.last() {
+                    let _ = tx.send(ChatEvent::Text(format!(
+                        "\n[Provider '{}' failed, trying '{}']\n",
+                        prev, provider_id
+                    )));
+                }
+
+                let mut stream_rx = backend.chat(
+                    model.clone(),
+                    messages.clone(),
+                    max_tokens,
+                    tools.clone(),
+                    cancel_token.clone(),
+                    temperature,
+                );
+
+                let mut stream_failed = false;
+                let mut can_fallback = true;
+                while let Some(event) = stream_rx.recv().await {
+                    match &event {
+                        ChatEvent::Text(_)
+                        | ChatEvent::Reasoning(_)
+                        | ChatEvent::ToolCall(_) => {
+                            can_fallback = false;
+                        }
+                        ChatEvent::Cancelled => {
+                            let _ = tx.send(event);
+                            return;
+                        }
+                        ChatEvent::Error(_) => {
+                            stream_failed = true;
+                            if can_fallback {
+                                continue; // Swallow error, try next provider
+                            }
+                        }
+                        _ => {}
+                    }
+                    if tx.send(event).is_err() {
+                        return;
+                    }
+                }
+
+                if !stream_failed {
+                    // Success
+                    if let Ok(mut h) = health.lock() {
+                        if let Some(record) = h.get_mut(&provider_id) {
+                            record.consecutive_failures = 0;
+                            record.last_failure = None;
+                        }
+                    }
+                    return;
+                }
+
+                // Record failure
+                if let Ok(mut h) = health.lock() {
+                    if let Some(record) = h.get_mut(&provider_id) {
+                        record.consecutive_failures += 1;
+                        record.last_failure = Some(Instant::now());
+                    }
+                }
+
+                if !can_fallback {
+                    // Partial content already sent to user, can't fallback
+                    return;
+                }
+
+                tried.push(provider_id);
+            }
+
+            if tried.is_empty() {
+                let _ = tx.send(ChatEvent::Error(
+                    "No healthy providers available.".to_string(),
+                ));
+            } else {
+                let _ = tx.send(ChatEvent::Error(format!(
+                    "All providers failed. Tried: {}",
+                    tried.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+                )));
+            }
+        });
+
+        rx
     }
 }
 
@@ -210,5 +412,42 @@ mod tests {
     fn list_providers_empty_when_none() {
         let registry = BackendRegistry::new(&[]);
         assert!(registry.list_providers().is_empty());
+    }
+
+    #[test]
+    fn circuit_breaker_tracks_failures() {
+        let providers = test_providers();
+        let registry = BackendRegistry::new(&providers);
+        let local = ProviderId::new("local");
+
+        assert!(registry.is_provider_healthy(&local));
+        registry.record_provider_result(&local, false);
+        registry.record_provider_result(&local, false);
+        assert!(registry.is_provider_healthy(&local));
+        registry.record_provider_result(&local, false);
+        assert!(!registry.is_provider_healthy(&local));
+    }
+
+    #[test]
+    fn circuit_breaker_resets_on_success() {
+        let providers = test_providers();
+        let registry = BackendRegistry::new(&providers);
+        let local = ProviderId::new("local");
+
+        registry.record_provider_result(&local, false);
+        registry.record_provider_result(&local, false);
+        registry.record_provider_result(&local, false);
+        assert!(!registry.is_provider_healthy(&local));
+
+        registry.record_provider_result(&local, true);
+        assert!(registry.is_provider_healthy(&local));
+    }
+
+    #[test]
+    fn circuit_breaker_starts_healthy() {
+        let providers = test_providers();
+        let registry = BackendRegistry::new(&providers);
+        let unknown = ProviderId::new("unknown");
+        assert!(!registry.is_provider_healthy(&unknown));
     }
 }

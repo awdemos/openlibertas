@@ -224,7 +224,14 @@ async fn post_chat(
 
     {
         let mut messages = state.conversation.write().await;
-        messages.push(Message { role: Role::User, content: req.message.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+        messages.push(Message {
+            role: Role::User,
+            content: req.message.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        });
     }
 
     let messages = {
@@ -233,7 +240,14 @@ async fn post_chat(
     };
 
     let cancel_token = CancellationToken::new();
-    let mut stream = backend.chat(model, messages, state.config.max_tokens, None, cancel_token, None);
+    let mut stream = backend.chat(
+        model,
+        messages,
+        state.config.max_tokens,
+        None,
+        cancel_token,
+        None,
+    );
 
     let mut response_text = String::new();
     let mut tool_calls = Vec::new();
@@ -280,7 +294,14 @@ async fn post_chat(
                     .collect(),
             )
         };
-        messages.push(Message { role: Role::Assistant, content: response_text.clone(), tool_calls: tool_calls_data, tool_call_id: None, timestamp: None, reasoning_content: None });
+        messages.push(Message {
+            role: Role::Assistant,
+            content: response_text.clone(),
+            tool_calls: tool_calls_data,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        });
     }
 
     ok(ChatResponse {
@@ -315,7 +336,14 @@ async fn stream_chat(
 
     {
         let mut messages = state.conversation.write().await;
-        messages.push(Message { role: Role::User, content: req.message.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+        messages.push(Message {
+            role: Role::User,
+            content: req.message.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        });
     }
 
     let messages = {
@@ -676,7 +704,10 @@ async fn main() -> Result<()> {
                 .route("/session/delete", post(delete_session))
                 .route("/voice/stt", post(voice_stt))
                 .route("/voice/tts", post(voice_tts))
-                .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware)),
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    auth_middleware,
+                )),
         )
         .layer(
             tower_http::cors::CorsLayer::new()
@@ -684,7 +715,10 @@ async fn main() -> Result<()> {
                     "http://localhost:3000".parse().unwrap(),
                 ))
                 .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
-                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]),
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                ]),
         )
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);

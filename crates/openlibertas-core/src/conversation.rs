@@ -1,7 +1,7 @@
 pub mod tool_parser;
 
-use crate::domain::{Message, ToolCall};
 use crate::domain::Role;
+use crate::domain::{Message, ToolCall};
 
 const MAX_TOOL_RESULT_CHARS: usize = 4000;
 
@@ -95,7 +95,14 @@ impl ContextCompactor {
             )
         };
 
-        result.push(Message { role: Role::System, content: summary, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+        result.push(Message {
+            role: Role::System,
+            content: summary,
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+        });
 
         for msg in non_system.iter().skip(drop_count) {
             result.push((*msg).clone());
@@ -123,7 +130,10 @@ pub fn parse_file_context(input: &str) -> String {
             .map(|m| m.as_str().to_string())
             .unwrap_or_default();
 
-        let full_match = cap.get(0).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let full_match = cap
+            .get(0)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
 
         if path_str.is_empty() {
             continue;
@@ -139,10 +149,7 @@ pub fn parse_file_context(input: &str) -> String {
             }
             Err(e) => {
                 failed_files.push(format!("{}: {}", path_str, e));
-                replacements.push((
-                    full_match,
-                    format!("[Error reading {}: {}]", path_str, e),
-                ));
+                replacements.push((full_match, format!("[Error reading {}: {}]", path_str, e)));
             }
         }
     }
@@ -161,7 +168,20 @@ pub fn parse_file_context(input: &str) -> String {
 }
 
 fn strip_trailing_punctuation(s: &str) -> String {
-    s.trim_end_matches(|c: char| c == ',' || c == '.' || c == ';' || c == ':' || c == '!' || c == '?' || c == ')' || c == ']' || c == '}' || c == '"' || c == '\'').to_string()
+    s.trim_end_matches(|c: char| {
+        c == ','
+            || c == '.'
+            || c == ';'
+            || c == ':'
+            || c == '!'
+            || c == '?'
+            || c == ')'
+            || c == ']'
+            || c == '}'
+            || c == '"'
+            || c == '\''
+    })
+    .to_string()
 }
 
 /// Build chat request messages including system prompt and user input
@@ -175,11 +195,25 @@ pub fn build_chat_request(
 
     if let Some(prompt) = system_prompt {
         if !messages.iter().any(|m| m.role == Role::System) {
-            messages.push(Message { role: Role::System, content: prompt.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+            messages.push(Message {
+                role: Role::System,
+                content: prompt.to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         }
     }
 
-    messages.push(Message { role: Role::User, content: content.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None });
+    messages.push(Message {
+        role: Role::User,
+        content: content.clone(),
+        tool_calls: None,
+        tool_call_id: None,
+        timestamp: None,
+        reasoning_content: None,
+    });
     (messages, content)
 }
 
@@ -226,7 +260,7 @@ pub fn build_tool_result_messages(
                 tool_calls: None,
                 tool_call_id: Some(tool_call.id.clone()),
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             });
         }
     }
@@ -265,7 +299,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             timestamp: None,
-reasoning_content: None,
+            reasoning_content: None,
         }];
         let (result, _) = build_chat_request(&messages, "hello", Some("new prompt"));
         assert_eq!(result.len(), 2);
@@ -281,7 +315,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -296,7 +330,7 @@ reasoning_content: None,
                 }]),
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
         let tool_calls = vec![ToolCall {
@@ -323,7 +357,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -338,7 +372,7 @@ reasoning_content: None,
                 }]),
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
         let tool_calls = vec![ToolCall {
@@ -428,11 +462,18 @@ reasoning_content: None,
     fn compactor_does_nothing_below_threshold() {
         let mut compactor = ContextCompactor::new(10, 4);
         let messages: Vec<Message> = (0..5)
-            .map(|i| Message { role: if i % 2 == 0 {
-                Role::User
-            } else {
-                Role::Assistant
-            }, content: format!("msg {}", i), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None })
+            .map(|i| Message {
+                role: if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                content: format!("msg {}", i),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            })
             .collect();
 
         let result = compactor.compact(&messages);
@@ -450,7 +491,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -458,7 +499,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -466,7 +507,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -474,7 +515,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -482,7 +523,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -490,7 +531,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -498,7 +539,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
 
@@ -518,7 +559,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -526,7 +567,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -534,7 +575,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -542,7 +583,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -550,7 +591,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -558,7 +599,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
 
@@ -582,7 +623,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -590,7 +631,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -598,7 +639,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -606,7 +647,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -614,7 +655,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -622,7 +663,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
 
@@ -643,7 +684,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -651,7 +692,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Tool,
@@ -659,7 +700,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: Some("1".to_string()),
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -667,7 +708,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::Assistant,
@@ -675,7 +716,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
             Message {
                 role: Role::User,
@@ -683,7 +724,7 @@ reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 timestamp: None,
-reasoning_content: None,
+                reasoning_content: None,
             },
         ];
 

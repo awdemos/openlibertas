@@ -102,7 +102,8 @@ mod tests {
         let result = switch_persona(serde_json::json!({
             "persona": "Seeker",
             "reason": "Need to find all occurrences of this pattern in the codebase"
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(result.contains("Seeker"));
         assert!(result.contains("Need to find"));
     }
@@ -113,7 +114,8 @@ mod tests {
             "persona": "Research",
             "task": "Find recent async runtime benchmarks",
             "context": "We're comparing tokio and async-std for a new project"
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(result.contains("Sub-agent spawn request"));
     }
 }

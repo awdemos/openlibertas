@@ -14,7 +14,10 @@ pub struct ElevenLabsClient {
 }
 
 impl ElevenLabsClient {
-    pub fn new(api_key: crate::config::SecretString, voice_id: String) -> Result<Self, crate::voice::error::VoiceError> {
+    pub fn new(
+        api_key: crate::config::SecretString,
+        voice_id: String,
+    ) -> Result<Self, crate::voice::error::VoiceError> {
         if api_key.expose_secret().is_empty() {
             return Err(crate::voice::error::VoiceError::MissingApiKey);
         }
@@ -27,7 +30,10 @@ impl ElevenLabsClient {
 
     /// Transcribe audio bytes to text using ElevenLabs STT.
     /// Audio should be in WAV, MP3, or other supported format.
-    pub async fn transcribe(&self, audio_bytes: Vec<u8>) -> Result<String, crate::voice::error::VoiceError> {
+    pub async fn transcribe(
+        &self,
+        audio_bytes: Vec<u8>,
+    ) -> Result<String, crate::voice::error::VoiceError> {
         let url = format!("{}/speech-to-text", ELEVENLABS_API_BASE);
         let audio_len = audio_bytes.len();
         info!("STT request: {} bytes", audio_len);
@@ -71,13 +77,10 @@ impl ElevenLabsClient {
             )));
         }
 
-        let json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                error!("STT JSON parse error: {}", e);
-                crate::voice::error::VoiceError::SerializationError(e.to_string())
-            })?;
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            error!("STT JSON parse error: {}", e);
+            crate::voice::error::VoiceError::SerializationError(e.to_string())
+        })?;
 
         let text = json.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
             error!("STT response missing 'text' field: {:?}", json);
@@ -98,12 +101,19 @@ impl ElevenLabsClient {
         Ok(text.to_string())
     }
 
-    pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>, crate::voice::error::VoiceError> {
+    pub async fn text_to_speech(
+        &self,
+        text: &str,
+    ) -> Result<Vec<u8>, crate::voice::error::VoiceError> {
         let url = format!(
             "{}/text-to-speech/{}/stream?output_format=mp3_44100_128",
             ELEVENLABS_API_BASE, self.voice_id
         );
-        info!("TTS request: voice_id={}, text_len={}", self.voice_id, text.len());
+        info!(
+            "TTS request: voice_id={}, text_len={}",
+            self.voice_id,
+            text.len()
+        );
 
         let body = serde_json::json!({
             "text": text,
@@ -136,13 +146,10 @@ impl ElevenLabsClient {
             )));
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| {
-                error!("TTS body read error: {}", e);
-                crate::voice::error::VoiceError::NetworkError(e.to_string())
-            })?;
+        let bytes = response.bytes().await.map_err(|e| {
+            error!("TTS body read error: {}", e);
+            crate::voice::error::VoiceError::NetworkError(e.to_string())
+        })?;
 
         info!("TTS success: {} bytes", bytes.len());
         Ok(bytes.to_vec())
@@ -155,7 +162,10 @@ mod tests {
 
     #[test]
     fn client_creation_requires_api_key() {
-        let result = ElevenLabsClient::new(crate::config::SecretString::new("".to_string()), "voice-id".to_string());
+        let result = ElevenLabsClient::new(
+            crate::config::SecretString::new("".to_string()),
+            "voice-id".to_string(),
+        );
         assert!(matches!(
             result,
             Err(crate::voice::error::VoiceError::MissingApiKey)
@@ -164,7 +174,11 @@ mod tests {
 
     #[test]
     fn client_creation_success() {
-        let client = ElevenLabsClient::new(crate::config::SecretString::new("test-key".to_string()), "voice-id".to_string()).unwrap();
+        let client = ElevenLabsClient::new(
+            crate::config::SecretString::new("test-key".to_string()),
+            "voice-id".to_string(),
+        )
+        .unwrap();
         assert_eq!(client.voice_id, "voice-id");
     }
 
