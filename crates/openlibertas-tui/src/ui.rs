@@ -179,13 +179,20 @@ fn draw_models(frame: &mut Frame, app: &App) {
         ),
         Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
         Span::styled(
+            "Esc",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Back  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
             "q",
             Style::default()
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            " Quit (press twice)",
+            " Quit",
             Style::default().fg(app.theme.system_color()),
         ),
     ];

@@ -123,10 +123,8 @@ impl VoiceManager {
 
     pub fn start_recording(&mut self, push_to_talk: bool) -> Result<u64, VoiceError> {
         if self.recording_in_progress {
-            tracing::warn!("start_recording called while already recording");
-            return Err(VoiceError::AudioError(
-                "Recording already in progress".to_string(),
-            ));
+            tracing::debug!("start_recording called while already recording - ignoring");
+            return Ok(self.recording_generation);
         }
         self.reset_cancel();
         self.recording_generation = self.recording_generation.wrapping_add(1);
