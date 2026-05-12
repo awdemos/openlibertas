@@ -59,7 +59,7 @@ fn validate_shell_command(command: &str) -> Result<()> {
 
 pub fn shell(args: Value) -> Result<String> {
     let args: ShellArgs = serde_json::from_value(args)?;
-    let _timeout = args.timeout.unwrap_or(30);
+    let timeout_secs = args.timeout.unwrap_or(30);
 
     if args.command.trim().is_empty() {
         return Err(anyhow::anyhow!("Empty command"));
@@ -67,13 +67,22 @@ pub fn shell(args: Value) -> Result<String> {
 
     validate_shell_command(&args.command)?;
 
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&args.command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .with_context(|| format!("Failed to execute command: {}", args.command))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let command = args.command.clone();
+    std::thread::spawn(move || {
+        let result = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+        let _ = tx.send(result);
+    });
+
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(result) => result.with_context(|| format!("Failed to execute command: {}", args.command))?,
+        Err(_) => return Err(anyhow::anyhow!("Command timed out after {} seconds: {}", timeout_secs, args.command)),
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);

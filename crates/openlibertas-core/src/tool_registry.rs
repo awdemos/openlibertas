@@ -238,16 +238,26 @@ impl ToolRegistry {
                 match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
                     Ok(args) => {
                         if tools::is_builtin(&tool_call.function.name) {
-                            match tools::execute_builtin(&tool_call.function.name, args) {
-                                Ok(output) => ToolExecutionResult::Success {
+                            let tool_name = tool_call.function.name.clone();
+                            let key_arg = key_arg.clone();
+                            let builtin_result = tokio::task::spawn_blocking(move || {
+                                tools::execute_builtin(&tool_name, args)
+                            }).await;
+                            match builtin_result {
+                                Ok(Ok(output)) => ToolExecutionResult::Success {
                                     tool_name: tool_call.function.name.clone(),
-                                    key_arg: key_arg.clone(),
+                                    key_arg,
                                     output,
+                                },
+                                Ok(Err(e)) => ToolExecutionResult::Error {
+                                    tool_name: tool_call.function.name.clone(),
+                                    key_arg,
+                                    error: e.to_string(),
                                 },
                                 Err(e) => ToolExecutionResult::Error {
                                     tool_name: tool_call.function.name.clone(),
-                                    key_arg: key_arg.clone(),
-                                    error: e.to_string(),
+                                    key_arg,
+                                    error: format!("Tool execution panicked: {}", e),
                                 },
                             }
                         } else if let Some(client) = &self.client {
@@ -347,6 +357,9 @@ pub fn tool_needs_approval(tool_name: &str) -> bool {
         "str_replace_file",
         "strreplacefile",
         "strReplaceFile",
+        "shell",
+        "exec",
+        "execute",
     ];
     destructive
         .iter()
@@ -389,7 +402,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_detects_destructive() {
         assert!(!tool_needs_approval("write_file"));
-        assert!(!tool_needs_approval("shell"));
+        assert!(tool_needs_approval("shell"));
         assert!(tool_needs_approval("str_replace_file"));
         assert!(tool_needs_approval("strReplaceFile"));
         assert!(!tool_needs_approval("read_file"));
@@ -454,7 +467,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_variants() {
         assert!(tool_needs_approval("editFile"));
-        assert!(!tool_needs_approval("EXECUTE"));
+        assert!(tool_needs_approval("EXECUTE"));
         assert!(tool_needs_approval("Delete_File"));
         assert!(!tool_needs_approval("read_file"));
         assert!(!tool_needs_approval("search"));

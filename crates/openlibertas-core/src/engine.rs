@@ -474,7 +474,7 @@ impl ChatEngine {
             }
             let args_str = serde_json::to_string(args).unwrap_or_default();
             tools.add_tool_call(ToolCall {
-                id: format!("extracted_{}", tools.pending_tool_calls().len()),
+                id: format!("extracted_{}_{}", tools.pending_tool_calls().len(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: name.to_string(),
@@ -496,7 +496,7 @@ impl ChatEngine {
                 return false;
             }
             tools.add_tool_call(ToolCall {
-                id: format!("extracted_{}", tools.pending_tool_calls().len()),
+                id: format!("extracted_{}_{}", tools.pending_tool_calls().len(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: name.to_string(),
@@ -1176,7 +1176,7 @@ mod tests {
     #[test]
     fn tool_needs_approval_detects_destructive() {
         assert!(!crate::tool_registry::tool_needs_approval("write_file"));
-        assert!(!crate::tool_registry::tool_needs_approval("shell"));
+        assert!(crate::tool_registry::tool_needs_approval("shell"));
         assert!(!crate::tool_registry::tool_needs_approval("read_file"));
         assert!(crate::tool_registry::tool_needs_approval(
             "str_replace_file"
