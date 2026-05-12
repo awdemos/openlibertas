@@ -789,15 +789,6 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
         }
     }
 
-    pub fn push_user_message(&mut self) -> Vec<Message> {
-        let content =
-            openlibertas_core::conversation::parse_file_context(&self.engine.input_mut().buffer);
-        if self.engine.agents_mut().status == AgentStatus::Active {
-            self.engine.set_agent_prompt(self.agent_system_prompt());
-        }
-        self.engine.push_user_message(content)
-    }
-
     pub fn load_context_files(&mut self) -> Vec<String> {
         let loaded = openlibertas_core::conversation::read_context_files();
         for (filename, content) in &loaded {
@@ -846,10 +837,6 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
         } else {
             Some("Auto-save failed: no conversation store".to_string())
         }
-    }
-
-    pub fn switch_agent_persona(&mut self, persona: &str, prompt: &str) {
-        self.engine.switch_persona(persona, prompt);
     }
 
     pub fn agent_personas(&self) -> Vec<(String, String)> {
@@ -916,23 +903,6 @@ available tools to refine and polish your work."
         });
 
         personas
-    }
-
-    pub fn agent_system_prompt(&self) -> String {
-        let personas = self.agent_personas();
-        personas
-            .iter()
-            .find(|(name, _)| name == &self.engine.agents().persona)
-            .map(|(_, prompt)| prompt.clone())
-            .unwrap_or_else(|| personas[0].1.clone())
-    }
-
-    pub fn get_persona_prompt(&self, persona_name: &str) -> Option<String> {
-        let personas = self.agent_personas();
-        personas
-            .iter()
-            .find(|(name, _)| name == persona_name)
-            .map(|(_, prompt)| prompt.clone())
     }
 
     pub fn cycle_agent_persona(&mut self) -> String {
@@ -1667,11 +1637,4 @@ mod tests {
         assert_ne!(app.engine.agents().persona, initial);
     }
 
-    #[test]
-    fn agent_system_prompt_returns_content() {
-        let config = Config::default();
-        let app = App::new(config);
-        let prompt = app.agent_system_prompt();
-        assert!(!prompt.is_empty());
-    }
 }

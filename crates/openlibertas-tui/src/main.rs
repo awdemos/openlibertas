@@ -38,28 +38,6 @@ use openlibertas_core::state::State;
 use terminal::TerminalGuard;
 use unicode_width::UnicodeWidthStr;
 
-fn enhance_error_with_suggestion(err: &str) -> String {
-    let err_lower = err.to_lowercase();
-    let suggestion = if err_lower.contains("401") || err_lower.contains("403") {
-        "Check your API key in ~/.config/openlibertas/config.toml"
-    } else if err_lower.contains("429") {
-        "Rate limited. Waiting before retry..."
-    } else if err_lower.contains("404") {
-        "Model not found. Try /models to see available models."
-    } else if err_lower.contains("connection refused") {
-        "Cannot connect to provider. Check if the service is running."
-    } else if err_lower.contains("timeout") || err_lower.contains("timed out") {
-        "Request timed out. Try reducing max_tokens or using a faster provider."
-    } else {
-        return err.to_string();
-    };
-    format!(
-        "{}
-Suggestion: {}",
-        err, suggestion
-    )
-}
-
 fn spawn_voice_transcription(
     api_key: Option<openlibertas_core::config::SecretString>,
     audio_bytes: Vec<u8>,
