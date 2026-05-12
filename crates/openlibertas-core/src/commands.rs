@@ -21,6 +21,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/export",
     "/undo",
     "/title",
+    "/branch",
     // Chat
     "/search",
     "/edit",
@@ -49,7 +50,7 @@ pub fn command_category(cmd: &str) -> &'static str {
         "/help" | "/version" => "Info",
         "/model" | "/theme" | "/temp" | "/avatar" | "/avatar-menu" => "Config",
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
-        | "/title" => "Session",
+        | "/title" | "/branch" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
         "/agents" | "/yolo" | "/plan" | "/compact" => "Agent",
         "/mcp" | "/tools" => "Tools",
@@ -80,6 +81,7 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/export" => "Export to markdown/json/txt",
         "/undo" => "Undo last turn",
         "/title" => "Rename current session",
+        "/branch" => "Branch conversation from message index",
         "/search" => "Search in conversation",
         "/edit" => "Edit a message by index",
         "/remove" => "Remove a message by index",
@@ -114,6 +116,7 @@ pub enum SlashCommand {
     Export(String),
     Undo,
     Title(String),
+    Branch(Option<usize>),
     Search(String),
     Edit(usize),
     Remove(usize),
@@ -249,6 +252,13 @@ impl SlashCommand {
                     Some(SlashCommand::Title(String::new()))
                 }
             }
+            "/branch" => {
+                if parts.len() > 1 {
+                    parts[1].parse::<usize>().ok().map(|n| SlashCommand::Branch(Some(n)))
+                } else {
+                    Some(SlashCommand::Branch(None))
+                }
+            }
             cmd => Some(SlashCommand::Unknown(cmd.to_string())),
         }
     }
@@ -352,6 +362,7 @@ pub fn build_help_message() -> String {
                 "/export",
                 "/undo",
                 "/title",
+                "/branch",
             ][..],
         ),
         ("Chat", &["/search", "/edit", "/remove"][..]),
@@ -378,6 +389,8 @@ pub fn build_help_message() -> String {
 pub struct LoadedSession {
     pub messages: Vec<Message>,
     pub model: Option<String>,
+    pub parent_id: Option<String>,
+    pub branch_point: Option<usize>,
 }
 
 /// Load a session including model information
@@ -391,6 +404,8 @@ pub fn load_session(store: &ConversationStore, name: &str) -> anyhow::Result<Loa
     Ok(LoadedSession {
         messages: conversation.messages,
         model: conversation.model,
+        parent_id: conversation.parent_id,
+        branch_point: conversation.branch_point,
     })
 }
 

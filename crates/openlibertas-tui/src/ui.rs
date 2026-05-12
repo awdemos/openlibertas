@@ -327,6 +327,21 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         (String::new(), String::new())
     };
 
+    let branch_indicator = if app.current_session_parent_id.is_some() {
+        let parent_name = app
+            .current_session_parent_id
+            .as_deref()
+            .unwrap_or("unknown");
+        let truncated = if parent_name.len() > 20 {
+            format!("{}...", &parent_name[..17])
+        } else {
+            parent_name.to_string()
+        };
+        format!(" [branch of {}]", truncated)
+    } else {
+        String::new()
+    };
+
     let left_spans = vec![
         Span::styled(
             "OpenLibertas",
@@ -337,6 +352,10 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(
             format!(" {} ", conn_symbol),
             Style::default().fg(conn_color),
+        ),
+        Span::styled(
+            branch_indicator,
+            Style::default().fg(app.theme.secondary()).add_modifier(Modifier::ITALIC),
         ),
     ];
     let left_width: usize = left_spans.iter().map(|s| s.content.width()).sum();
@@ -550,6 +569,23 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                                 .add_modifier(Modifier::ITALIC),
                         ),
                     ]));
+                }
+                if app.current_session_branch_point == Some(msg_idx) {
+                    let sep = "─".repeat(viewport_width.min(80));
+                    lines.push(Line::from(vec![Span::styled(
+                        sep.clone(),
+                        Style::default().fg(app.theme.border_color()),
+                    )]));
+                    lines.push(Line::from(vec![Span::styled(
+                        "  Branch point — messages below diverge from parent",
+                        Style::default()
+                            .fg(app.theme.secondary())
+                            .add_modifier(Modifier::ITALIC),
+                    )]));
+                    lines.push(Line::from(vec![Span::styled(
+                        sep,
+                        Style::default().fg(app.theme.border_color()),
+                    )]));
                 }
                 lines.push(Line::from(""));
                 if is_current_match || has_match {
@@ -1167,6 +1203,67 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
     frame.render_widget(footer, footer_area);
 }
 
+struct SessionTreeNode {
+    meta: openlibertas_core::store::SessionMeta,
+    depth: usize,
+}
+
+fn build_session_tree(
+    sessions: &[openlibertas_core::store::SessionMeta],
+) -> Vec<SessionTreeNode> {
+    use std::collections::HashMap;
+    let mut by_parent: HashMap<Option<String>, Vec<openlibertas_core::store::SessionMeta>> =
+        HashMap::new();
+    for s in sessions {
+        by_parent
+            .entry(s.parent_id.clone())
+            .or_default()
+            .push(s.clone());
+    }
+    for children in by_parent.values_mut() {
+        children.sort_by(|a, b| {
+            let a_time = a.updated_at.as_ref().unwrap_or(&a.created_at);
+            let b_time = b.updated_at.as_ref().unwrap_or(&b.created_at);
+            b_time.cmp(a_time)
+        });
+    }
+
+    let mut result = Vec::new();
+    if let Some(roots) = by_parent.remove(&None) {
+        for root in roots {
+            add_tree_node(&by_parent, &root, 0, &mut result);
+        }
+    }
+    for (parent_id, children) in &by_parent {
+        if parent_id.is_some() {
+            for child in children {
+                add_tree_node(&by_parent, child, 0, &mut result);
+            }
+        }
+    }
+    result
+}
+
+fn add_tree_node(
+    by_parent: &std::collections::HashMap<
+        Option<String>,
+        Vec<openlibertas_core::store::SessionMeta>,
+    >,
+    meta: &openlibertas_core::store::SessionMeta,
+    depth: usize,
+    result: &mut Vec<SessionTreeNode>,
+) {
+    result.push(SessionTreeNode {
+        meta: meta.clone(),
+        depth,
+    });
+    if let Some(children) = by_parent.get(&Some(meta.id.clone())) {
+        for child in children {
+            add_tree_node(by_parent, child, depth + 1, result);
+        }
+    }
+}
+
 fn draw_sessions_panel(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let popup_area = centered_rect(80, 70, area);
@@ -1217,10 +1314,25 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
             .style(Style::default().fg(app.theme.system_color()));
         frame.render_widget(content, content_area);
     } else {
-        let items: Vec<ListItem> = sessions
-            .iter()
-            .enumerate()
-            .map(|(i, meta)| {
+        let tree_mode = app.session_search.is_empty();
+        let display_items: Vec<(usize, openlibertas_core::store::SessionMeta, usize)> = if tree_mode {
+            let tree = build_session_tree(&sessions);
+            tree.into_iter()
+                .enumerate()
+                .map(|(i, node)| (i, node.meta, node.depth))
+                .collect()
+        } else {
+            sessions
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, meta)| (i, meta, 0usize))
+                .collect()
+        };
+
+        let items: Vec<ListItem> = display_items
+            .into_iter()
+            .map(|(i, meta, depth)| {
                 let is_selected = i == app.session_selected;
 
                 let title = meta.title.as_deref().unwrap_or("Untitled");
@@ -1260,10 +1372,14 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
                         .add_modifier(Modifier::ITALIC)
                 };
 
+                let indent = "  ".repeat(depth);
+                let branch_prefix = if depth > 0 { "└─ " } else { "" };
                 let marker = if is_selected { "▸ " } else { "  " };
 
                 let title_line = Line::from(vec![
+                    Span::styled(indent.clone(), Style::default()),
                     Span::styled(marker, Style::default().fg(app.theme.primary())),
+                    Span::styled(branch_prefix.to_string(), Style::default().fg(app.theme.secondary())),
                     Span::styled(title.to_string(), title_style),
                     Span::styled(
                         format!("  {}  {} msgs  {}", model_str, meta.message_count, time_str),
@@ -1276,8 +1392,9 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
                 } else {
                     meta.preview.clone()
                 };
+                let preview_indent = indent.clone() + "    ";
                 let preview_line = Line::from(vec![
-                    Span::styled("    ", Style::default()),
+                    Span::styled(preview_indent, Style::default()),
                     Span::styled(preview_text, preview_style),
                 ]);
 

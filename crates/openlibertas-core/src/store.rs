@@ -16,6 +16,12 @@ pub struct Conversation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
     pub messages: Vec<Message>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_point: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branches: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +33,9 @@ pub struct SessionMeta {
     pub updated_at: Option<String>,
     pub message_count: usize,
     pub preview: String,
+    pub parent_id: Option<String>,
+    pub branch_point: Option<usize>,
+    pub branches: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -107,6 +116,15 @@ impl ConversationStore {
     }
 
     pub fn save(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
+        let path = self.conversation_path(id);
+        let existing = if path.exists() {
+            fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Conversation>(&s).ok())
+        } else {
+            None
+        };
+
         let now = time::OffsetDateTime::now_utc()
             .format(&time::format_description::well_known::Rfc3339)
             .unwrap_or_default();
@@ -116,9 +134,12 @@ impl ConversationStore {
             id: id.to_string(),
             title,
             model: model.map(|s| s.to_string()),
-            created_at: now.clone(),
+            created_at: existing.as_ref().map(|e| e.created_at.clone()).unwrap_or_else(|| now.clone()),
             updated_at: Some(now),
             messages: messages.to_vec(),
+            parent_id: existing.as_ref().and_then(|e| e.parent_id.clone()),
+            branch_point: existing.as_ref().and_then(|e| e.branch_point),
+            branches: existing.as_ref().map(|e| e.branches.clone()).unwrap_or_default(),
         };
 
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
@@ -131,6 +152,64 @@ impl ConversationStore {
         fs::rename(&temp_path, &final_path)
             .with_context(|| format!("Failed to rename temp file to: {:?}", final_path))?;
 
+        Ok(())
+    }
+
+    pub fn save_branch(
+        &self,
+        id: &str,
+        model: Option<&str>,
+        messages: &[Message],
+        parent_id: Option<&str>,
+        branch_point: Option<usize>,
+    ) -> Result<()> {
+        let now = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let title = Self::derive_title(messages);
+
+        let conversation = Conversation {
+            id: id.to_string(),
+            title,
+            model: model.map(|s| s.to_string()),
+            created_at: now.clone(),
+            updated_at: Some(now),
+            messages: messages.to_vec(),
+            parent_id: parent_id.map(|s| s.to_string()),
+            branch_point,
+            branches: Vec::new(),
+        };
+
+        let temp_path = self.data_dir.join(format!("{}.tmp", id));
+        let final_path = self.conversation_path(id);
+
+        let json = serde_json::to_string_pretty(&conversation)
+            .context("Failed to serialize branch conversation")?;
+        fs::write(&temp_path, json)
+            .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
+        fs::rename(&temp_path, &final_path)
+            .with_context(|| format!("Failed to rename temp file to: {:?}", final_path))?;
+
+        Ok(())
+    }
+
+    pub fn add_branch(&self, parent_id: &str, branch_id: &str) -> Result<()> {
+        let path = self.conversation_path(parent_id);
+        if !path.exists() {
+            return Ok(());
+        }
+        let contents = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read parent conversation: {:?}", path))?;
+        let mut conversation: Conversation = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse parent conversation: {:?}", path))?;
+
+        if !conversation.branches.contains(&branch_id.to_string()) {
+            conversation.branches.push(branch_id.to_string());
+            let json = serde_json::to_string_pretty(&conversation)
+                .context("Failed to serialize parent conversation")?;
+            fs::write(&path, json)
+                .with_context(|| format!("Failed to write parent conversation: {:?}", path))?;
+        }
         Ok(())
     }
 
@@ -178,6 +257,9 @@ impl ConversationStore {
                                 updated_at: conv.updated_at,
                                 message_count,
                                 preview,
+                                parent_id: conv.parent_id,
+                                branch_point: conv.branch_point,
+                                branches: conv.branches,
                             });
                         }
                     }

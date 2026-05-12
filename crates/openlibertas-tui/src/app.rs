@@ -21,7 +21,7 @@ use openlibertas_core::export::{self, ExportFormat};
 use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
 use openlibertas_core::store::ConversationStore;
-use openlibertas_core::voice::{VoiceManager, VoiceState};
+use openlibertas_core::voice::VoiceManager;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -97,6 +97,9 @@ pub struct App {
     pub temperature: Option<f32>,
     pub session_selected: usize,
     pub session_search: String,
+    pub current_session_id: Option<String>,
+    pub current_session_parent_id: Option<String>,
+    pub current_session_branch_point: Option<usize>,
 }
 
 impl App {
@@ -174,6 +177,9 @@ impl App {
             temperature: None,
             session_selected: 0,
             session_search: String::new(),
+            current_session_id: None,
+            current_session_parent_id: None,
+            current_session_branch_point: None,
         }
     }
 
@@ -281,6 +287,9 @@ impl App {
             }
             SlashCommand::Clear => {
                 self.engine.clear_messages();
+                self.current_session_id = None;
+                self.current_session_parent_id = None;
+                self.current_session_branch_point = None;
                 Some("Conversation cleared".to_string())
             }
             SlashCommand::Quit => None,
@@ -436,7 +445,10 @@ impl App {
                         self.models.current.as_deref(),
                         &self.engine.chat().messages,
                     ) {
-                        Ok(_) => Some(format!("Session '{}' saved", id)),
+                        Ok(_) => {
+                            self.current_session_id = Some(id.clone());
+                            Some(format!("Session '{}' saved", id))
+                        }
                         Err(e) => Some(format!("Failed to save: {}", e)),
                     }
                 } else {
@@ -461,6 +473,9 @@ impl App {
                                     }
                                 }
                             }
+                            self.current_session_id = Some(name.clone());
+                            self.current_session_parent_id = session.parent_id;
+                            self.current_session_branch_point = session.branch_point;
                             Some(format!("Session '{}' loaded", name))
                         }
                         Err(e) => Some(format!("Failed to load: {}", e)),
@@ -550,6 +565,9 @@ impl App {
                 self.engine.input_mut().buffer.clear();
                 self.engine.tool_executor_mut().clear_pending_tool_calls();
                 self.engine.tool_executor_mut().clear_tool_results();
+                self.current_session_id = None;
+                self.current_session_parent_id = None;
+                self.current_session_branch_point = None;
                 let loaded = self.load_context_files();
                 if loaded.is_empty() {
                     Some("New session started".to_string())
@@ -579,22 +597,72 @@ impl App {
                     ))
                 }
             }
-            SlashCommand::Voice => {
-                let enabled = self.voice.toggle();
-                if enabled {
-                    if self.voice.config.api_key.is_none() {
-                        self.voice.enabled = false;
-                        self.voice.state = VoiceState::Idle;
-                        Some("Voice mode requires an ElevenLabs API key. Set ELEVENLABS_API_KEY or add elevenlabs_api_key to config.toml".to_string())
-                    } else {
-                        Some(
-                            "Voice mode enabled. Hold Ctrl+Space to record, release to send."
-                                .to_string(),
-                        )
+            SlashCommand::Branch(msg_idx) => {
+                if let Some(ref store) = self.store {
+                    let mut parent_id = self.current_session_id.clone().unwrap_or_default();
+                    if parent_id.is_empty() {
+                        let model = self.models.current.as_deref().unwrap_or("unknown");
+                        let auto_id = ConversationStore::generate_name(model);
+                        if let Err(e) = store.save(&auto_id, self.models.current.as_deref(), &self.engine.chat().messages) {
+                            return Some(format!("Failed to auto-save before branch: {}", e));
+                        }
+                        self.current_session_id = Some(auto_id.clone());
+                        parent_id = auto_id;
+                    }
+
+                    let messages = self.engine.chat().messages.clone();
+                    let branch_point = msg_idx.unwrap_or_else(|| messages.len().saturating_sub(1));
+
+                    if branch_point >= messages.len() {
+                        return Some(format!(
+                            "Invalid branch point. There are {} messages (0..{})",
+                            messages.len(),
+                            messages.len().saturating_sub(1)
+                        ));
+                    }
+
+                    let branch_messages: Vec<_> = messages[..=branch_point].to_vec();
+                    let model = self.models.current.as_deref().unwrap_or("unknown");
+                    let branch_id = format!("{}-branch", ConversationStore::generate_name(model));
+
+                    match store.save_branch(
+                        &branch_id,
+                        self.models.current.as_deref(),
+                        &branch_messages,
+                        Some(&parent_id),
+                        Some(branch_point),
+                    ) {
+                        Ok(_) => {
+                            if let Err(e) = store.add_branch(&parent_id, &branch_id) {
+                                return Some(format!("Branch created but failed to update parent: {}", e));
+                            }
+                            self.engine.chat_mut().messages = branch_messages;
+                            self.engine.chat_mut().scroll = 0;
+                            self.current_session_id = Some(branch_id.clone());
+                            self.current_session_parent_id = Some(parent_id.clone());
+                            self.current_session_branch_point = Some(branch_point);
+                            Some(format!(
+                                "Created branch '{}' from message {}. Parent: '{}'",
+                                branch_id, branch_point, parent_id
+                            ))
+                        }
+                        Err(e) => Some(format!("Failed to create branch: {}", e)),
                     }
                 } else {
-                    self.voice.cancel();
-                    Some("Voice mode disabled.".to_string())
+                    Some("Store not available".to_string())
+                }
+            }
+            SlashCommand::Voice => {
+                let was_enabled = self.voice.is_enabled();
+                if !was_enabled && self.voice.config.api_key.is_none() {
+                    Some("Voice mode requires an ElevenLabs API key. Set ELEVENLABS_API_KEY or add elevenlabs_api_key to config.toml".to_string())
+                } else {
+                    let enabled = self.voice.toggle();
+                    if enabled {
+                        Some("Voice mode enabled. Hold Ctrl+Space to record, release to send.".to_string())
+                    } else {
+                        Some("Voice mode disabled.".to_string())
+                    }
                 }
             }
             SlashCommand::VoiceDevice(device) => {
@@ -704,7 +772,7 @@ impl App {
         let _ = self.autosave();
     }
 
-    pub fn autosave(&self) -> Option<String> {
+    pub fn autosave(&mut self) -> Option<String> {
         if !self.config.auto_save {
             return None;
         }
@@ -721,7 +789,10 @@ impl App {
                 self.models.current.as_deref(),
                 &self.engine.chat().messages,
             ) {
-                Ok(_) => None,
+                Ok(_) => {
+                    self.current_session_id = Some(id);
+                    None
+                }
                 Err(e) => Some(format!("Auto-save failed: {}", e)),
             }
         } else {
@@ -1078,6 +1149,9 @@ available tools to refine and polish your work."
                             }
                         }
                     }
+                    self.current_session_id = Some(id.clone());
+                    self.current_session_parent_id = session.parent_id;
+                    self.current_session_branch_point = session.branch_point;
                     self.overlay = Overlay::None;
                     self.session_search.clear();
                     self.session_selected = 0;

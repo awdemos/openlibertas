@@ -1,11 +1,11 @@
 use reqwest::multipart;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 const ELEVENLABS_API_BASE: &str = "https://api.elevenlabs.io/v1";
 const DEFAULT_TTS_MODEL: &str = "eleven_multilingual_v2";
 const DEFAULT_STT_MODEL: &str = "scribe_v1";
 
-/// Client for ElevenLabs voice APIs.
 #[derive(Debug, Clone)]
 pub struct ElevenLabsClient {
     api_key: crate::config::SecretString,
@@ -28,11 +28,18 @@ impl ElevenLabsClient {
         })
     }
 
-    /// Transcribe audio bytes to text using ElevenLabs STT.
-    /// Audio should be in WAV, MP3, or other supported format.
     pub async fn transcribe(
         &self,
         audio_bytes: Vec<u8>,
+    ) -> Result<String, crate::voice::error::VoiceError> {
+        let dummy = CancellationToken::new();
+        self.transcribe_with_cancel(audio_bytes, &dummy).await
+    }
+
+    pub async fn transcribe_with_cancel(
+        &self,
+        audio_bytes: Vec<u8>,
+        cancel: &CancellationToken,
     ) -> Result<String, crate::voice::error::VoiceError> {
         let url = format!("{}/speech-to-text", ELEVENLABS_API_BASE);
         let audio_len = audio_bytes.len();
@@ -52,58 +59,77 @@ impl ElevenLabsClient {
             .part("file", file_part)
             .part("model_id", model_part);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("xi-api-key", self.api_key.expose_secret())
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| {
-                error!("STT network error: {}", e);
-                crate::voice::error::VoiceError::NetworkError(e.to_string())
+        let request_future = async {
+            let response = self
+                .http
+                .post(&url)
+                .header("xi-api-key", self.api_key.expose_secret())
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|e| {
+                    error!("STT network error: {}", e);
+                    crate::voice::error::VoiceError::NetworkError(e.to_string())
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                error!("STT HTTP error: {} - {}", status, body);
+                return Err(crate::voice::error::VoiceError::SttError(format!(
+                    "HTTP {}: {}",
+                    status, body
+                )));
+            }
+
+            let json: serde_json::Value = response.json().await.map_err(|e| {
+                error!("STT JSON parse error: {}", e);
+                crate::voice::error::VoiceError::SerializationError(e.to_string())
             })?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            error!("STT HTTP error: {} - {}", status, body);
-            return Err(crate::voice::error::VoiceError::SttError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            let text = json.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
+                error!("STT response missing 'text' field: {:?}", json);
+                crate::voice::error::VoiceError::SttError(
+                    "Missing 'text' in STT response".to_string(),
+                )
+            })?;
+
+            let text = text.trim();
+            if text.contains('\u{FFFD}') {
+                error!("STT response contains UTF-8 replacement characters");
+                return Err(crate::voice::error::VoiceError::SttError(
+                    "Transcription contains corrupted characters".to_string(),
+                ));
+            }
+
+            info!("STT success: '{}'", text);
+            Ok(text.to_string())
+        };
+
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                Err(crate::voice::error::VoiceError::AudioError("STT cancelled".to_string()))
+            }
+            result = request_future => result,
         }
-
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            error!("STT JSON parse error: {}", e);
-            crate::voice::error::VoiceError::SerializationError(e.to_string())
-        })?;
-
-        let text = json.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-            error!("STT response missing 'text' field: {:?}", json);
-            crate::voice::error::VoiceError::SttError("Missing 'text' in STT response".to_string())
-        })?;
-
-        let text = text.trim();
-        // Validate UTF-8: reject strings with replacement characters that indicate
-        // encoding corruption from the STT service.
-        if text.contains('\u{FFFD}') {
-            error!("STT response contains UTF-8 replacement characters");
-            return Err(crate::voice::error::VoiceError::SttError(
-                "Transcription contains corrupted characters".to_string(),
-            ));
-        }
-
-        info!("STT success: '{}'", text);
-        Ok(text.to_string())
     }
 
     pub async fn text_to_speech(
         &self,
         text: &str,
+    ) -> Result<Vec<u8>, crate::voice::error::VoiceError> {
+        let dummy = CancellationToken::new();
+        self.text_to_speech_with_cancel(text, &dummy).await
+    }
+
+    pub async fn text_to_speech_with_cancel(
+        &self,
+        text: &str,
+        cancel: &CancellationToken,
     ) -> Result<Vec<u8>, crate::voice::error::VoiceError> {
         let url = format!(
             "{}/text-to-speech/{}/stream?output_format=mp3_44100_128",
@@ -120,39 +146,49 @@ impl ElevenLabsClient {
             "model_id": DEFAULT_TTS_MODEL,
         });
 
-        let response = self
-            .http
-            .post(&url)
-            .header("xi-api-key", self.api_key.expose_secret())
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                error!("TTS network error: {}", e);
+        let request_future = async {
+            let response = self
+                .http
+                .post(&url)
+                .header("xi-api-key", self.api_key.expose_secret())
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| {
+                    error!("TTS network error: {}", e);
+                    crate::voice::error::VoiceError::NetworkError(e.to_string())
+                })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                error!("TTS HTTP error: {} - {}", status, body);
+                return Err(crate::voice::error::VoiceError::TtsError(format!(
+                    "HTTP {}: {}",
+                    status, body
+                )));
+            }
+
+            let bytes = response.bytes().await.map_err(|e| {
+                error!("TTS body read error: {}", e);
                 crate::voice::error::VoiceError::NetworkError(e.to_string())
             })?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            error!("TTS HTTP error: {} - {}", status, body);
-            return Err(crate::voice::error::VoiceError::TtsError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            info!("TTS success: {} bytes", bytes.len());
+            Ok(bytes.to_vec())
+        };
+
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                Err(crate::voice::error::VoiceError::AudioError("TTS cancelled".to_string()))
+            }
+            result = request_future => result,
         }
-
-        let bytes = response.bytes().await.map_err(|e| {
-            error!("TTS body read error: {}", e);
-            crate::voice::error::VoiceError::NetworkError(e.to_string())
-        })?;
-
-        info!("TTS success: {} bytes", bytes.len());
-        Ok(bytes.to_vec())
     }
 }
 
