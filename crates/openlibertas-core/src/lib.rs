@@ -4,6 +4,7 @@
 #![cfg_attr(not(test), warn(clippy::expect_used))]
 #![cfg_attr(not(test), warn(clippy::panic))]
 
+pub mod agent_loop;
 pub mod backend;
 pub mod commands;
 pub mod completion;
@@ -25,6 +26,7 @@ pub mod tool_registry;
 pub mod tools;
 pub mod voice;
 
+pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
 pub use backend::Backend;
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
 pub use config::{Config, Provider, SecretString};

@@ -27,7 +27,6 @@ use app::{App, Overlay, Screen, SlashCommand};
 use openlibertas_core::backend::registry::BackendRegistry;
 use openlibertas_core::config::Config;
 use openlibertas_core::domain::ChatEvent;
-use openlibertas_core::domain::Message;
 use openlibertas_core::domain::{Model, ProviderId, Role};
 use openlibertas_core::state::State;
 use terminal::TerminalGuard;
@@ -1057,184 +1056,90 @@ async fn main() -> Result<()> {
                     app.engine.add_tool_call(tool_call);
                 }
                 Event::ChatEvent(ChatEvent::Done) => {
-                    app.finish_stream();
-                    app.engine.increment_agent_iteration();
+                    let personas = app.agent_personas();
+                    let persona_resolver =
+                        |name: &str| personas.iter().find(|(n, _)| n == name).map(|(_, p)| p.clone());
+                    match openlibertas_core::agent_loop::AgentLoop::run(
+                        &mut app.engine,
+                        &persona_resolver,
+                    )
+                    .await
+                    {
+                        openlibertas_core::agent_loop::LoopAction::Continue(tool_messages) => {
+                            let _ = app.autosave();
+                            let model = app.models.current.clone().unwrap_or_default();
+                            let max_tokens = app.config.max_tokens;
+                            let tools = app.engine.tools_for_request();
 
-                    if app.engine.agent_iteration_exceeded() {
-                        app.engine.finish_agent_loop();
-                        let max_iterations = app.engine.agents_mut().max_iterations;
-                        app.engine.add_system_message(format!(
-                        "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
-                        max_iterations
-                    ));
-                        app.engine.tools_mut().clear_pending_tool_calls();
-                    } else if app.engine.tools_mut().has_pending_tool_calls() {
-                        let results = app.engine.execute_pending_tools().await;
-
-                        for result in &results {
-                            match result {
-                                openlibertas_core::domain::ToolExecutionResult::Success {
-                                    tool_name,
-                                    ..
-                                } => {
-                                    if tool_name != "switch_persona" {
-                                        info!("Tool: {} executed successfully", tool_name);
-                                    }
-                                }
-                                openlibertas_core::domain::ToolExecutionResult::Error {
-                                    tool_name,
-                                    error,
-                                    ..
-                                } => {
-                                    info!("Tool: {} failed: {}", tool_name, error);
-                                }
-                                openlibertas_core::domain::ToolExecutionResult::Skipped {
-                                    tool_name,
-                                    reason,
-                                } => {
-                                    info!("Tool: {} skipped: {}", tool_name, reason);
-                                }
-                            }
+                            app.engine.chat_mut().cancel_token =
+                                tokio_util::sync::CancellationToken::new();
+                            let stream_rx = registry.chat_with_fallback(
+                                &app.models.provider,
+                                model,
+                                tool_messages,
+                                max_tokens,
+                                tools,
+                                app.engine.chat_mut().cancel_token.clone(),
+                                app.temperature,
+                            );
+                            event_stream.attach_chat_stream(stream_rx);
                         }
-
-                        let switch_requests: Vec<(String, bool)> = app
-                            .engine
-                            .tools_mut()
-                            .pending_tool_calls()
-                            .iter()
-                            .filter_map(|tc| {
-                                if tc.function.name == "switch_persona" {
-                                    serde_json::from_str::<serde_json::Value>(
-                                        &tc.function.arguments,
-                                    )
-                                    .ok()
-                                    .and_then(|args| {
-                                        let persona = args
-                                            .get("persona")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from)?;
-                                        let isolate = args
-                                            .get("isolate")
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false);
-                                        Some((persona, isolate))
-                                    })
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        for (persona, isolate) in switch_requests {
-                            let current_persona = app.engine.agents_mut().persona.clone();
-                            if persona.eq_ignore_ascii_case(&current_persona) {
-                                continue;
-                            }
-                            if let Some(prompt) = app.get_persona_prompt(&persona) {
-                                app.switch_agent_persona(&persona, &prompt);
-                                if isolate {
-                                    app.engine.isolate_session();
-                                    info!("Session isolated for '{}'", persona);
-                                }
-                            } else {
-                                info!(
-                                    "Agent: persona '{}' not found, staying as '{}'",
-                                    persona, current_persona
-                                );
-                            }
-                        }
-
-                        let tool_messages = app.engine.assemble_tool_result_messages();
-
-                        app.engine.tools_mut().clear_pending_tool_calls();
-                        app.engine.tools_mut().clear_tool_results();
-
-                        let tool_messages = if app.engine.agents_mut().status
-                            == openlibertas_core::engine::AgentStatus::Active
-                        {
-                            let compacted = app.engine.chat_mut().compactor.compact(&tool_messages);
-                            if compacted.len() < tool_messages.len() {
-                                info!(
-                                    "Context compacted: {} → {} messages",
-                                    tool_messages.len(),
-                                    compacted.len()
-                                );
-                            }
-                            compacted
-                        } else {
-                            tool_messages
-                        };
-
-                        let model = app.models.current.clone().unwrap_or_default();
-                        let max_tokens = app.config.max_tokens;
-                        let tools = app.engine.tools_for_request();
-
-                        app.engine.chat_mut().messages.push(Message {
-                            role: Role::Assistant,
-                            content: String::new(),
-                            tool_calls: None,
-                            tool_call_id: None,
-                            timestamp: None,
-                            reasoning_content: None,
-                        });
-                        app.engine.chat_mut().streaming = true;
-
-                        app.engine.chat_mut().cancel_token =
-                            tokio_util::sync::CancellationToken::new();
-                        let stream_rx = registry.chat_with_fallback(
-                            &app.models.provider,
-                            model,
-                            tool_messages,
-                            max_tokens,
-                            tools,
-                            app.engine.chat_mut().cancel_token.clone(),
-                            app.temperature,
-                        );
-                        event_stream.attach_chat_stream(stream_rx);
-                    } else {
-                        app.engine.finish_agent_loop();
-                        app.engine.tools_mut().clear_pending_tool_calls();
-
-                        if app.voice.is_enabled() {
-                            if let Some(last_msg) = app.engine.chat_mut().messages.last() {
-                                if last_msg.role == Role::Assistant && !last_msg.content.is_empty()
-                                {
-                                    let text = last_msg.content.clone();
-                                    if let Some(text_to_speak) = app.voice.queue_speech(text) {
-                                        let sender = event_stream.sender();
-                                        let api_key = app.voice.config.api_key.clone();
-                                        let voice_id = app.voice.config.voice_id.clone();
-                                        let cancel_flag = app.voice.cancel_flag.clone();
-                                        tokio::spawn(async move {
-                                            match openlibertas_core::voice::tts_synthesize(
-                                                api_key, voice_id, &text_to_speak,
-                                            )
-                                            .await
-                                            {
-                                                Ok(audio_bytes) => {
-                                                    match openlibertas_core::voice::play_audio_cancellable(
-                                                        audio_bytes, cancel_flag,
-                                                    )
-                                                    {
-                                                        Ok(_) => {
-                                                            let _ = sender
-                                                                .send(Event::VoicePlaybackComplete);
-                                                        }
-                                                        Err(e) => {
-                                                            let _ = sender
-                                                                .send(Event::VoiceError(e.to_string(), 0));
+                        openlibertas_core::agent_loop::LoopAction::Stop => {
+                            let _ = app.autosave();
+                            if app.voice.is_enabled() {
+                                if let Some(last_msg) = app.engine.chat_mut().messages.last() {
+                                    if last_msg.role == Role::Assistant
+                                        && !last_msg.content.is_empty()
+                                    {
+                                        let text = last_msg.content.clone();
+                                        if let Some(text_to_speak) = app.voice.queue_speech(text) {
+                                            let sender = event_stream.sender();
+                                            let api_key = app.voice.config.api_key.clone();
+                                            let voice_id = app.voice.config.voice_id.clone();
+                                            let cancel_flag = app.voice.cancel_flag.clone();
+                                            tokio::spawn(async move {
+                                                match openlibertas_core::voice::tts_synthesize(
+                                                    api_key,
+                                                    voice_id,
+                                                    &text_to_speak,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(audio_bytes) => {
+                                                        match openlibertas_core::voice::play_audio_cancellable(
+                                                            audio_bytes,
+                                                            cancel_flag,
+                                                        ) {
+                                                            Ok(_) => {
+                                                                let _ = sender.send(
+                                                                    Event::VoicePlaybackComplete,
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                let _ = sender.send(
+                                                                    Event::VoiceError(
+                                                                        e.to_string(),
+                                                                        0,
+                                                                    ),
+                                                                );
+                                                            }
                                                         }
                                                     }
+                                                    Err(e) => {
+                                                        let _ = sender.send(Event::VoiceError(
+                                                            e.to_string(),
+                                                            0,
+                                                        ));
+                                                    }
                                                 }
-                                                Err(e) => {
-                                                    let _ =
-                                                        sender.send(Event::VoiceError(e.to_string(), 0));
-                                                }
-                                            }
-                                        });
+                                            });
+                                        }
                                     }
                                 }
                             }
+                        }
+                        openlibertas_core::agent_loop::LoopAction::Error(_) => {
+                            let _ = app.autosave();
                         }
                     }
                 }
