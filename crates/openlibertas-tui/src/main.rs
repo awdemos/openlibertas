@@ -112,8 +112,8 @@ fn spawn_voice_transcription(
 #[tokio::main]
 async fn main() -> Result<()> {
     TerminalGuard::setup_panic_hook();
-    let _guard = TerminalGuard::new(true)?;
-    let mut mouse_captured = true;
+    let _guard = TerminalGuard::new(false)?;
+    let mut mouse_captured = false;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let config = Config::load()?;

@@ -167,7 +167,7 @@ impl App {
             },
             voice_status: None,
             pending_voice_generation: None,
-            mouse_enabled: true,
+            mouse_enabled: false,
             avatar_enabled: false,
             avatars: vec![AnimatedAvatar::new("default", &IDLE_FRAMES)],
             avatar_menu_selected: 0,
@@ -734,9 +734,9 @@ When you have your final answer, output 'FINAL(answer)' on its own line.".to_str
             SlashCommand::Mouse => {
                 self.mouse_enabled = !self.mouse_enabled;
                 if self.mouse_enabled {
-                    Some("Mouse capture enabled. Shift+drag to select text natively. Double-click or right-click a message to copy. Scroll to scroll chat. Disable with /mouse.".to_string())
+                    Some("Mouse capture enabled — wheel scroll, click to focus, right-click to copy. Native text selection disabled. Disable with /mouse.".to_string())
                 } else {
-                    Some("Mouse capture disabled. tmux can now handle mouse selection and copy mode.".to_string())
+                    Some("Mouse capture disabled — native terminal text selection and copy work. Enable with /mouse for wheel scrolling and clicking.".to_string())
                 }
             }
             SlashCommand::Unknown(cmd) => Some(format!("Unknown command: {}", cmd)),
