@@ -33,9 +33,13 @@ use openlibertas_core::state::State;
 use terminal::TerminalGuard;
 use unicode_width::UnicodeWidthStr;
 
-fn attach_chat_stream(app: &mut App, registry: &BackendRegistry, event_stream: &mut EventStream) {
+fn attach_chat_stream(
+    app: &mut App,
+    registry: &BackendRegistry,
+    event_stream: &mut EventStream,
+    messages: Vec<openlibertas_core::domain::Message>,
+) {
     use openlibertas_core::engine::AgentStatus;
-    let messages = app.engine.chat_mut().messages.clone();
     let messages = if app.engine.agents_mut().status == AgentStatus::Active {
         let compacted = app.engine.chat_mut().compactor.compact(&messages);
         if compacted.len() < messages.len() {
@@ -723,9 +727,9 @@ async fn main() -> Result<()> {
                                         {
                                             app.engine.start_agent_loop();
                                         }
-                                        let _ = app.push_user_message();
+                                        let messages = app.push_user_message();
                                         let _ = app.autosave();
-                                        attach_chat_stream(&mut app, &registry, &mut event_stream);
+                                        attach_chat_stream(&mut app, &registry, &mut event_stream, messages);
                                         app.engine.input_mut().buffer.clear();
                                         app.engine.input_mut().cursor_pos = 0;
                                         app.engine.input_mut().selection_anchor = None;
@@ -959,9 +963,9 @@ async fn main() -> Result<()> {
                     {
                         app.engine.start_agent_loop();
                     }
-                    let _ = app.push_user_message();
+                    let messages = app.push_user_message();
                     let _ = app.autosave();
-                    attach_chat_stream(&mut app, &registry, &mut event_stream);
+                    attach_chat_stream(&mut app, &registry, &mut event_stream, messages);
                 }
                 Event::VoiceError(err, generation) => {
                     // Discard stale errors from cancelled or superseded recordings
