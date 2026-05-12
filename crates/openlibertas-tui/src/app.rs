@@ -108,6 +108,7 @@ pub struct App {
     pub mcp_test_result: Option<String>,
     pub mcp_show_detail: bool,
     pub mcp_scroll: usize,
+    pub cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl App {
@@ -195,6 +196,7 @@ impl App {
             mcp_test_result: None,
             mcp_show_detail: false,
             mcp_scroll: 0,
+            cancel_token: None,
         }
     }
 
@@ -1327,6 +1329,93 @@ available tools to refine and polish your work."
             tools.get(self.mcp_selected_tool).map(|t| t.name.clone())
         } else {
             None
+        }
+    }
+
+    pub fn handle_wire_message(&mut self, msg: &openlibertas_core::soul::WireMessage) {
+        use openlibertas_core::domain::{Message, Role, now_timestamp};
+        use openlibertas_core::soul::WireMessage;
+
+        match msg {
+            WireMessage::TurnStarted { .. } => {
+                self.engine.chat_mut().streaming = true;
+            }
+            WireMessage::TextDelta(text) => {
+                self.ensure_last_message_is_assistant();
+                self.engine.append_stream_chunk(text);
+            }
+            WireMessage::ReasoningDelta(text) => {
+                self.ensure_last_message_is_assistant();
+                self.engine.append_reasoning_chunk(text);
+            }
+            WireMessage::ToolCallStarted { id, name } => {
+                self.engine.add_tool_call(openlibertas_core::domain::ToolCall {
+                    id: id.clone(),
+                    call_type: "function".to_string(),
+                    function: openlibertas_core::domain::FunctionCall {
+                        name: name.clone(),
+                        arguments: "{}".to_string(),
+                    },
+                });
+            }
+            WireMessage::ToolExecuting { .. } => {}
+            WireMessage::ToolResult { id, output } => {
+                self.engine.chat_mut().messages.push(Message {
+                    role: Role::Tool,
+                    content: output.clone(),
+                    tool_calls: None,
+                    tool_call_id: Some(id.clone()),
+                    timestamp: Some(now_timestamp()),
+                    reasoning_content: None,
+                    is_prompt: false,
+                });
+            }
+            WireMessage::TurnFinished { .. } => {
+                self.finish_stream();
+                self.engine.sanitize_assistant_content();
+                self.engine.finish_agent_loop();
+            }
+            WireMessage::Error(err) => {
+                self.finish_stream();
+                self.engine.finish_agent_loop();
+                self.engine.add_error_message(err.clone());
+            }
+            WireMessage::Cancelled => {
+                self.finish_stream();
+                self.engine.finish_agent_loop();
+                self.engine.tool_executor_mut().clear_pending_tool_calls();
+            }
+            _ => {}
+        }
+    }
+
+    fn ensure_last_message_is_assistant(&mut self) {
+        use openlibertas_core::domain::{Message, Role, now_timestamp};
+
+        if self.engine.chat().messages.last().map(|m| m.role) != Some(Role::Assistant) {
+            if let Some(idx) = self
+                .engine
+                .chat()
+                .messages
+                .iter()
+                .rposition(|m| m.role == Role::Assistant)
+            {
+                let pending = self.engine.tool_executor().pending_tool_calls().to_vec();
+                if !pending.is_empty() && self.engine.chat().messages[idx].tool_calls.is_none() {
+                    self.engine.chat_mut().messages[idx].tool_calls = Some(pending);
+                }
+            }
+            self.engine.tool_executor_mut().clear_pending_tool_calls();
+            self.engine.chat_mut().messages.push(Message {
+                role: Role::Assistant,
+                content: String::new(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: Some(now_timestamp()),
+                reasoning_content: None,
+                is_prompt: false,
+            });
+            self.engine.chat_mut().streaming = true;
         }
     }
 }

@@ -7,10 +7,10 @@ use tokio_util::sync::CancellationToken;
 use crate::capability::ProviderCapabilities;
 use crate::domain::{ChatEvent, Message, Model, ToolDefinition};
 
-pub mod openai;
+pub mod multi_provider;
 pub mod registry;
 
-pub use openai::OpenAiBackend;
+pub use multi_provider::MultiProviderBackend;
 
 pub trait Backend: Send + Sync {
     fn chat(

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::backend::{Backend, OpenAiBackend};
+use crate::backend::{Backend, MultiProviderBackend};
 use crate::config::Provider;
 use crate::domain::{ChatEvent, Message, ProviderId, ToolDefinition};
 
@@ -39,9 +39,10 @@ impl BackendRegistry {
         for provider in providers {
             if provider.enabled {
                 let capabilities = provider.capabilities;
-                let backend: Arc<dyn Backend> = Arc::new(OpenAiBackend::with_capabilities(
+                let backend: Arc<dyn Backend> = Arc::new(MultiProviderBackend::with_capabilities(
                     provider.base_url.clone(),
                     provider.api_key.clone(),
+                    provider.kind,
                     capabilities,
                     provider.extra_params.clone(),
                 ));

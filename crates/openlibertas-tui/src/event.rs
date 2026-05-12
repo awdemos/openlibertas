@@ -1,17 +1,17 @@
 use crossterm::event::Event as CEvent;
 use tokio::sync::mpsc;
 
-use openlibertas_core::domain::ChatEvent;
 use openlibertas_core::domain::McpServerStatus;
 use openlibertas_core::domain::Model;
 use openlibertas_core::mcp::McpServerDiagnostics;
 use openlibertas_core::mcp::McpTool;
+use openlibertas_core::soul::WireMessage;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Event {
     Input(CEvent),
-    ChatEvent(ChatEvent),
+    Agent(WireMessage),
     ModelsLoaded(Result<Vec<Model>, String>),
     McpToolsLoaded(
         Result<
@@ -52,11 +52,11 @@ impl EventStream {
         (Self { tx }, rx)
     }
 
-    pub fn attach_chat_stream(&self, mut stream_rx: mpsc::UnboundedReceiver<ChatEvent>) {
+    pub fn attach_wire_receiver(&self, mut wire_rx: mpsc::UnboundedReceiver<WireMessage>) {
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            while let Some(event) = stream_rx.recv().await {
-                if tx.send(Event::ChatEvent(event)).is_err() {
+            while let Some(msg) = wire_rx.recv().await {
+                if tx.send(Event::Agent(msg)).is_err() {
                     return;
                 }
             }

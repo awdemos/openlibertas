@@ -19,13 +19,16 @@ pub mod history;
 pub mod mcp;
 pub mod model_scanner;
 pub mod prompt;
+pub mod runtime;
 pub mod search;
+pub mod soul;
 pub mod state;
 pub mod store;
 pub mod tool_format;
 pub mod tool_registry;
 pub mod tools;
 pub mod voice;
+pub mod wire;
 
 pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
 pub use backend::Backend;

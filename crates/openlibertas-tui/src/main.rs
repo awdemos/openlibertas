@@ -11,6 +11,8 @@ use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
 use std::io::{stdout, Write};
+use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -25,49 +27,16 @@ mod ui;
 use crate::event::{Event, EventStream};
 use app::{App, Overlay, Screen, SlashCommand};
 use openlibertas_core::backend::registry::BackendRegistry;
-use openlibertas_core::config::Config;
-use openlibertas_core::domain::ChatEvent;
-use openlibertas_core::domain::{Model, ProviderId, Role};
+use openlibertas_core::backend::Backend;
+use openlibertas_core::capability::ProviderCapabilities;
+use openlibertas_core::domain::{ChatEvent, Message, Model, ProviderId, Role, ToolDefinition};
+use openlibertas_core::engine::{AgentMode, AgentStatus, ChatEngine};
+use openlibertas_core::env_context::EnvContext;
+use openlibertas_core::runtime::Runtime;
+use openlibertas_core::soul::{Agent, ChatAgent, UserInput};
 use openlibertas_core::state::State;
 use terminal::TerminalGuard;
 use unicode_width::UnicodeWidthStr;
-
-fn attach_chat_stream(
-    app: &mut App,
-    registry: &BackendRegistry,
-    event_stream: &mut EventStream,
-    messages: Vec<openlibertas_core::domain::Message>,
-) {
-    use openlibertas_core::engine::AgentStatus;
-    let messages = if app.engine.agents_mut().status == AgentStatus::Active {
-        let compacted = app.engine.chat_mut().compactor.compact(&messages);
-        if compacted.len() < messages.len() {
-            info!(
-                "Context compacted: {} → {} messages",
-                messages.len(),
-                compacted.len()
-            );
-        }
-        compacted
-    } else {
-        messages
-    };
-    let model = app.models.current.clone().unwrap_or_default();
-    let max_tokens = app.config.max_tokens;
-    let tools = app.engine.tools_for_request();
-    app.engine.chat_mut().cancel_token = tokio_util::sync::CancellationToken::new();
-    app.engine.tool_executor_mut().clear_pending_tool_calls();
-    let stream_rx = registry.chat_with_fallback(
-        &app.models.provider,
-        model,
-        messages,
-        max_tokens,
-        tools,
-        app.engine.chat_mut().cancel_token.clone(),
-        app.temperature,
-    );
-    event_stream.attach_chat_stream(stream_rx);
-}
 
 fn enhance_error_with_suggestion(err: &str) -> String {
     let err_lower = err.to_lowercase();
@@ -109,6 +78,206 @@ fn spawn_voice_transcription(
     });
 }
 
+/// Backend wrapper that delegates chat to [`BackendRegistry::chat_with_fallback`].
+#[derive(Clone)]
+struct RegistryBackend {
+    registry: BackendRegistry,
+    preferred_provider: ProviderId,
+}
+
+impl RegistryBackend {
+    fn new(registry: BackendRegistry, preferred_provider: ProviderId) -> Self {
+        Self {
+            registry,
+            preferred_provider,
+        }
+    }
+}
+
+impl Backend for RegistryBackend {
+    fn chat(
+        &self,
+        model: String,
+        messages: Vec<Message>,
+        max_tokens: u32,
+        tools: Option<Vec<ToolDefinition>>,
+        cancel_token: tokio_util::sync::CancellationToken,
+        temperature: Option<f32>,
+    ) -> tokio::sync::mpsc::UnboundedReceiver<ChatEvent> {
+        self.registry.chat_with_fallback(
+            &self.preferred_provider,
+            model,
+            messages,
+            max_tokens,
+            tools,
+            cancel_token,
+            temperature,
+        )
+    }
+
+    fn fetch_models(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
+        match self.registry.default_backend() {
+            Some(backend) => backend.fetch_models(),
+            None => Box::pin(async { Ok(vec![]) }),
+        }
+    }
+
+    fn health_check(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+        match self.registry.default_backend() {
+            Some(backend) => backend.health_check(),
+            None => Box::pin(async { Ok(()) }),
+        }
+    }
+
+    fn cancel_token(&self) -> tokio_util::sync::CancellationToken {
+        tokio_util::sync::CancellationToken::new()
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        match self.registry.default_backend() {
+            Some(backend) => backend.capabilities(),
+            None => ProviderCapabilities::default(),
+        }
+    }
+}
+
+/// Wrapper that injects a shared cancellation token into every chat call.
+#[derive(Clone)]
+struct CancellableBackend {
+    inner: Arc<dyn Backend>,
+    cancel_token: tokio_util::sync::CancellationToken,
+}
+
+impl CancellableBackend {
+    fn new(inner: Arc<dyn Backend>, cancel_token: tokio_util::sync::CancellationToken) -> Self {
+        Self {
+            inner,
+            cancel_token,
+        }
+    }
+}
+
+impl Backend for CancellableBackend {
+    fn chat(
+        &self,
+        model: String,
+        messages: Vec<Message>,
+        max_tokens: u32,
+        tools: Option<Vec<ToolDefinition>>,
+        _cancel_token: tokio_util::sync::CancellationToken,
+        temperature: Option<f32>,
+    ) -> tokio::sync::mpsc::UnboundedReceiver<ChatEvent> {
+        self.inner.chat(
+            model,
+            messages,
+            max_tokens,
+            tools,
+            self.cancel_token.clone(),
+            temperature,
+        )
+    }
+
+    fn fetch_models(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
+        self.inner.fetch_models()
+    }
+
+    fn health_check(
+        &self,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+        self.inner.health_check()
+    }
+
+    fn cancel_token(&self) -> tokio_util::sync::CancellationToken {
+        self.cancel_token.clone()
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.inner.capabilities()
+    }
+}
+
+fn spawn_agent_turn(
+    app: &mut App,
+    registry: &BackendRegistry,
+    event_stream: &EventStream,
+    input_text: String,
+) {
+    let ui_messages_before = app.engine.chat().messages.clone();
+
+    let content = openlibertas_core::conversation::parse_file_context(&input_text);
+    let _ = app.engine.push_user_message(content);
+    let _ = app.autosave();
+
+    let mut agent_engine = ChatEngine::new()
+        .with_context_window(app.config.effective_context_window() as usize)
+        .with_env_context(EnvContext::detect());
+
+    if let Some(prompt) = app.engine.system_prompt() {
+        agent_engine = agent_engine.with_system_prompt(prompt);
+    }
+    if let Some(prompt) = app.engine.agent_prompt() {
+        agent_engine = agent_engine.with_agent_prompt(prompt);
+    }
+
+    let tool_format = app
+        .config
+        .providers
+        .iter()
+        .find(|p| ProviderId::new(&p.name) == app.models.provider)
+        .map(|p| p.tool_format)
+        .unwrap_or_default();
+    agent_engine.set_tool_format(tool_format);
+
+    agent_engine.chat_mut().messages = ui_messages_before;
+
+    if let Some(client) = app.engine.tools().client() {
+        agent_engine.tool_executor_mut().set_client(Some(client.clone()));
+    }
+
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    app.cancel_token = Some(cancel_token.clone());
+
+    let registry_backend = RegistryBackend::new(registry.clone(), app.models.provider.clone());
+    let backend: Arc<dyn Backend> =
+        Arc::new(CancellableBackend::new(Arc::new(registry_backend), cancel_token));
+
+    let model = app.models.current.clone().unwrap_or_default();
+    let max_tokens = app.config.max_tokens;
+
+    let agent = ChatAgent::new(
+        "default",
+        "Chat Agent",
+        agent_engine,
+        backend,
+        model,
+        max_tokens,
+    );
+
+    let (wire_tx, wire_rx) = tokio::sync::mpsc::unbounded_channel();
+    event_stream.attach_wire_receiver(wire_rx);
+
+    let input = UserInput {
+        text: input_text,
+        file_context: vec![],
+        mode: if app.engine.agents().status == AgentStatus::Active {
+            app.engine.plan_mode()
+        } else {
+            AgentMode::Auto
+        },
+    };
+
+    tokio::spawn(async move {
+        let mut agent = agent;
+        let _ = agent.run_turn(input, wire_tx).await;
+    });
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     TerminalGuard::setup_panic_hook();
@@ -116,24 +285,28 @@ async fn main() -> Result<()> {
     let mut mouse_captured = false;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let config = Config::load()?;
+    let runtime = Runtime::new()?;
     let mut state = State::load();
-    let mut app = App::new(config.clone());
+    let mut app = App::new(runtime.config.as_ref().clone());
+    app.store = Some((*runtime.conversation_store).clone());
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let registry = BackendRegistry::new(&config.providers);
 
-    let (mut event_stream, mut event_rx) = EventStream::new();
+    let (event_stream, mut event_rx) = EventStream::new();
 
-    for provider in &config.providers {
+    if let Some(client) = runtime.mcp_client.as_ref() {
+        app.engine.tools_mut().set_client(Some(client.clone()));
+    }
+
+    for provider in runtime.config.providers.iter() {
         if !provider.enabled {
             continue;
         }
         let sender = event_stream.sender();
         let provider_id = ProviderId::new(&provider.name);
-        if let Some(backend) = registry.get(&provider_id) {
+        if let Some(backend) = runtime.backend_registry.get(&provider_id) {
             let backend = backend.clone();
             tokio::spawn(async move {
                 match backend.fetch_models().await {
@@ -155,7 +328,7 @@ async fn main() -> Result<()> {
         app.models.current = Some(last_model.clone());
         app.set_provider("default");
         app.screen = Screen::Chat;
-    } else if let Some(ref model) = config.model {
+    } else if let Some(ref model) = runtime.config.model {
         app.models.current = Some(model.clone());
         app.set_provider("default");
         app.screen = Screen::Chat;
@@ -163,7 +336,7 @@ async fn main() -> Result<()> {
 
     app.load_context_files();
 
-    if let Some(backend_check) = registry.default_backend().cloned() {
+    if let Some(backend_check) = runtime.backend_registry.default_backend().cloned() {
         let health_sender = event_stream.sender();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -181,17 +354,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    app.engine.tools_mut().set_client(
-        match openlibertas_core::mcp::McpClient::from_opencode_config() {
-            Ok(client) => Some(std::sync::Arc::new(client)),
-            Err(e) => {
-                eprintln!("[MCP] Failed to initialize MCP client: {}", e);
-                None
-            }
-        },
-    );
-
-    if let Some(client) = app.engine.tools_mut().client() {
+    if let Some(client) = app.engine.tools().client() {
         let sender = event_stream.sender();
         tokio::spawn(async move {
             match client.discover_tools().await {
@@ -599,7 +762,9 @@ async fn main() -> Result<()> {
                         Screen::Chat => match key.code {
                             KeyCode::Esc => {
                                 if app.engine.chat_mut().streaming {
-                                    app.engine.chat_mut().cancel_token.cancel();
+                                    if let Some(token) = app.cancel_token.take() {
+                                        token.cancel();
+                                    }
                                     app.finish_stream();
                                     app.engine
                                         .add_system_message("[Request cancelled]".to_string());
@@ -712,7 +877,9 @@ async fn main() -> Result<()> {
                                         if app.engine.agents_mut().status
                                             == openlibertas_core::engine::AgentStatus::Active
                                         {
-                                            app.engine.chat_mut().cancel_token.cancel();
+                                            if let Some(token) = app.cancel_token.take() {
+                                                token.cancel();
+                                            }
                                             app.finish_stream();
                                         } else {
                                             continue;
@@ -763,13 +930,11 @@ async fn main() -> Result<()> {
                                         {
                                             app.engine.start_agent_loop();
                                         }
-                                        let messages = app.push_user_message();
-                                        let _ = app.autosave();
-                                        attach_chat_stream(
+                                        spawn_agent_turn(
                                             &mut app,
-                                            &registry,
-                                            &mut event_stream,
-                                            messages,
+                                            &runtime.backend_registry,
+                                            &event_stream,
+                                            input,
                                         );
                                         app.engine.input_mut().buffer.clear();
                                         app.engine.input_mut().cursor_pos = 0;
@@ -976,7 +1141,8 @@ async fn main() -> Result<()> {
                     }
                 }
                 Event::ModelsLoaded(Ok(models)) => {
-                    let filtered_models: Vec<Model> = if config.filter_require_voice_and_tools {
+                    let filtered_models: Vec<Model> = if runtime.config.filter_require_voice_and_tools
+                    {
                         models
                             .into_iter()
                             .filter(|m| m.supports_tools && m.supports_voice)
@@ -997,7 +1163,7 @@ async fn main() -> Result<()> {
                             app.models.current = Some(last_model.clone());
                             app.set_provider(model.provider.clone());
                         }
-                    } else if let Some(ref model) = config.model {
+                    } else if let Some(ref model) = runtime.config.model {
                         if let Some(m) = filtered_models.iter().find(|m| &m.id == model) {
                             app.models.current = Some(model.clone());
                             app.set_provider(m.provider.clone());
@@ -1082,9 +1248,12 @@ async fn main() -> Result<()> {
                     {
                         app.engine.start_agent_loop();
                     }
-                    let messages = app.push_user_message();
-                    let _ = app.autosave();
-                    attach_chat_stream(&mut app, &registry, &mut event_stream, messages);
+                    spawn_agent_turn(
+                        &mut app,
+                        &runtime.backend_registry,
+                        &event_stream,
+                        input,
+                    );
                 }
                 Event::VoiceError(err, generation) => {
                     // Discard stale errors from cancelled or superseded recordings
@@ -1160,145 +1329,94 @@ async fn main() -> Result<()> {
                         });
                     }
                 }
-                Event::ChatEvent(ChatEvent::Text(text)) => {
-                    app.engine.append_stream_chunk(&text);
-                }
-                Event::ChatEvent(ChatEvent::Reasoning(text)) => {
-                    app.engine.append_reasoning_chunk(&text);
-                }
-                Event::ChatEvent(ChatEvent::ToolCall(tool_call)) => {
-                    app.engine.add_tool_call(tool_call);
-                }
-                Event::ChatEvent(ChatEvent::Done) => {
-                    let personas = app.agent_personas();
-                    let persona_resolver = |name: &str| {
-                        personas
-                            .iter()
-                            .find(|(n, _)| n == name)
-                            .map(|(_, p)| p.clone())
-                    };
-                    match openlibertas_core::agent_loop::AgentLoop::run(
-                        &mut app.engine,
-                        &persona_resolver,
-                    )
-                    .await
-                    {
-                        openlibertas_core::agent_loop::LoopAction::Continue(tool_messages) => {
-                            let _ = app.autosave();
-                            let model = app.models.current.clone().unwrap_or_default();
-                            let max_tokens = app.config.max_tokens;
-                            let tools = app.engine.tools_for_request();
+                Event::Agent(msg) => match msg {
+                    openlibertas_core::soul::WireMessage::TurnFinished { .. } => {
+                        app.handle_wire_message(&msg);
+                        let _ = app.autosave();
 
-                            app.engine.chat_mut().cancel_token =
-                                tokio_util::sync::CancellationToken::new();
-                            let stream_rx = registry.chat_with_fallback(
-                                &app.models.provider,
-                                model,
-                                tool_messages,
-                                max_tokens,
-                                tools,
-                                app.engine.chat_mut().cancel_token.clone(),
-                                app.temperature,
-                            );
-                            event_stream.attach_chat_stream(stream_rx);
-                        }
-                        openlibertas_core::agent_loop::LoopAction::Stop => {
-                            let _ = app.autosave();
-                            if app.rlm_mode {
-                                let final_answer = app
-                                    .engine
-                                    .chat()
-                                    .messages
-                                    .last()
-                                    .filter(|m| m.role == Role::Assistant)
-                                    .and_then(|m| {
-                                        let start = m.content.find("FINAL(")?;
-                                        let end = m.content[start..].find(')')?;
-                                        Some(m.content[start + 6..start + end].trim().to_string())
-                                    });
-                                if let Some(answer) = final_answer {
-                                    app.engine.add_system_message(format!(
-                                        "[RLM] Final answer: {}",
-                                        answer
-                                    ));
-                                    app.rlm_mode = false;
-                                    app.set_provider(app.models.provider.clone());
-                                }
+                        if app.rlm_mode {
+                            let final_answer = app
+                                .engine
+                                .chat()
+                                .messages
+                                .last()
+                                .filter(|m| m.role == Role::Assistant)
+                                .and_then(|m| {
+                                    let start = m.content.find("FINAL(")?;
+                                    let end = m.content[start..].find(')')?;
+                                    Some(m.content[start + 6..start + end].trim().to_string())
+                                });
+                            if let Some(answer) = final_answer {
+                                app.engine.add_system_message(format!(
+                                    "[RLM] Final answer: {}",
+                                    answer
+                                ));
+                                app.rlm_mode = false;
+                                app.set_provider(app.models.provider.clone());
                             }
-                            if app.voice.is_enabled() {
-                                if let Some(last_msg) = app.engine.chat_mut().messages.last() {
-                                    if last_msg.role == Role::Assistant
-                                        && !last_msg.content.is_empty()
-                                    {
-                                        let text = last_msg.content.clone();
-                                        if let Some(text_to_speak) = app.voice.queue_speech(text) {
-                                            let sender = event_stream.sender();
-                                            let api_key = app.voice.config.api_key.clone();
-                                            let voice_id = app.voice.config.voice_id.clone();
-                                            let cancel_flag = app.voice.cancel_flag.clone();
-                                            tokio::spawn(async move {
-                                                match openlibertas_core::voice::tts_synthesize(
-                                                    api_key,
-                                                    voice_id,
-                                                    &text_to_speak,
-                                                )
-                                                .await
-                                                {
-                                                    Ok(audio_bytes) => {
-                                                        match openlibertas_core::voice::play_audio_cancellable(
-                                                            audio_bytes,
-                                                            cancel_flag,
-                                                        ) {
-                                                            Ok(_) => {
-                                                                let _ = sender.send(
-                                                                    Event::VoicePlaybackComplete,
-                                                                );
-                                                            }
-                                                            Err(e) => {
-                                                                let _ = sender.send(
-                                                                    Event::VoiceError(
-                                                                        e.to_string(),
-                                                                        0,
-                                                                    ),
-                                                                );
-                                                            }
+                        }
+
+                        if app.voice.is_enabled() {
+                            if let Some(last_msg) = app.engine.chat_mut().messages.last() {
+                                if last_msg.role == Role::Assistant
+                                    && !last_msg.content.is_empty()
+                                {
+                                    let text = last_msg.content.clone();
+                                    if let Some(text_to_speak) = app.voice.queue_speech(text) {
+                                        let sender = event_stream.sender();
+                                        let api_key = app.voice.config.api_key.clone();
+                                        let voice_id = app.voice.config.voice_id.clone();
+                                        let cancel_flag = app.voice.cancel_flag.clone();
+                                        tokio::spawn(async move {
+                                            match openlibertas_core::voice::tts_synthesize(
+                                                api_key,
+                                                voice_id,
+                                                &text_to_speak,
+                                            )
+                                            .await
+                                            {
+                                                Ok(audio_bytes) => {
+                                                    match openlibertas_core::voice::play_audio_cancellable(
+                                                        audio_bytes,
+                                                        cancel_flag,
+                                                    ) {
+                                                        Ok(_) => {
+                                                            let _ = sender.send(
+                                                                Event::VoicePlaybackComplete,
+                                                            );
+                                                        }
+                                                        Err(e) => {
+                                                            let _ = sender.send(
+                                                                Event::VoiceError(
+                                                                    e.to_string(),
+                                                                    0,
+                                                                ),
+                                                            );
                                                         }
                                                     }
-                                                    Err(e) => {
-                                                        let _ = sender.send(Event::VoiceError(
-                                                            e.to_string(),
-                                                            0,
-                                                        ));
-                                                    }
                                                 }
-                                            });
-                                        }
+                                                Err(e) => {
+                                                    let _ = sender.send(Event::VoiceError(
+                                                        e.to_string(),
+                                                        0,
+                                                    ));
+                                                }
+                                            }
+                                        });
                                     }
                                 }
                             }
                         }
-                        openlibertas_core::agent_loop::LoopAction::Error(_) => {
-                            let _ = app.autosave();
-                        }
                     }
-                }
-                Event::ChatEvent(ChatEvent::Cancelled) => {
-                    app.finish_stream();
-                    app.engine.finish_agent_loop();
-                    app.engine.tool_executor_mut().clear_pending_tool_calls();
-                }
+                    _ => {
+                        app.handle_wire_message(&msg);
+                    }
+                },
                 Event::BackendHealthCheck(Ok(())) => {
                     app.connection_status = app::ConnectionStatus::Connected;
                 }
                 Event::BackendHealthCheck(Err(_e)) => {
                     app.connection_status = app::ConnectionStatus::Disconnected;
-                }
-                Event::ChatEvent(ChatEvent::Error(err)) => {
-                    let enhanced = enhance_error_with_suggestion(&err);
-                    app.finish_stream();
-                    app.engine.finish_agent_loop();
-                    app.engine.tool_executor_mut().clear_pending_tool_calls();
-                    app.engine.add_error_message(enhanced);
                 }
                 Event::Input(CEvent::Resize(_, _)) => {}
                 Event::Input(_) => {}
