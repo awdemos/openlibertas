@@ -159,6 +159,8 @@ pub struct Message {
     pub timestamp: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_prompt: bool,
 }
 
 impl Message {
@@ -389,14 +391,7 @@ mod tests {
 
     #[test]
     fn message_with_role_serializes() {
-        let msg = Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: None,
-            reasoning_content: None,
-        };
+        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\""));
         assert!(json.contains("\"user\""));

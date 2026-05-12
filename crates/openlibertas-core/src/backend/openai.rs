@@ -661,14 +661,7 @@ mod tests {
 
     #[test]
     fn message_serializes_correctly() {
-        let msg = Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: None,
-            reasoning_content: None,
-        };
+        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\":\"user\""));
         assert!(json.contains("\"content\":\"hello\""));
@@ -676,21 +669,14 @@ mod tests {
 
     #[test]
     fn message_with_tool_calls_serializes() {
-        let msg = Message {
-            role: Role::Assistant,
-            content: "".to_string(),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_1".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: "test".to_string(),
-                    arguments: "{}".to_string(),
-                },
-            }]),
-            tool_call_id: None,
-            timestamp: None,
-            reasoning_content: None,
-        };
+        let msg = Message { role: Role::Assistant, content: "".to_string(), tool_calls: Some(vec![ToolCall {
+            id: "call_1".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+        }]), tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"tool_calls\""));
         assert!(json.contains("\"call_1\""));

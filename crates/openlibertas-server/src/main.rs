@@ -231,7 +231,8 @@ async fn post_chat(
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        });
+        
+            is_prompt: false,});
     }
 
     let messages = {
@@ -301,7 +302,8 @@ async fn post_chat(
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        });
+        
+            is_prompt: false,});
     }
 
     ok(ChatResponse {
@@ -343,7 +345,8 @@ async fn stream_chat(
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        });
+        
+            is_prompt: false,});
     }
 
     let messages = {
@@ -435,7 +438,8 @@ async fn stream_chat(
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        });
+        
+            is_prompt: false,});
     };
 
     Sse::new(sse_stream)

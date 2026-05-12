@@ -219,7 +219,6 @@ impl App {
                 self.overlay = Overlay::Help;
                 None
             }
-            SlashCommand::Version => Some(format!("OpenLibertas v{}", env!("CARGO_PKG_VERSION"))),
             SlashCommand::Tools => {
                 self.overlay = if self.overlay == Overlay::Tools {
                     Overlay::None
@@ -761,6 +760,7 @@ impl App {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
+                is_prompt: false,
             });
         }
         loaded.into_iter().map(|(name, _)| name).collect()
@@ -935,6 +935,9 @@ available tools to refine and polish your work."
                     self.engine.chat_mut().scroll = line_count;
                     self.engine.chat_mut().auto_scroll = false;
                     break;
+                }
+                if msg.role == Role::System && msg.is_prompt {
+                    continue;
                 }
                 line_count += 3;
                 if msg.tool_calls.is_some() {

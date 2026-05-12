@@ -192,14 +192,7 @@ impl ToolExecutor {
         let mut messages = Vec::new();
         for (i, result) in self.tool_results.iter().enumerate() {
             if let Some(tool_call) = self.pending_tool_calls.get(i) {
-                messages.push(Message {
-                    role: Role::Tool,
-                    content: result.clone(),
-                    tool_calls: None,
-                    tool_call_id: Some(tool_call.id.clone()),
-                    timestamp: Some(now_timestamp()),
-                    reasoning_content: None,
-                });
+                messages.push(Message { role: Role::Tool, content: result.clone(), tool_calls: None, tool_call_id: Some(tool_call.id.clone()), timestamp: Some(now_timestamp()), reasoning_content: None, is_prompt: false });
             }
         }
         messages

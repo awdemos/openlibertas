@@ -6,7 +6,6 @@ use anyhow::Context;
 pub const SLASH_COMMANDS: &[&str] = &[
     // Info
     "/help",
-    "/version",
     // Config
     "/model",
     "/theme",
@@ -47,7 +46,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
 /// Category for each slash command
 pub fn command_category(cmd: &str) -> &'static str {
     match cmd {
-        "/help" | "/version" => "Info",
+        "/help" => "Info",
         "/model" | "/theme" | "/temp" | "/avatar" | "/avatar-menu" => "Config",
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
         | "/title" | "/branch" => "Session",
@@ -66,7 +65,6 @@ pub fn command_category(cmd: &str) -> &'static str {
 pub fn command_description(cmd: &str) -> &'static str {
     match cmd {
         "/help" => "Show help panel",
-        "/version" => "Show version info",
         "/model" => "Switch model (or open picker)",
         "/avatar" => "Toggle avatar display",
         "/avatar-menu" => "Open avatar configuration menu",
@@ -103,7 +101,6 @@ pub fn command_description(cmd: &str) -> &'static str {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlashCommand {
     Help,
-    Version,
     Model(String),
     Theme(String),
     Temperature(f32),
@@ -146,7 +143,6 @@ impl SlashCommand {
 
         match parts[0] {
             "/help" => Some(SlashCommand::Help),
-            "/version" => Some(SlashCommand::Version),
             "/model" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Model(parts[1..].join(" ")))
@@ -348,7 +344,7 @@ pub fn build_help_message() -> String {
     let mut output = String::from("Slash Commands\n\n");
 
     let categories = [
-        ("Info", &["/help", "/version"][..]),
+        ("Info", &["/help"][..]),
         ("Config", &["/model", "/avatar", "/theme", "/temp"][..]),
         (
             "Session",
@@ -417,12 +413,6 @@ mod tests {
     fn parse_help_command() {
         let cmd = SlashCommand::parse("/help");
         assert_eq!(cmd, Some(SlashCommand::Help));
-    }
-
-    #[test]
-    fn parse_version_command() {
-        let cmd = SlashCommand::parse("/version");
-        assert_eq!(cmd, Some(SlashCommand::Version));
     }
 
     #[test]

@@ -55,14 +55,7 @@ mod tests {
     use crate::domain::Role;
 
     fn create_message(content: &str) -> Message {
-        Message {
-            role: Role::User,
-            content: content.to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: None,
-            reasoning_content: None,
-        }
+        Message { role: Role::User, content: content.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false }
     }
 
     #[test]

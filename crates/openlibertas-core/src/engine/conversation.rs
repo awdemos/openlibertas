@@ -16,14 +16,7 @@ impl ChatEngine {
 
         if self.agents.status == super::AgentStatus::Active {
             if let Some(prompt) = &self.agent_prompt {
-                system_messages.push(Message {
-                    role: Role::System,
-                    content: prompt.clone(),
-                    tool_calls: None,
-                    tool_call_id: None,
-                    timestamp: None,
-                    reasoning_content: None,
-                });
+                system_messages.push(Message { role: Role::System, content: prompt.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: true });
             }
         }
 
@@ -43,36 +36,15 @@ impl ChatEngine {
             if let Some(env) = &env_section {
                 full_prompt.push_str(env);
             }
-            system_messages.push(Message {
-                role: Role::System,
-                content: full_prompt,
-                tool_calls: None,
-                tool_call_id: None,
-                timestamp: None,
-                reasoning_content: None,
-            });
+            system_messages.push(Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: true });
         } else if let Some(tool_text) = &tool_instructions {
             let mut full_prompt = tool_text.clone();
             if let Some(env) = &env_section {
                 full_prompt.push_str(env);
             }
-            system_messages.push(Message {
-                role: Role::System,
-                content: full_prompt,
-                tool_calls: None,
-                tool_call_id: None,
-                timestamp: None,
-                reasoning_content: None,
-            });
+            system_messages.push(Message { role: Role::System, content: full_prompt, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: true });
         } else if let Some(env) = &env_section {
-            system_messages.push(Message {
-                role: Role::System,
-                content: env.clone(),
-                tool_calls: None,
-                tool_call_id: None,
-                timestamp: None,
-                reasoning_content: None,
-            });
+            system_messages.push(Message { role: Role::System, content: env.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: true });
         }
 
         if !system_messages.is_empty() {
@@ -107,31 +79,10 @@ impl ChatEngine {
         let mut messages = self.chat.messages.clone();
 
         let ts = Some(now_timestamp());
-        messages.push(Message {
-            role: Role::User,
-            content: parsed.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: ts.clone(),
-            reasoning_content: None,
-        });
+        messages.push(Message { role: Role::User, content: parsed.clone(), tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None, is_prompt: false });
 
-        self.chat.messages.push(Message {
-            role: Role::User,
-            content: parsed,
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: ts.clone(),
-            reasoning_content: None,
-        });
-        self.chat.messages.push(Message {
-            role: Role::Assistant,
-            content: String::new(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: ts,
-            reasoning_content: None,
-        });
+        self.chat.messages.push(Message { role: Role::User, content: parsed, tool_calls: None, tool_call_id: None, timestamp: ts.clone(), reasoning_content: None, is_prompt: false });
+        self.chat.messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: ts, reasoning_content: None, is_prompt: false });
         self.chat.streaming = true;
         self.chat.auto_scroll = true;
         self.tool_executor.clear_pending();
@@ -397,25 +348,11 @@ impl ChatEngine {
     }
 
     pub fn add_system_message(&mut self, content: impl Into<String>) {
-        self.chat.messages.push(Message {
-            role: Role::System,
-            content: content.into(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: Some(now_timestamp()),
-            reasoning_content: None,
-        });
+        self.chat.messages.push(Message { role: Role::System, content: content.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None, is_prompt: false });
     }
 
     pub fn add_error_message(&mut self, error: impl Into<String>) {
-        self.chat.messages.push(Message {
-            role: Role::System,
-            content: error.into(),
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: Some(now_timestamp()),
-            reasoning_content: None,
-        });
+        self.chat.messages.push(Message { role: Role::System, content: error.into(), tool_calls: None, tool_call_id: None, timestamp: Some(now_timestamp()), reasoning_content: None, is_prompt: false });
     }
 
     pub fn clear_messages(&mut self) {
@@ -708,14 +645,7 @@ mod tests {
     fn compact_context_reduces_messages() {
         let mut engine = ChatEngine::new();
         for i in 0..10 {
-            engine.chat.messages.push(Message {
-                role: Role::User,
-                content: format!("msg {}", i),
-                tool_calls: None,
-                tool_call_id: None,
-                timestamp: None,
-                reasoning_content: None,
-            });
+            engine.chat.messages.push(Message { role: Role::User, content: format!("msg {}", i), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
         }
         let (before, after) = engine.compact_context();
         assert_eq!(before, 10);

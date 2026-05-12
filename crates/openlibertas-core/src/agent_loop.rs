@@ -143,14 +143,7 @@ impl AgentLoop {
                 tool_messages = compacted;
             }
 
-            engine.chat_mut().messages.push(Message {
-                role: Role::Assistant,
-                content: String::new(),
-                tool_calls: None,
-                tool_call_id: None,
-                timestamp: None,
-                reasoning_content: None,
-            });
+            engine.chat_mut().messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
             engine.chat_mut().streaming = true;
 
             LoopAction::Continue(tool_messages)

@@ -350,7 +350,8 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        }];
+        
+            is_prompt: false,}];
 
         store
             .save("test-session", Some("gpt-4"), &messages)
@@ -373,7 +374,8 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        }];
+        
+            is_prompt: false,}];
 
         store.save("session-a", Some("model-a"), &messages).unwrap();
         store.save("session-b", Some("model-b"), &messages).unwrap();
@@ -394,7 +396,8 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        }];
+        
+            is_prompt: false,}];
 
         store.save("to-delete", None, &messages).unwrap();
         assert!(store.conversation_path("to-delete").exists());

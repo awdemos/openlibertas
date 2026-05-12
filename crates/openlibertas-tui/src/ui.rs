@@ -446,6 +446,16 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
     let spinner_frame =
         app.engine.chat().spinner_frame % openlibertas_core::engine::SPINNER_FRAMES.len();
 
+    let last_visible_idx = app
+        .engine
+        .chat()
+        .messages
+        .iter()
+        .enumerate()
+        .filter(|(_, msg)| !(msg.role == Role::System && msg.is_prompt))
+        .map(|(idx, _)| idx)
+        .last();
+
     let messages_text: Vec<Line> = app
         .engine
         .chat()
@@ -453,6 +463,10 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .enumerate()
         .flat_map(|(msg_idx, msg)| {
+            if msg.role == Role::System && msg.is_prompt {
+                return vec![];
+            }
+
             let model_name = app.models.current.as_deref().unwrap_or("AI");
             let (label, color) = match msg.role {
                 Role::User => ("You", app.theme.user_color()),
@@ -467,7 +481,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                 .matches
                 .iter()
                 .any(|m| m.message_index == msg_idx);
-            let is_last = msg_idx == app.engine.chat().messages.len().saturating_sub(1);
+            let is_last = Some(msg_idx) == last_visible_idx;
 
             let bg_style = if is_current_match {
                 Style::default()
@@ -1919,7 +1933,6 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
             "Info",
             vec![
                 ("/help", "Show this help panel"),
-                ("/version", "Show version info"),
             ],
         ),
         (
