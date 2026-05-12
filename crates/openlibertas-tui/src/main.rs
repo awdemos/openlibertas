@@ -238,6 +238,11 @@ fn spawn_agent_turn(
 
     if let Some(client) = app.engine.tools().client() {
         agent_engine.tool_executor_mut().set_client(Some(client.clone()));
+        agent_engine.tools_mut().set_client(Some(client.clone()));
+        agent_engine.tools_mut().set_available_tools(app.engine.tools().available_tools().to_vec());
+        agent_engine.tools_mut().set_server_statuses(app.engine.tools().server_statuses().clone());
+        agent_engine.tools_mut().set_tool_server_map(app.engine.tools().tool_server_map().clone());
+        agent_engine.tools_mut().set_diagnostics(app.engine.tools().diagnostics().clone());
     }
 
     let cancel_token = tokio_util::sync::CancellationToken::new();

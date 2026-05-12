@@ -188,6 +188,7 @@ impl Runtime {
 
         if let Some(ref mcp) = self.mcp_client {
             engine.tool_executor_mut().set_client(Some(mcp.clone()));
+            engine.tools_mut().set_client(Some(mcp.clone()));
         }
 
         if let Some(persona) = persona {

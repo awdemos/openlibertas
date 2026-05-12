@@ -12,6 +12,7 @@ use crate::domain::{Message, Role, ToolDefinition};
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
 use crate::mcp::McpClient;
+use std::sync::Arc;
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{MessageAssembler, ToolExecutor};
@@ -193,8 +194,9 @@ impl ChatEngine {
         self
     }
 
-    pub fn with_mcp_client(mut self, client: McpClient) -> Self {
-        self.tool_executor = self.tool_executor.with_client(client);
+    pub fn with_mcp_client(mut self, client: Arc<McpClient>) -> Self {
+        self.tool_executor.set_client(Some(client.clone()));
+        self.tool_registry.set_client(Some(client));
         self
     }
 
