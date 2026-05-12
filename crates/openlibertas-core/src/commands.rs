@@ -8,6 +8,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/help",
     // Config
     "/model",
+    "/models",
     "/theme",
     "/temp",
     // Session
@@ -148,7 +149,7 @@ impl SlashCommand {
 
         match parts[0] {
             "/help" => Some(SlashCommand::Help),
-            "/model" => {
+            "/model" | "/models" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Model(parts[1..].join(" ")))
                 } else {

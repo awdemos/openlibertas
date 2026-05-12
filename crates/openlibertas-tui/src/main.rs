@@ -511,10 +511,6 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
-                    // Handle Esc release on model screen (some terminals only send Release)
-                    if key.code == KeyCode::Esc && app.screen == Screen::Models {
-                        app.screen = Screen::Chat;
-                    }
                 }
                 Event::Input(CEvent::Key(key))
                     if key.kind == KeyEventKind::Repeat
@@ -1150,7 +1146,7 @@ async fn main() -> Result<()> {
                     } else {
                         models
                     };
-                    app.models.models = filtered_models.clone();
+                    app.models.models.extend(filtered_models.clone());
                     app.loading = false;
                     app.connection_status = app::ConnectionStatus::Connected;
 
