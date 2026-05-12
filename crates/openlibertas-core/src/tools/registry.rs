@@ -1,5 +1,5 @@
 use crate::domain::ToolDefinition;
-use crate::mcp::{McpClient, McpTool};
+use crate::mcp::{McpClient, McpServerDiagnostics, McpTool};
 use crate::tool_format::ToolFormat;
 use crate::tools;
 use std::collections::HashMap;
@@ -11,6 +11,8 @@ pub struct ToolRegistry {
     available_tools: Vec<McpTool>,
     builtin_tools: Vec<tools::BuiltinTool>,
     server_statuses: HashMap<String, crate::domain::McpServerStatus>,
+    diagnostics: HashMap<String, McpServerDiagnostics>,
+    tool_server_map: HashMap<String, String>,
 }
 
 impl Default for ToolRegistry {
@@ -20,6 +22,8 @@ impl Default for ToolRegistry {
             available_tools: Vec::new(),
             builtin_tools: tools::builtin_tools(),
             server_statuses: HashMap::new(),
+            diagnostics: HashMap::new(),
+            tool_server_map: HashMap::new(),
         }
     }
 }
@@ -59,6 +63,22 @@ impl ToolRegistry {
         statuses: HashMap<String, crate::domain::McpServerStatus>,
     ) {
         self.server_statuses = statuses;
+    }
+
+    pub fn diagnostics(&self) -> &HashMap<String, McpServerDiagnostics> {
+        &self.diagnostics
+    }
+
+    pub fn set_diagnostics(&mut self, diagnostics: HashMap<String, McpServerDiagnostics>) {
+        self.diagnostics = diagnostics;
+    }
+
+    pub fn tool_server_map(&self) -> &HashMap<String, String> {
+        &self.tool_server_map
+    }
+
+    pub fn set_tool_server_map(&mut self, map: HashMap<String, String>) {
+        self.tool_server_map = map;
     }
 
     pub fn has_tool(&self, name: &str) -> bool {

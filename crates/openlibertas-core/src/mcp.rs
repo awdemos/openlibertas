@@ -102,12 +102,21 @@ struct ToolCallResult {
     is_error: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct McpServerDiagnostics {
+    pub status: McpServerStatus,
+    pub last_error: Option<String>,
+    pub tool_count: usize,
+    pub server_type: String,
+}
+
 #[derive(Debug)]
 pub struct McpClient {
     servers: HashMap<String, McpServerConfig>,
     tools: Mutex<HashMap<String, (String, McpTool)>>,
     processes: Mutex<HashMap<String, Child>>,
     server_statuses: Mutex<HashMap<String, McpServerStatus>>,
+    server_errors: Mutex<HashMap<String, String>>,
 }
 
 impl McpClient {
@@ -148,6 +157,7 @@ impl McpClient {
             tools: Mutex::new(HashMap::new()),
             processes: Mutex::new(HashMap::new()),
             server_statuses: Mutex::new(statuses),
+            server_errors: Mutex::new(HashMap::new()),
         })
     }
 
@@ -155,6 +165,8 @@ impl McpClient {
         let mut all_tools = Vec::new();
         let mut tool_map = HashMap::new();
         let mut statuses = self.server_statuses.lock().await;
+        let mut errors = self.server_errors.lock().await;
+        errors.clear();
 
         for (name, config) in &self.servers {
             if !config.enabled {
@@ -173,7 +185,10 @@ impl McpClient {
                             all_tools.push(tool);
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        let err_msg = format!("{}", e);
+                        tracing::error!("MCP server '{}' discovery failed: {}", name, err_msg);
+                        errors.insert(name.clone(), err_msg);
                         statuses.insert(name.clone(), McpServerStatus::Failed);
                     }
                 },
@@ -185,11 +200,16 @@ impl McpClient {
                             all_tools.push(tool);
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        let err_msg = format!("{}", e);
+                        tracing::error!("MCP server '{}' discovery failed: {}", name, err_msg);
+                        errors.insert(name.clone(), err_msg);
                         statuses.insert(name.clone(), McpServerStatus::Failed);
                     }
                 },
                 _ => {
+                    let err_msg = format!("Unknown server type: {}", config.server_type);
+                    errors.insert(name.clone(), err_msg);
                     statuses.insert(name.clone(), McpServerStatus::Failed);
                 }
             }
@@ -422,6 +442,123 @@ impl McpClient {
 
     pub async fn server_statuses(&self) -> HashMap<String, McpServerStatus> {
         self.server_statuses.lock().await.clone()
+    }
+
+    pub async fn server_errors(&self) -> HashMap<String, String> {
+        self.server_errors.lock().await.clone()
+    }
+
+    pub async fn tool_server_map(&self) -> HashMap<String, String> {
+        let tools = self.tools.lock().await;
+        tools.iter().map(|(name, (server, _))| (name.clone(), server.clone())).collect()
+    }
+
+    pub async fn get_diagnostics(&self) -> HashMap<String, McpServerDiagnostics> {
+        let statuses = self.server_statuses.lock().await;
+        let errors = self.server_errors.lock().await;
+        let tools = self.tools.lock().await;
+        let mut diagnostics = HashMap::new();
+
+        for (name, config) in &self.servers {
+            let tool_count = tools
+                .values()
+                .filter(|(server, _)| server == name)
+                .count();
+            diagnostics.insert(
+                name.clone(),
+                McpServerDiagnostics {
+                    status: statuses.get(name).cloned().unwrap_or(McpServerStatus::Pending),
+                    last_error: errors.get(name).cloned(),
+                    tool_count,
+                    server_type: config.server_type.clone(),
+                },
+            );
+        }
+        diagnostics
+    }
+
+    pub async fn health_check(&self) -> HashMap<String, bool> {
+        let mut processes = self.processes.lock().await;
+        let mut statuses = self.server_statuses.lock().await;
+        let mut results = HashMap::new();
+
+        for (name, child) in processes.iter_mut() {
+            match child.try_wait() {
+                Ok(None) => {
+                    results.insert(name.clone(), true);
+                }
+                Ok(Some(exit)) => {
+                    results.insert(name.clone(), false);
+                    statuses.insert(name.clone(), McpServerStatus::Failed);
+                    tracing::warn!("MCP server '{}' exited with status: {:?}", name, exit);
+                }
+                Err(e) => {
+                    results.insert(name.clone(), false);
+                    tracing::warn!("MCP server '{}' health check error: {}", name, e);
+                }
+            }
+        }
+        results
+    }
+
+    pub async fn test_tool(&self, tool_name: &str) -> Result<String> {
+        let tools = self.tools.lock().await;
+        let (server_name, tool) = tools
+            .get(tool_name)
+            .context(format!("Tool {} not found", tool_name))?;
+        let server_name = server_name.clone();
+        let tool = tool.clone();
+        drop(tools);
+
+        let test_args = match tool.input_schema.get("properties") {
+            Some(props) => {
+                let mut args = serde_json::Map::new();
+                if let Some(obj) = props.as_object() {
+                    for (key, schema) in obj {
+                        let default_value = schema.get("default").cloned().unwrap_or_else(|| {
+                            if let Some(type_str) = schema.get("type").and_then(|v| v.as_str()) {
+                                match type_str {
+                                    "string" => serde_json::Value::String("test".to_string()),
+                                    "number" => serde_json::json!(0),
+                                    "integer" => serde_json::json!(0),
+                                    "boolean" => serde_json::json!(false),
+                                    "array" => serde_json::json!([]),
+                                    "object" => serde_json::json!({}),
+                                    _ => serde_json::Value::Null,
+                                }
+                            } else {
+                                serde_json::Value::Null
+                            }
+                        });
+                        args.insert(key.clone(), default_value);
+                    }
+                }
+                serde_json::Value::Object(args)
+            }
+            None => serde_json::json!({}),
+        };
+
+        match self.call_tool(tool_name, test_args).await {
+            Ok(result) => {
+                let content_text: Vec<String> = result
+                    .content
+                    .iter()
+                    .map(|c| c.text.clone())
+                    .collect();
+                Ok(format!(
+                    "✓ Tool '{}' responded (server: {})\n{}",
+                    tool_name,
+                    server_name,
+                    content_text.join("\n")
+                ))
+            }
+            Err(e) => Err(anyhow::anyhow!(
+                "✗ Tool '{}' test failed (server: {}): {}",
+                tool_name,
+                server_name,
+                e
+            )),
+        }
     }
 }
 

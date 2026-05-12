@@ -256,10 +256,23 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         " [Tools: ✓]"
     };
 
-    let mcp_indicator = if app.engine.tools().client().is_some() {
-        " [MCP: ✓]"
-    } else {
-        " [MCP: ✗]"
+    let mcp_indicator = {
+        let client = app.engine.tools().client();
+        if client.is_some() {
+            let diagnostics = app.engine.tools().diagnostics();
+            let total = diagnostics.len();
+            let connected = diagnostics
+                .values()
+                .filter(|d| d.status == openlibertas_core::domain::McpServerStatus::Connected)
+                .count();
+            if total == 0 {
+                " [MCP: ...]".to_string()
+            } else {
+                format!(" [MCP: {}/{}]", connected, total)
+            }
+        } else {
+            " [MCP: ✗]".to_string()
+        }
     };
 
     let plan_indicator = if app.engine.agents().mode == openlibertas_core::engine::AgentMode::Plan {
@@ -1120,19 +1133,24 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
 
 fn draw_mcp_panel(frame: &mut Frame, app: &App) {
     let area = frame.area();
-    let popup_area = centered_rect(80, 60, area);
+    let popup_area = centered_rect(80, 70, area);
 
     frame.render_widget(Clear, popup_area);
 
-    let servers: Vec<String> = app
-        .engine
-        .tools()
-        .client()
-        .as_ref()
-        .map_or(Vec::new(), |c| c.server_names());
+    let servers = app.mcp_server_names();
+    let diagnostics = app.engine.tools().diagnostics();
+    let total_servers = servers.len();
+    let connected_count = diagnostics
+        .values()
+        .filter(|d| d.status == openlibertas_core::domain::McpServerStatus::Connected)
+        .count();
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" MCP Servers ({}) ", servers.len()))
+        .title(format!(
+            " MCP Servers ({}/{}) ",
+            connected_count, total_servers
+        ))
         .title_style(
             Style::default()
                 .fg(app.theme.primary())
@@ -1144,80 +1162,241 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         horizontal: 1,
         vertical: 1,
     });
+    let footer_height = 1u16;
     let content_area = Rect {
         x: inner.x,
         y: inner.y,
         width: inner.width,
-        height: inner.height.saturating_sub(1),
+        height: inner.height.saturating_sub(footer_height),
     };
 
     if servers.is_empty() {
         let content = Paragraph::new(
             "No MCP servers configured.\nAdd servers to ~/.config/opencode/opencode.json",
         )
-        .alignment(Alignment::Center);
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(app.theme.system_color()));
         frame.render_widget(content, content_area);
     } else {
-        let lines: Vec<Line> = servers
-            .into_iter()
-            .map(|name| {
-                let status = app.engine.tools().server_statuses().get(&name);
-                let (indicator, color) = match status {
-                    Some(openlibertas_core::domain::McpServerStatus::Connected) => {
-                        ("●", app.theme.user_color())
+        let mut lines: Vec<Line> = Vec::new();
+
+        for (i, name) in servers.iter().enumerate() {
+            let is_selected = i == app.mcp_selected_server;
+            let diag = diagnostics.get(name);
+            let status = diag.map(|d| d.status);
+
+            let (indicator, color) = match status {
+                Some(openlibertas_core::domain::McpServerStatus::Connected) => {
+                    ("●", app.theme.user_color())
+                }
+                Some(openlibertas_core::domain::McpServerStatus::Connecting) => {
+                    ("◐", app.theme.secondary())
+                }
+                Some(openlibertas_core::domain::McpServerStatus::Failed) => {
+                    ("✗", app.theme.error_color())
+                }
+                Some(openlibertas_core::domain::McpServerStatus::Disabled) => {
+                    ("○", app.theme.system_color())
+                }
+                Some(openlibertas_core::domain::McpServerStatus::Pending) => {
+                    ("○", app.theme.system_color())
+                }
+                None => ("?", app.theme.system_color()),
+            };
+
+            let server_type = diag.map(|d| d.server_type.as_str()).unwrap_or("unknown");
+            let tool_count = diag.map(|d| d.tool_count).unwrap_or(0);
+            let health = app.mcp_health.get(name);
+
+            let name_style = if is_selected {
+                Style::default()
+                    .bg(app.theme.primary())
+                    .fg(app.theme.panel_bg())
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.foreground())
+            };
+            let meta_style = if is_selected {
+                Style::default()
+                    .bg(app.theme.primary())
+                    .fg(app.theme.panel_bg())
+            } else {
+                Style::default().fg(app.theme.system_color())
+            };
+
+            let marker = if is_selected { "▸ " } else { "  " };
+            let health_indicator = match health {
+                Some(true) => " ✓",
+                Some(false) => " ✗",
+                None => "",
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(marker, Style::default().fg(app.theme.primary())),
+                Span::styled(format!("{} ", indicator), Style::default().fg(color)),
+                Span::styled(name.clone(), name_style),
+                Span::styled(
+                    format!(" [{}]", server_type),
+                    meta_style.add_modifier(Modifier::ITALIC),
+                ),
+                Span::styled(
+                    format!(" {} tools{}", tool_count, health_indicator),
+                    meta_style,
+                ),
+            ]));
+
+            if let Some(diag) = diag {
+                if let Some(ref err) = diag.last_error {
+                    let err_text = if err.len() > 60 {
+                        format!("{}...", &err[..57])
+                    } else {
+                        err.clone()
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("     ", Style::default()),
+                        Span::styled(
+                            format!("Error: {}", err_text),
+                            if is_selected {
+                                Style::default()
+                                    .bg(app.theme.primary())
+                                    .fg(app.theme.error_color())
+                            } else {
+                                Style::default().fg(app.theme.error_color())
+                            },
+                        ),
+                    ]));
+                }
+            }
+
+            if is_selected {
+                let server_tools: Vec<_> = app.mcp_tools_for_server(name);
+
+                if !server_tools.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(
+                        "     Tools:",
+                        if is_selected {
+                            Style::default()
+                                .bg(app.theme.primary())
+                                .fg(app.theme.panel_bg())
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                                .fg(app.theme.secondary())
+                                .add_modifier(Modifier::BOLD)
+                        },
+                    )]));
+
+                    for (ti, tool) in server_tools.iter().enumerate() {
+                        let is_tool_selected = ti == app.mcp_selected_tool;
+                        let tool_marker = if is_tool_selected { "   ▸ " } else { "     " };
+                        let tool_style = if is_selected {
+                            if is_tool_selected {
+                                Style::default()
+                                    .bg(app.theme.primary())
+                                    .fg(app.theme.panel_bg())
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default()
+                                    .bg(app.theme.primary())
+                                    .fg(app.theme.panel_bg())
+                            }
+                        } else {
+                            Style::default().fg(app.theme.foreground())
+                        };
+                        lines.push(Line::from(vec![
+                            Span::styled(tool_marker, Style::default().fg(app.theme.primary())),
+                            Span::styled(tool.name.clone(), tool_style),
+                        ]));
                     }
-                    Some(openlibertas_core::domain::McpServerStatus::Connecting) => {
-                        ("◐", app.theme.secondary())
-                    }
-                    Some(openlibertas_core::domain::McpServerStatus::Failed) => {
-                        ("✗", app.theme.error_color())
-                    }
-                    Some(openlibertas_core::domain::McpServerStatus::Disabled) => {
-                        ("○", app.theme.system_color())
-                    }
-                    Some(openlibertas_core::domain::McpServerStatus::Pending) => {
-                        ("○", app.theme.system_color())
-                    }
-                    None => ("?", app.theme.system_color()),
-                };
-                let status_text = match status {
-                    Some(s) => format!("{:?}", s),
-                    None => "Unknown".to_string(),
-                };
-                Line::from(vec![
-                    Span::styled(format!("{} ", indicator), Style::default().fg(color)),
-                    Span::styled(name.clone(), Style::default().fg(app.theme.foreground())),
-                    Span::styled(
-                        format!(" ({})", status_text.to_lowercase()),
-                        Style::default().fg(app.theme.system_color()),
-                    ),
-                ])
-            })
-            .collect();
-        let content = Paragraph::new(Text::from(lines));
+                }
+            }
+
+            lines.push(Line::from(""));
+        }
+
+        if let Some(ref result) = app.mcp_test_result {
+            lines.push(Line::from(vec![Span::styled(
+                "─".repeat(content_area.width as usize),
+                Style::default().fg(app.theme.border_color()),
+            )]));
+            lines.push(Line::from(vec![
+                Span::styled("Test: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    result.clone(),
+                    if result.starts_with("✓") {
+                        Style::default().fg(app.theme.user_color())
+                    } else {
+                        Style::default().fg(app.theme.error_color())
+                    },
+                ),
+            ]));
+        }
+
+        let total_lines = lines.len();
+        let viewport_height = content_area.height as usize;
+        let max_scroll = total_lines.saturating_sub(viewport_height);
+        let scroll = app.mcp_scroll.min(max_scroll);
+
+        let content = Paragraph::new(Text::from(lines))
+            .scroll((scroll as u16, 0))
+            .wrap(Wrap { trim: true });
         frame.render_widget(content, content_area);
+
+        if total_lines > viewport_height {
+            let scrollbar = Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("↑"))
+                .end_symbol(Some("↓"));
+            let mut scrollbar_state = ScrollbarState::new(total_lines).position(scroll);
+            frame.render_stateful_widget(
+                scrollbar,
+                content_area.inner(Margin {
+                    horizontal: 0,
+                    vertical: 0,
+                }),
+                &mut scrollbar_state,
+            );
+        }
     }
 
     frame.render_widget(block, popup_area);
 
     let footer = Paragraph::new(Line::from(vec![
         Span::styled(
+            "↑/↓",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "r",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Refresh  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "t",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Test tool  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            "d",
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Detail  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
             "Esc",
             Style::default()
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            " to close  |  ",
-            Style::default().fg(app.theme.system_color()),
-        ),
-        Span::styled(
-            "/mcp",
-            Style::default()
-                .fg(app.theme.secondary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" to toggle", Style::default().fg(app.theme.system_color())),
+        Span::styled(" Close", Style::default().fg(app.theme.system_color())),
     ]))
     .alignment(Alignment::Center);
     let footer_area = Rect {
@@ -1227,6 +1406,123 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
         height: 1,
     };
     frame.render_widget(footer, footer_area);
+
+    if app.mcp_show_detail {
+        draw_mcp_detail_popup(frame, app);
+    }
+}
+
+fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+    let popup_area = centered_rect(70, 50, area);
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" MCP Server Details ")
+        .title_style(
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(app.theme.border_color()));
+
+    let inner = popup_area.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+
+    let content = if let Some(name) = app.mcp_selected_server_name() {
+        let diagnostics = app.engine.tools().diagnostics();
+        let mut lines: Vec<Line> = Vec::new();
+
+        lines.push(Line::from(vec![
+            Span::styled("Server: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+            Span::styled(name.clone(), Style::default().fg(app.theme.foreground())),
+        ]));
+
+        if let Some(diag) = diagnostics.get(&name) {
+            let status_text = format!("{:?}", diag.status);
+            let status_color = match diag.status {
+                openlibertas_core::domain::McpServerStatus::Connected => app.theme.user_color(),
+                openlibertas_core::domain::McpServerStatus::Failed => app.theme.error_color(),
+                _ => app.theme.secondary(),
+            };
+            lines.push(Line::from(vec![
+                Span::styled("Status: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(status_text, Style::default().fg(status_color)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("Type: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(diag.server_type.clone(), Style::default().fg(app.theme.foreground())),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("Tools: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{}", diag.tool_count), Style::default().fg(app.theme.foreground())),
+            ]));
+
+            if let Some(health) = app.mcp_health.get(&name) {
+                lines.push(Line::from(vec![
+                    Span::styled("Health: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        if *health { "Alive" } else { "Dead" },
+                        if *health {
+                            Style::default().fg(app.theme.user_color())
+                        } else {
+                            Style::default().fg(app.theme.error_color())
+                        },
+                    ),
+                ]));
+            }
+
+            if let Some(ref err) = diag.last_error {
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![Span::styled(
+                    "Last Error:",
+                    Style::default().fg(app.theme.error_color()).add_modifier(Modifier::BOLD),
+                )]));
+                for line in err.lines() {
+                    lines.push(Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(app.theme.error_color()),
+                    )));
+                }
+            }
+        }
+
+        let tools: Vec<_> = app.mcp_tools_for_server(&name);
+        if !tools.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "Available Tools:",
+                Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD),
+            )]));
+            for tool in tools {
+                lines.push(Line::from(vec![
+                    Span::styled("  • ", Style::default().fg(app.theme.primary())),
+                    Span::styled(
+                        tool.name.clone(),
+                        Style::default()
+                            .fg(app.theme.secondary())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("    {}", tool.description),
+                    Style::default().fg(app.theme.system_color()),
+                )]));
+            }
+        }
+
+        Paragraph::new(Text::from(lines))
+            .wrap(Wrap { trim: true })
+    } else {
+        Paragraph::new("No server selected.").alignment(Alignment::Center)
+    };
+
+    frame.render_widget(content, inner);
+    frame.render_widget(block, popup_area);
 }
 
 struct SessionTreeNode {

@@ -197,7 +197,8 @@ async fn main() -> Result<()> {
             match client.discover_tools().await {
                 Ok(tools) => {
                     let statuses = client.server_statuses().await;
-                    let _ = sender.send(Event::McpToolsLoaded(Ok((tools, statuses))));
+                    let tool_map = client.tool_server_map().await;
+                    let _ = sender.send(Event::McpToolsLoaded(Ok((tools, statuses, tool_map))));
                 }
                 Err(e) => {
                     let _ = sender.send(Event::McpToolsLoaded(Err(e.to_string())));
@@ -622,6 +623,10 @@ async fn main() -> Result<()> {
                                         app.session_search.clear();
                                         app.session_selected = 0;
                                     }
+                                    if app.overlay == Overlay::Mcp {
+                                        app.mcp_show_detail = false;
+                                        app.mcp_test_result = None;
+                                    }
                                     app.overlay = Overlay::None;
                                 } else {
                                     app.go_to_models();
@@ -725,6 +730,18 @@ async fn main() -> Result<()> {
                                         if let Some(response) = app.execute_slash_command(cmd) {
                                             app.engine.add_system_message(response);
                                         }
+                                        if app.overlay == Overlay::Mcp {
+                                            if let Some(client) = app.engine.tools().client() {
+                                                let sender = event_stream.sender();
+                                                let client_clone = client.clone();
+                                                tokio::spawn(async move {
+                                                    let diagnostics = client_clone.get_diagnostics().await;
+                                                    let _ = sender.send(Event::McpDiagnosticsLoaded(diagnostics));
+                                                    let health = client_clone.health_check().await;
+                                                    let _ = sender.send(Event::McpHealthCheck(Ok(health)));
+                                                });
+                                            }
+                                        }
                                         if is_quit {
                                             if let Some(ref model) = app.models.current {
                                                 state.last_model = Some(model.clone());
@@ -759,6 +776,47 @@ async fn main() -> Result<()> {
                             KeyCode::Char('n') if app.search.active => app.search_next(),
                             KeyCode::Char('N') if app.search.active => app.search_prev(),
                             KeyCode::Char(c) => {
+                                if app.overlay == Overlay::Mcp {
+                                    match c {
+                                        'r' | 'R' => {
+                                            if let Some(client) = app.engine.tools().client() {
+                                                let sender = event_stream.sender();
+                                                let client_clone = client.clone();
+                                                tokio::spawn(async move {
+                                                    let diagnostics = client_clone.get_diagnostics().await;
+                                                    let _ = sender.send(Event::McpDiagnosticsLoaded(diagnostics));
+                                                    let health = client_clone.health_check().await;
+                                                    let _ = sender.send(Event::McpHealthCheck(Ok(health)));
+                                                });
+                                            }
+                                            continue;
+                                        }
+                                        't' | 'T' => {
+                                            if let Some(tool_name) = app.selected_tool_name() {
+                                                if let Some(client) = app.engine.tools().client() {
+                                                    let sender = event_stream.sender();
+                                                    let client_clone = client.clone();
+                                                    tokio::spawn(async move {
+                                                        match client_clone.test_tool(&tool_name).await {
+                                                            Ok(result) => {
+                                                                let _ = sender.send(Event::McpToolTest(Ok(result)));
+                                                            }
+                                                            Err(e) => {
+                                                                let _ = sender.send(Event::McpToolTest(Err(e.to_string())));
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                            continue;
+                                        }
+                                        'd' | 'D' => {
+                                            app.toggle_mcp_detail();
+                                            continue;
+                                        }
+                                        _ => {}
+                                    }
+                                }
                                 if app.overlay == Overlay::Sessions {
                                     app.session_search.push(c);
                                     app.session_selected = 0;
@@ -872,6 +930,7 @@ async fn main() -> Result<()> {
                                 Overlay::Themes => app.theme_prev(),
                                 Overlay::Palette => app.palette_prev(),
                                 Overlay::Sessions => app.session_prev(),
+                                Overlay::Mcp => app.mcp_server_prev(),
                                 _ => app.engine.history_prev(),
                             },
                             KeyCode::Down => match app.overlay {
@@ -883,6 +942,7 @@ async fn main() -> Result<()> {
                                     let count = app.filtered_sessions().len();
                                     app.session_next(count);
                                 }
+                                Overlay::Mcp => app.mcp_server_next(),
                                 _ => app.engine.history_next(),
                             },
                             KeyCode::PageUp => app.engine.scroll_page_up(),
@@ -932,12 +992,36 @@ async fn main() -> Result<()> {
                     app.loading = false;
                     app.connection_status = app::ConnectionStatus::Disconnected;
                 }
-                Event::McpToolsLoaded(Ok((tools, statuses))) => {
+                Event::McpToolsLoaded(Ok((tools, statuses, tool_map))) => {
                     app.engine.tools_mut().set_available_tools(tools);
                     app.engine.tools_mut().set_server_statuses(statuses);
+                    app.engine.tools_mut().set_tool_server_map(tool_map);
+                    if let Some(client) = app.engine.tools().client() {
+                        let sender = event_stream.sender();
+                        let client_clone = client.clone();
+                        tokio::spawn(async move {
+                            let diagnostics = client_clone.get_diagnostics().await;
+                            let _ = sender.send(Event::McpDiagnosticsLoaded(diagnostics));
+                        });
+                    }
                 }
                 Event::McpToolsLoaded(Err(e)) => {
                     app.error = Some(format!("MCP discovery failed: {}", e));
+                }
+                Event::McpDiagnosticsLoaded(diagnostics) => {
+                    app.engine.tools_mut().set_diagnostics(diagnostics);
+                }
+                Event::McpHealthCheck(Ok(health)) => {
+                    app.mcp_health = health;
+                }
+                Event::McpHealthCheck(Err(e)) => {
+                    app.mcp_test_result = Some(format!("Health check failed: {}", e));
+                }
+                Event::McpToolTest(Ok(result)) => {
+                    app.mcp_test_result = Some(result);
+                }
+                Event::McpToolTest(Err(e)) => {
+                    app.mcp_test_result = Some(format!("✗ {}", e));
                 }
                 Event::VoiceTranscription(text, generation) => {
                     // Discard stale transcriptions from cancelled or superseded recordings

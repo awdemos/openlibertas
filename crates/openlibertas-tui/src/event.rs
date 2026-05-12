@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 use openlibertas_core::domain::ChatEvent;
 use openlibertas_core::domain::McpServerStatus;
 use openlibertas_core::domain::Model;
+use openlibertas_core::mcp::McpServerDiagnostics;
 use openlibertas_core::mcp::McpTool;
 use std::collections::HashMap;
 
@@ -12,7 +13,10 @@ pub enum Event {
     Input(CEvent),
     ChatEvent(ChatEvent),
     ModelsLoaded(Result<Vec<Model>, String>),
-    McpToolsLoaded(Result<(Vec<McpTool>, HashMap<String, McpServerStatus>), String>),
+    McpToolsLoaded(Result<(Vec<McpTool>, HashMap<String, McpServerStatus>, HashMap<String, String>), String>),
+    McpDiagnosticsLoaded(HashMap<String, McpServerDiagnostics>),
+    McpHealthCheck(Result<HashMap<String, bool>, String>),
+    McpToolTest(Result<String, String>),
     VoiceTranscription(String, u64),
     VoicePlaybackComplete,
     VoiceError(String, u64),
