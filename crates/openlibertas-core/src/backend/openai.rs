@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::backend::Backend;
+use crate::capability::ProviderCapabilities;
 use crate::domain::*;
 use crate::tool_format::ToolFormat;
 
@@ -109,6 +110,7 @@ pub struct OpenAiBackend {
     base_url: String,
     api_key: crate::config::SecretString,
     tool_format: ToolFormat,
+    capabilities: ProviderCapabilities,
     extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
@@ -131,6 +133,20 @@ impl OpenAiBackend {
         tool_format: ToolFormat,
         extra_params: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Self {
+        let capabilities = ProviderCapabilities {
+            tool_format,
+            tools: tool_format != ToolFormat::None,
+            ..ProviderCapabilities::default()
+        };
+        Self::with_capabilities(base_url, api_key, capabilities, extra_params)
+    }
+
+    pub fn with_capabilities(
+        base_url: String,
+        api_key: crate::config::SecretString,
+        capabilities: ProviderCapabilities,
+        extra_params: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
@@ -139,7 +155,8 @@ impl OpenAiBackend {
             client,
             base_url,
             api_key,
-            tool_format,
+            tool_format: capabilities.tool_format,
+            capabilities,
             extra_params,
         }
     }
@@ -160,7 +177,7 @@ impl OpenAiBackend {
                 let mut models = data.data;
                 for model in &mut models {
                     let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-                    model.supports_tools = self.tool_format != ToolFormat::None || inferred_tools;
+                    model.supports_tools = self.capabilities.tools || inferred_tools;
                     model.supports_voice = inferred_voice;
                 }
                 return Ok(models);
@@ -197,7 +214,7 @@ impl OpenAiBackend {
             .map(|m| Model {
                 id: m.name,
                 provider: ProviderId::new(""),
-                supports_tools: self.tool_format != ToolFormat::None,
+                supports_tools: self.capabilities.tools,
                 supports_voice: false,
                 local: true,
             })
@@ -205,7 +222,7 @@ impl OpenAiBackend {
 
         for model in &mut models {
             let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-            model.supports_tools = self.tool_format != ToolFormat::None || inferred_tools;
+            model.supports_tools = self.capabilities.tools || inferred_tools;
             model.supports_voice = inferred_voice;
         }
 
@@ -653,6 +670,10 @@ impl Backend for OpenAiBackend {
     fn cancel_token(&self) -> tokio_util::sync::CancellationToken {
         tokio_util::sync::CancellationToken::new()
     }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.capabilities
+    }
 }
 
 #[cfg(test)]
@@ -661,7 +682,15 @@ mod tests {
 
     #[test]
     fn message_serializes_correctly() {
-        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
+        let msg = Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\":\"user\""));
         assert!(json.contains("\"content\":\"hello\""));
@@ -669,14 +698,22 @@ mod tests {
 
     #[test]
     fn message_with_tool_calls_serializes() {
-        let msg = Message { role: Role::Assistant, content: "".to_string(), tool_calls: Some(vec![ToolCall {
-            id: "call_1".to_string(),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "test".to_string(),
-                arguments: "{}".to_string(),
-            },
-        }]), tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
+        let msg = Message {
+            role: Role::Assistant,
+            content: "".to_string(),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "test".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"tool_calls\""));
         assert!(json.contains("\"call_1\""));

@@ -256,7 +256,10 @@ impl SlashCommand {
             }
             "/branch" => {
                 if parts.len() > 1 {
-                    parts[1].parse::<usize>().ok().map(|n| SlashCommand::Branch(Some(n)))
+                    parts[1]
+                        .parse::<usize>()
+                        .ok()
+                        .map(|n| SlashCommand::Branch(Some(n)))
                 } else {
                     Some(SlashCommand::Branch(None))
                 }

@@ -25,7 +25,9 @@ impl ChatEngine {
     }
 
     pub fn isolate_session(&mut self) {
-        self.chat.messages.retain(|m| m.role == crate::domain::Role::System);
+        self.chat
+            .messages
+            .retain(|m| m.role == crate::domain::Role::System);
         self.chat.scroll = 0;
         self.chat.streaming = false;
     }

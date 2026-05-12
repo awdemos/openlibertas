@@ -191,9 +191,7 @@ impl Message {
         // Use tiktoken for approximate count; add a small per-message overhead
         // to account for role/name formatting tokens that tiktoken-rs may not
         // capture precisely in this flat representation.
-        let base = cl100k_bpe()
-            .encode_with_special_tokens(&text)
-            .len();
+        let base = cl100k_bpe().encode_with_special_tokens(&text).len();
         base.saturating_add(3).max(1)
     }
 
@@ -391,7 +389,15 @@ mod tests {
 
     #[test]
     fn message_with_role_serializes() {
-        let msg = Message { role: Role::User, content: "hello".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false };
+        let msg = Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"role\""));
         assert!(json.contains("\"user\""));

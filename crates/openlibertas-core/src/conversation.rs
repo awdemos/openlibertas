@@ -119,7 +119,15 @@ impl ContextCompactor {
 
         if dropped_count > 0 {
             let summary = self.summarize_dropped(&blocks[..dropped_count]);
-            result.push(Message { role: Role::System, content: summary, tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
+            result.push(Message {
+                role: Role::System,
+                content: summary,
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            });
         }
 
         for block in preserved_blocks {
@@ -295,11 +303,27 @@ pub fn build_chat_request(
 
     if let Some(prompt) = system_prompt {
         if !messages.iter().any(|m| m.role == Role::System) {
-            messages.push(Message { role: Role::System, content: prompt.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
+            messages.push(Message {
+                role: Role::System,
+                content: prompt.to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            });
         }
     }
 
-    messages.push(Message { role: Role::User, content: content.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
+    messages.push(Message {
+        role: Role::User,
+        content: content.clone(),
+        tool_calls: None,
+        tool_call_id: None,
+        timestamp: None,
+        reasoning_content: None,
+        is_prompt: false,
+    });
     (messages, content)
 }
 
@@ -347,8 +371,9 @@ pub fn build_tool_result_messages(
                 tool_call_id: Some(tool_call.id.clone()),
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,});
+
+                is_prompt: false,
+            });
         }
     }
     result
@@ -387,8 +412,9 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
         let (result, _) = build_chat_request(&messages, "hello", Some("new prompt"));
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].content, "existing");
@@ -404,8 +430,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "".to_string(),
@@ -420,8 +447,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
         let tool_calls = vec![ToolCall {
             id: "call_1".to_string(),
@@ -448,8 +476,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "".to_string(),
@@ -464,8 +493,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
         let tool_calls = vec![ToolCall {
             id: "call_1".to_string(),
@@ -554,11 +584,19 @@ mod tests {
     fn compactor_does_nothing_below_threshold() {
         let mut compactor = ContextCompactor::with_context_window(1000);
         let messages: Vec<Message> = (0..5)
-            .map(|i| Message { role: if i % 2 == 0 {
-                Role::User
-            } else {
-                Role::Assistant
-            }, content: format!("msg {}", i), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false })
+            .map(|i| Message {
+                role: if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                content: format!("msg {}", i),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            })
             .collect();
 
         let result = compactor.compact(&messages);
@@ -577,8 +615,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u1".to_string(),
@@ -586,8 +625,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a1".to_string(),
@@ -595,8 +635,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u2".to_string(),
@@ -604,8 +645,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a2".to_string(),
@@ -613,8 +655,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u3".to_string(),
@@ -622,8 +665,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a3".to_string(),
@@ -631,8 +675,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -652,8 +697,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a1".to_string(),
@@ -661,8 +707,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u2".to_string(),
@@ -670,8 +717,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a2".to_string(),
@@ -679,8 +727,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u3".to_string(),
@@ -688,8 +737,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a3".to_string(),
@@ -697,8 +747,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -722,8 +773,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "old2".to_string(),
@@ -731,8 +783,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "old3".to_string(),
@@ -740,8 +793,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "old4".to_string(),
@@ -749,8 +803,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "keep1".to_string(),
@@ -758,8 +813,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "keep2".to_string(),
@@ -767,8 +823,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -789,8 +846,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a1".to_string(),
@@ -798,8 +856,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Tool,
                 content: "t1".to_string(),
@@ -807,8 +866,9 @@ mod tests {
                 tool_call_id: Some("1".to_string()),
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u2".to_string(),
@@ -816,8 +876,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a2".to_string(),
@@ -825,8 +886,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u3".to_string(),
@@ -834,8 +896,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
 
         let result = compactor.compact(&messages);
@@ -857,8 +920,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a1".to_string(),
@@ -873,8 +937,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Tool,
                 content: "result1".to_string(),
@@ -882,8 +947,9 @@ mod tests {
                 tool_call_id: Some("call_1".to_string()),
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::User,
                 content: "u2".to_string(),
@@ -891,8 +957,9 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
             Message {
                 role: Role::Assistant,
                 content: "a2".to_string(),
@@ -900,15 +967,20 @@ mod tests {
                 tool_call_id: None,
                 timestamp: None,
                 reasoning_content: None,
-            
-                is_prompt: false,},
+
+                is_prompt: false,
+            },
         ];
 
         let result = compactor.compact(&messages);
         let has_assistant_with_call = result.iter().any(|m| {
             m.role == Role::Assistant
                 && m.tool_calls.is_some()
-                && m.tool_calls.as_ref().unwrap().iter().any(|tc| tc.id == "call_1")
+                && m.tool_calls
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .any(|tc| tc.id == "call_1")
         });
         let has_tool_result = result
             .iter()
@@ -925,7 +997,19 @@ mod tests {
         // when the context window is large enough.
         let mut compactor = ContextCompactor::with_context_window(1000);
         let short_messages: Vec<Message> = (0..30)
-            .map(|i| Message { role: if i % 2 == 0 { Role::User } else { Role::Assistant }, content: "x".to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false })
+            .map(|i| Message {
+                role: if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                content: "x".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            })
             .collect();
 
         let result = compactor.compact(&short_messages);
@@ -937,7 +1021,19 @@ mod tests {
         let mut compactor = ContextCompactor::with_context_window(100);
         let long_content = "word ".repeat(200);
         let long_messages: Vec<Message> = (0..6)
-            .map(|i| Message { role: if i % 2 == 0 { Role::User } else { Role::Assistant }, content: long_content.clone(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false })
+            .map(|i| Message {
+                role: if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                content: long_content.clone(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            })
             .collect();
 
         let result = compactor.compact(&long_messages);

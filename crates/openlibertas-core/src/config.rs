@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::{info, warn};
 
+use crate::capability::{ProviderCapabilities, ProviderKind};
 use crate::tool_format::ToolFormat;
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
@@ -54,6 +55,10 @@ pub struct Provider {
     pub api_key: SecretString,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub kind: ProviderKind,
+    #[serde(default)]
+    pub capabilities: ProviderCapabilities,
     pub tool_format: ToolFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_params: Option<serde_json::Map<String, serde_json::Value>>,
@@ -73,6 +78,10 @@ impl<'de> Deserialize<'de> for Provider {
             #[serde(default)]
             enabled: bool,
             #[serde(default)]
+            kind: Option<ProviderKind>,
+            #[serde(default)]
+            capabilities: Option<ProviderCapabilities>,
+            #[serde(default)]
             tool_format: Option<ToolFormat>,
             #[serde(default)]
             supports_tools: Option<bool>,
@@ -81,6 +90,11 @@ impl<'de> Deserialize<'de> for Provider {
         }
 
         let helper = ProviderHelper::deserialize(deserializer)?;
+
+        let kind = helper.kind.unwrap_or_default();
+        let mut capabilities = helper
+            .capabilities
+            .unwrap_or_else(|| kind.default_capabilities());
 
         let tool_format = if let Some(tf) = helper.tool_format {
             tf
@@ -91,14 +105,25 @@ impl<'de> Deserialize<'de> for Provider {
                 ToolFormat::None
             }
         } else {
-            ToolFormat::default()
+            capabilities.tool_format
         };
+
+        // When tool_format is explicitly set, it drives capabilities.tools.
+        // Otherwise fall back to supports_tools for backward compat.
+        if helper.tool_format.is_some() {
+            capabilities.tools = tool_format != ToolFormat::None;
+        } else if let Some(st) = helper.supports_tools {
+            capabilities.tools = st;
+        }
+        capabilities.tool_format = tool_format;
 
         Ok(Provider {
             name: helper.name,
             base_url: helper.base_url,
             api_key: helper.api_key,
             enabled: helper.enabled,
+            kind,
+            capabilities,
             tool_format,
             extra_params: helper.extra_params,
         })
@@ -112,6 +137,8 @@ impl Provider {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
+            kind: ProviderKind::Ollama,
+            capabilities: ProviderKind::Ollama.default_capabilities(),
             tool_format: ToolFormat::Native,
             extra_params: None,
         }
@@ -251,7 +278,8 @@ impl Config {
     /// If `context_window` is explicitly configured, use it;
     /// otherwise fall back to `max_tokens * 4` as a rough heuristic.
     pub fn effective_context_window(&self) -> u32 {
-        self.context_window.unwrap_or(self.max_tokens.saturating_mul(4))
+        self.context_window
+            .unwrap_or(self.max_tokens.saturating_mul(4))
     }
 
     pub fn config_path() -> Option<PathBuf> {
@@ -306,6 +334,10 @@ mod tests {
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
         assert_eq!(p.api_key.expose_secret(), DEFAULT_API_KEY);
         assert!(p.enabled);
+        assert_eq!(p.kind, ProviderKind::Ollama);
+        assert!(p.capabilities.tools);
+        assert!(p.capabilities.streaming);
+        assert!(!p.capabilities.json_mode);
         assert_eq!(p.tool_format, ToolFormat::Native);
         assert!(p.extra_params.is_none());
     }
@@ -317,6 +349,8 @@ mod tests {
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new("sk-test".to_string()),
             enabled: false,
+            kind: ProviderKind::OpenAiCompatible,
+            capabilities: ProviderKind::OpenAiCompatible.default_capabilities(),
             tool_format: ToolFormat::None,
             extra_params: None,
         };
@@ -352,6 +386,7 @@ mod tests {
         "#;
         let p: Provider = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::None);
+        assert!(!p.capabilities.tools);
     }
 
     #[test]
@@ -363,6 +398,7 @@ mod tests {
         "#;
         let p: Provider = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::Native);
+        assert!(p.capabilities.tools);
     }
 
     #[test]
@@ -375,6 +411,8 @@ mod tests {
         "#;
         let p: Provider = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::ContentJson);
+        // Explicit tool_format drives capabilities.tools; ContentJson implies tools enabled.
+        assert!(p.capabilities.tools);
     }
 
     #[test]
@@ -386,11 +424,41 @@ mod tests {
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
+            kind: ProviderKind::OpenAiCompatible,
+            capabilities: ProviderKind::OpenAiCompatible.default_capabilities(),
             tool_format: ToolFormat::Native,
             extra_params: Some(extra),
         };
         let json = serde_json::to_value(&p).unwrap();
         assert!(json.get("extra_params").is_some());
+    }
+
+    #[test]
+    fn provider_kind_deserializes_from_snake_case() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+            kind = "anthropic"
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.kind, ProviderKind::Anthropic);
+        assert!(p.capabilities.tools);
+        assert!(p.capabilities.streaming);
+        assert!(p.capabilities.reasoning);
+        assert!(!p.capabilities.json_mode);
+    }
+
+    #[test]
+    fn provider_kind_defaults_to_openai_compatible() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.kind, ProviderKind::OpenAiCompatible);
+        assert!(p.capabilities.tools);
+        assert!(p.capabilities.json_mode);
+        assert!(p.capabilities.streaming);
     }
 
     #[test]

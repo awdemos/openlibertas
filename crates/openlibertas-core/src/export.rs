@@ -172,8 +172,9 @@ mod tests {
             tool_call_id: None,
             timestamp: Some("2024-01-01".to_string()),
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
         let md = to_markdown(&messages, Some("test"));
         assert!(md.contains("2024-01-01"));
     }
@@ -187,8 +188,9 @@ mod tests {
             tool_call_id: None,
             timestamp: Some("12:00".to_string()),
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
         let text = to_plaintext(&messages);
         assert!(text.contains("[12:00]"));
     }

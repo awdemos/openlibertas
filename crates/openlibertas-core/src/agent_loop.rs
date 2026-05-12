@@ -73,7 +73,9 @@ impl AgentLoop {
                             info!("Tool: {} executed successfully", tool_name);
                         }
                     }
-                    ToolExecutionResult::Error { tool_name, error, .. } => {
+                    ToolExecutionResult::Error {
+                        tool_name, error, ..
+                    } => {
                         info!("Tool: {} failed: {}", tool_name, error);
                     }
                     ToolExecutionResult::Skipped { tool_name, reason } => {
@@ -143,7 +145,15 @@ impl AgentLoop {
                 tool_messages = compacted;
             }
 
-            engine.chat_mut().messages.push(Message { role: Role::Assistant, content: String::new(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false });
+            engine.chat_mut().messages.push(Message {
+                role: Role::Assistant,
+                content: String::new(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            });
             engine.chat_mut().streaming = true;
 
             LoopAction::Continue(tool_messages)

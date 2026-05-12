@@ -735,10 +735,14 @@ async fn main() -> Result<()> {
                                                 let sender = event_stream.sender();
                                                 let client_clone = client.clone();
                                                 tokio::spawn(async move {
-                                                    let diagnostics = client_clone.get_diagnostics().await;
-                                                    let _ = sender.send(Event::McpDiagnosticsLoaded(diagnostics));
+                                                    let diagnostics =
+                                                        client_clone.get_diagnostics().await;
+                                                    let _ = sender.send(
+                                                        Event::McpDiagnosticsLoaded(diagnostics),
+                                                    );
                                                     let health = client_clone.health_check().await;
-                                                    let _ = sender.send(Event::McpHealthCheck(Ok(health)));
+                                                    let _ = sender
+                                                        .send(Event::McpHealthCheck(Ok(health)));
                                                 });
                                             }
                                         }
@@ -783,10 +787,14 @@ async fn main() -> Result<()> {
                                                 let sender = event_stream.sender();
                                                 let client_clone = client.clone();
                                                 tokio::spawn(async move {
-                                                    let diagnostics = client_clone.get_diagnostics().await;
-                                                    let _ = sender.send(Event::McpDiagnosticsLoaded(diagnostics));
+                                                    let diagnostics =
+                                                        client_clone.get_diagnostics().await;
+                                                    let _ = sender.send(
+                                                        Event::McpDiagnosticsLoaded(diagnostics),
+                                                    );
                                                     let health = client_clone.health_check().await;
-                                                    let _ = sender.send(Event::McpHealthCheck(Ok(health)));
+                                                    let _ = sender
+                                                        .send(Event::McpHealthCheck(Ok(health)));
                                                 });
                                             }
                                             continue;
@@ -797,12 +805,21 @@ async fn main() -> Result<()> {
                                                     let sender = event_stream.sender();
                                                     let client_clone = client.clone();
                                                     tokio::spawn(async move {
-                                                        match client_clone.test_tool(&tool_name).await {
+                                                        match client_clone
+                                                            .test_tool(&tool_name)
+                                                            .await
+                                                        {
                                                             Ok(result) => {
-                                                                let _ = sender.send(Event::McpToolTest(Ok(result)));
+                                                                let _ = sender.send(
+                                                                    Event::McpToolTest(Ok(result)),
+                                                                );
                                                             }
                                                             Err(e) => {
-                                                                let _ = sender.send(Event::McpToolTest(Err(e.to_string())));
+                                                                let _ = sender.send(
+                                                                    Event::McpToolTest(Err(
+                                                                        e.to_string()
+                                                                    )),
+                                                                );
                                                             }
                                                         }
                                                     });
@@ -1154,8 +1171,12 @@ async fn main() -> Result<()> {
                 }
                 Event::ChatEvent(ChatEvent::Done) => {
                     let personas = app.agent_personas();
-                    let persona_resolver =
-                        |name: &str| personas.iter().find(|(n, _)| n == name).map(|(_, p)| p.clone());
+                    let persona_resolver = |name: &str| {
+                        personas
+                            .iter()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, p)| p.clone())
+                    };
                     match openlibertas_core::agent_loop::AgentLoop::run(
                         &mut app.engine,
                         &persona_resolver,

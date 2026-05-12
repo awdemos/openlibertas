@@ -30,7 +30,15 @@ impl MessageAssembler {
                 if !already_present {
                     result.insert(
                         0,
-                        Message { role: Role::System, content: prompt.to_string(), tool_calls: None, tool_call_id: None, timestamp: None, reasoning_content: None, is_prompt: false },
+                        Message {
+                            role: Role::System,
+                            content: prompt.to_string(),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            timestamp: None,
+                            reasoning_content: None,
+                            is_prompt: false,
+                        },
                     );
                 }
             }

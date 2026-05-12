@@ -450,7 +450,10 @@ impl McpClient {
 
     pub async fn tool_server_map(&self) -> HashMap<String, String> {
         let tools = self.tools.lock().await;
-        tools.iter().map(|(name, (server, _))| (name.clone(), server.clone())).collect()
+        tools
+            .iter()
+            .map(|(name, (server, _))| (name.clone(), server.clone()))
+            .collect()
     }
 
     pub async fn get_diagnostics(&self) -> HashMap<String, McpServerDiagnostics> {
@@ -460,14 +463,14 @@ impl McpClient {
         let mut diagnostics = HashMap::new();
 
         for (name, config) in &self.servers {
-            let tool_count = tools
-                .values()
-                .filter(|(server, _)| server == name)
-                .count();
+            let tool_count = tools.values().filter(|(server, _)| server == name).count();
             diagnostics.insert(
                 name.clone(),
                 McpServerDiagnostics {
-                    status: statuses.get(name).cloned().unwrap_or(McpServerStatus::Pending),
+                    status: statuses
+                        .get(name)
+                        .cloned()
+                        .unwrap_or(McpServerStatus::Pending),
                     last_error: errors.get(name).cloned(),
                     tool_count,
                     server_type: config.server_type.clone(),
@@ -540,11 +543,8 @@ impl McpClient {
 
         match self.call_tool(tool_name, test_args).await {
             Ok(result) => {
-                let content_text: Vec<String> = result
-                    .content
-                    .iter()
-                    .map(|c| c.text.clone())
-                    .collect();
+                let content_text: Vec<String> =
+                    result.content.iter().map(|c| c.text.clone()).collect();
                 Ok(format!(
                     "✓ Tool '{}' responded (server: {})\n{}",
                     tool_name,

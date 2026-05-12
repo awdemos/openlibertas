@@ -38,13 +38,13 @@ impl BackendRegistry {
         let mut health = HashMap::new();
         for provider in providers {
             if provider.enabled {
-                let backend: Arc<dyn Backend> =
-                    Arc::new(OpenAiBackend::with_tool_format_and_params(
-                        provider.base_url.clone(),
-                        provider.api_key.clone(),
-                        provider.tool_format,
-                        provider.extra_params.clone(),
-                    ));
+                let capabilities = provider.capabilities;
+                let backend: Arc<dyn Backend> = Arc::new(OpenAiBackend::with_capabilities(
+                    provider.base_url.clone(),
+                    provider.api_key.clone(),
+                    capabilities,
+                    provider.extra_params.clone(),
+                ));
                 let id = ProviderId::new(&provider.name);
                 backends.insert(id.clone(), backend);
                 health.insert(
@@ -289,12 +289,15 @@ mod tests {
     use crate::tool_format::ToolFormat;
 
     fn test_providers() -> Vec<Provider> {
+        use crate::capability::ProviderKind;
         vec![
             Provider {
                 name: "local".to_string(),
                 base_url: "http://localhost:11434/v1".to_string(),
                 api_key: SecretString::new("sk-test".to_string()),
                 enabled: true,
+                kind: ProviderKind::Ollama,
+                capabilities: ProviderKind::Ollama.default_capabilities(),
                 tool_format: ToolFormat::Native,
                 extra_params: None,
             },
@@ -303,6 +306,8 @@ mod tests {
                 base_url: "https://api.kimi.com/v1".to_string(),
                 api_key: SecretString::new("sk-kimi".to_string()),
                 enabled: true,
+                kind: ProviderKind::OpenAiCompatible,
+                capabilities: ProviderKind::OpenAiCompatible.default_capabilities(),
                 tool_format: ToolFormat::Native,
                 extra_params: None,
             },
@@ -327,11 +332,14 @@ mod tests {
 
     #[test]
     fn registry_skips_disabled_providers() {
+        use crate::capability::ProviderKind;
         let providers = vec![Provider {
             name: "disabled".to_string(),
             base_url: "http://example.com".to_string(),
             api_key: SecretString::new("sk-test".to_string()),
             enabled: false,
+            kind: ProviderKind::OpenAiCompatible,
+            capabilities: ProviderKind::OpenAiCompatible.default_capabilities(),
             tool_format: ToolFormat::None,
             extra_params: None,
         }];

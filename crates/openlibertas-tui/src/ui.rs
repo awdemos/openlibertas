@@ -376,7 +376,9 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         ),
         Span::styled(
             branch_indicator,
-            Style::default().fg(app.theme.secondary()).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(app.theme.secondary())
+                .add_modifier(Modifier::ITALIC),
         ),
     ];
     let left_width: usize = left_spans.iter().map(|s| s.content.width()).sum();
@@ -1320,7 +1322,12 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
                 Style::default().fg(app.theme.border_color()),
             )]));
             lines.push(Line::from(vec![
-                Span::styled("Test: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Test: ",
+                    Style::default()
+                        .fg(app.theme.primary())
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     result.clone(),
                     if result.starts_with("✓") {
@@ -1382,7 +1389,10 @@ fn draw_mcp_panel(frame: &mut Frame, app: &App) {
                 .fg(app.theme.primary())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Test tool  ", Style::default().fg(app.theme.system_color())),
+        Span::styled(
+            " Test tool  ",
+            Style::default().fg(app.theme.system_color()),
+        ),
         Span::styled(
             "d",
             Style::default()
@@ -1438,7 +1448,12 @@ fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
         let mut lines: Vec<Line> = Vec::new();
 
         lines.push(Line::from(vec![
-            Span::styled("Server: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Server: ",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(name.clone(), Style::default().fg(app.theme.foreground())),
         ]));
 
@@ -1450,21 +1465,47 @@ fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
                 _ => app.theme.secondary(),
             };
             lines.push(Line::from(vec![
-                Span::styled("Status: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Status: ",
+                    Style::default()
+                        .fg(app.theme.primary())
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(status_text, Style::default().fg(status_color)),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("Type: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
-                Span::styled(diag.server_type.clone(), Style::default().fg(app.theme.foreground())),
+                Span::styled(
+                    "Type: ",
+                    Style::default()
+                        .fg(app.theme.primary())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    diag.server_type.clone(),
+                    Style::default().fg(app.theme.foreground()),
+                ),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("Tools: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{}", diag.tool_count), Style::default().fg(app.theme.foreground())),
+                Span::styled(
+                    "Tools: ",
+                    Style::default()
+                        .fg(app.theme.primary())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{}", diag.tool_count),
+                    Style::default().fg(app.theme.foreground()),
+                ),
             ]));
 
             if let Some(health) = app.mcp_health.get(&name) {
                 lines.push(Line::from(vec![
-                    Span::styled("Health: ", Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Health: ",
+                        Style::default()
+                            .fg(app.theme.primary())
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(
                         if *health { "Alive" } else { "Dead" },
                         if *health {
@@ -1480,7 +1521,9 @@ fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![Span::styled(
                     "Last Error:",
-                    Style::default().fg(app.theme.error_color()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.theme.error_color())
+                        .add_modifier(Modifier::BOLD),
                 )]));
                 for line in err.lines() {
                     lines.push(Line::from(Span::styled(
@@ -1496,7 +1539,9 @@ fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![Span::styled(
                 "Available Tools:",
-                Style::default().fg(app.theme.primary()).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
             )]));
             for tool in tools {
                 lines.push(Line::from(vec![
@@ -1515,8 +1560,7 @@ fn draw_mcp_detail_popup(frame: &mut Frame, app: &App) {
             }
         }
 
-        Paragraph::new(Text::from(lines))
-            .wrap(Wrap { trim: true })
+        Paragraph::new(Text::from(lines)).wrap(Wrap { trim: true })
     } else {
         Paragraph::new("No server selected.").alignment(Alignment::Center)
     };
@@ -1530,9 +1574,7 @@ struct SessionTreeNode {
     depth: usize,
 }
 
-fn build_session_tree(
-    sessions: &[openlibertas_core::store::SessionMeta],
-) -> Vec<SessionTreeNode> {
+fn build_session_tree(sessions: &[openlibertas_core::store::SessionMeta]) -> Vec<SessionTreeNode> {
     use std::collections::HashMap;
     let mut by_parent: HashMap<Option<String>, Vec<openlibertas_core::store::SessionMeta>> =
         HashMap::new();
@@ -1637,7 +1679,8 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
         frame.render_widget(content, content_area);
     } else {
         let tree_mode = app.session_search.is_empty();
-        let display_items: Vec<(usize, openlibertas_core::store::SessionMeta, usize)> = if tree_mode {
+        let display_items: Vec<(usize, openlibertas_core::store::SessionMeta, usize)> = if tree_mode
+        {
             let tree = build_session_tree(&sessions);
             tree.into_iter()
                 .enumerate()
@@ -1701,7 +1744,10 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
                 let title_line = Line::from(vec![
                     Span::styled(indent.clone(), Style::default()),
                     Span::styled(marker, Style::default().fg(app.theme.primary())),
-                    Span::styled(branch_prefix.to_string(), Style::default().fg(app.theme.secondary())),
+                    Span::styled(
+                        branch_prefix.to_string(),
+                        Style::default().fg(app.theme.secondary()),
+                    ),
                     Span::styled(title.to_string(), title_style),
                     Span::styled(
                         format!("  {}  {} msgs  {}", model_str, meta.message_count, time_str),
@@ -2237,12 +2283,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
                 ("Ctrl+A/E", "Move cursor to start/end"),
             ],
         ),
-        (
-            "Info",
-            vec![
-                ("/help", "Show this help panel"),
-            ],
-        ),
+        ("Info", vec![("/help", "Show this help panel")]),
         (
             "Config",
             vec![

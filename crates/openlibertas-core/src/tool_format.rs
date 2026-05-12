@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Controls how tool calls are sent to and received from a provider.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ToolFormat {
     /// OpenAI/Anthropic native `tool_calls` array in the API.
     #[default]

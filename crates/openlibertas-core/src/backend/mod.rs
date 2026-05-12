@@ -4,6 +4,7 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::capability::ProviderCapabilities;
 use crate::domain::{ChatEvent, Message, Model, ToolDefinition};
 
 pub mod openai;
@@ -27,4 +28,6 @@ pub trait Backend: Send + Sync {
     fn health_check(&self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>>;
 
     fn cancel_token(&self) -> CancellationToken;
+
+    fn capabilities(&self) -> ProviderCapabilities;
 }

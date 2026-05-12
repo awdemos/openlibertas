@@ -134,12 +134,18 @@ impl ConversationStore {
             id: id.to_string(),
             title,
             model: model.map(|s| s.to_string()),
-            created_at: existing.as_ref().map(|e| e.created_at.clone()).unwrap_or_else(|| now.clone()),
+            created_at: existing
+                .as_ref()
+                .map(|e| e.created_at.clone())
+                .unwrap_or_else(|| now.clone()),
             updated_at: Some(now),
             messages: messages.to_vec(),
             parent_id: existing.as_ref().and_then(|e| e.parent_id.clone()),
             branch_point: existing.as_ref().and_then(|e| e.branch_point),
-            branches: existing.as_ref().map(|e| e.branches.clone()).unwrap_or_default(),
+            branches: existing
+                .as_ref()
+                .map(|e| e.branches.clone())
+                .unwrap_or_default(),
         };
 
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
@@ -350,8 +356,9 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
 
         store
             .save("test-session", Some("gpt-4"), &messages)
@@ -374,8 +381,9 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
 
         store.save("session-a", Some("model-a"), &messages).unwrap();
         store.save("session-b", Some("model-b"), &messages).unwrap();
@@ -396,8 +404,9 @@ mod tests {
             tool_call_id: None,
             timestamp: None,
             reasoning_content: None,
-        
-            is_prompt: false,}];
+
+            is_prompt: false,
+        }];
 
         store.save("to-delete", None, &messages).unwrap();
         assert!(store.conversation_path("to-delete").exists());

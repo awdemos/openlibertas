@@ -13,7 +13,16 @@ pub enum Event {
     Input(CEvent),
     ChatEvent(ChatEvent),
     ModelsLoaded(Result<Vec<Model>, String>),
-    McpToolsLoaded(Result<(Vec<McpTool>, HashMap<String, McpServerStatus>, HashMap<String, String>), String>),
+    McpToolsLoaded(
+        Result<
+            (
+                Vec<McpTool>,
+                HashMap<String, McpServerStatus>,
+                HashMap<String, String>,
+            ),
+            String,
+        >,
+    ),
     McpDiagnosticsLoaded(HashMap<String, McpServerDiagnostics>),
     McpHealthCheck(Result<HashMap<String, bool>, String>),
     McpToolTest(Result<String, String>),

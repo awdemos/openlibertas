@@ -6,6 +6,7 @@
 
 pub mod agent_loop;
 pub mod backend;
+pub mod capability;
 pub mod commands;
 pub mod completion;
 pub mod config;
@@ -28,6 +29,7 @@ pub mod voice;
 
 pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
 pub use backend::Backend;
+pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
 pub use config::{Config, Provider, SecretString};
 pub use domain::{

@@ -384,7 +384,8 @@ impl App {
                 if self.rlm_mode {
                     self.engine.set_system_prompt(
                         "You are in RLM mode. Use the `rlm_repl` tool to execute Python code. \
-When you have your final answer, output 'FINAL(answer)' on its own line.".to_string(),
+When you have your final answer, output 'FINAL(answer)' on its own line."
+                            .to_string(),
                     );
                     self.engine.set_agent_prompt(String::new());
                     if self.engine.agents().status
@@ -637,7 +638,11 @@ When you have your final answer, output 'FINAL(answer)' on its own line.".to_str
                     if parent_id.is_empty() {
                         let model = self.models.current.as_deref().unwrap_or("unknown");
                         let auto_id = ConversationStore::generate_name(model);
-                        if let Err(e) = store.save(&auto_id, self.models.current.as_deref(), &self.engine.chat().messages) {
+                        if let Err(e) = store.save(
+                            &auto_id,
+                            self.models.current.as_deref(),
+                            &self.engine.chat().messages,
+                        ) {
                             return Some(format!("Failed to auto-save before branch: {}", e));
                         }
                         self.current_session_id = Some(auto_id.clone());
@@ -668,7 +673,10 @@ When you have your final answer, output 'FINAL(answer)' on its own line.".to_str
                     ) {
                         Ok(_) => {
                             if let Err(e) = store.add_branch(&parent_id, &branch_id) {
-                                return Some(format!("Branch created but failed to update parent: {}", e));
+                                return Some(format!(
+                                    "Branch created but failed to update parent: {}",
+                                    e
+                                ));
                             }
                             self.engine.chat_mut().messages = branch_messages;
                             self.engine.chat_mut().scroll = 0;
@@ -693,7 +701,10 @@ When you have your final answer, output 'FINAL(answer)' on its own line.".to_str
                 } else {
                     let enabled = self.voice.toggle();
                     if enabled {
-                        Some("Voice mode enabled. Hold Ctrl+Space to record, release to send.".to_string())
+                        Some(
+                            "Voice mode enabled. Hold Ctrl+Space to record, release to send."
+                                .to_string(),
+                        )
                     } else {
                         Some("Voice mode disabled.".to_string())
                     }
