@@ -240,7 +240,7 @@ async fn main() -> Result<()> {
         }
 
         // Activity timeout fallback: if push-to-talk is active and no key
-        // activity for 500ms, assume the key was released and stop recording.
+        // activity for 2000ms, assume the key was released and stop recording.
         // This handles terminals that don't send Release events reliably.
         if app.voice.push_to_talk_active
             && matches!(
@@ -249,7 +249,7 @@ async fn main() -> Result<()> {
             )
             && app
                 .voice_activity_at
-                .is_some_and(|t| t.elapsed().as_millis() >= 500)
+                .is_some_and(|t| t.elapsed().as_millis() >= 2000)
         {
             info!("Voice activity timeout: stopping recording");
             app.voice_status = None;
@@ -561,6 +561,19 @@ async fn main() -> Result<()> {
                                             Some(format!("Failed to start recording: {}", e));
                                     }
                                 }
+                                continue;
+                            }
+                            KeyCode::Char(' ') | KeyCode::Null
+                                if app.screen == Screen::Chat
+                                    && app.voice.is_enabled()
+                                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                                    && key.kind == KeyEventKind::Repeat
+                                    && matches!(
+                                        app.voice.state(),
+                                        openlibertas_core::voice::VoiceState::Recording
+                                    ) =>
+                            {
+                                app.voice_activity_at = Some(Instant::now());
                                 continue;
                             }
                             _ => {}
