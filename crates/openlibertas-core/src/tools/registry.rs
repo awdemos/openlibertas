@@ -88,6 +88,7 @@ impl ToolRegistry {
             "fetch_url",
             "think",
             "git",
+            "rlm_repl",
         ];
         for tool in &self.builtin_tools {
             if plan_mode && !read_only_builtins.contains(&tool.name.as_str()) {

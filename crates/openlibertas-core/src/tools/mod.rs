@@ -5,6 +5,7 @@ pub mod filesystem;
 pub mod git;
 pub mod meta;
 pub mod registry;
+pub mod rlm;
 pub mod search;
 pub mod shell;
 pub mod tmux;
@@ -70,6 +71,7 @@ pub fn execute_builtin(name: &str, args: Value) -> Result<String> {
         "tmux" => tmux::tmux(args),
         "switch_persona" => agent::switch_persona(args),
         "spawn_subagent" => agent::spawn_subagent(args),
+        "rlm_repl" => rlm::rlm_repl(args),
         _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", name)),
     }
 }
@@ -90,6 +92,7 @@ pub fn builtin_tools() -> Vec<BuiltinTool> {
         meta::think_tool(),
         git::git_tool(),
         tmux::tmux_tool(),
+        rlm::rlm_repl_tool(),
     ]
 }
 
@@ -132,6 +135,7 @@ pub fn is_builtin(name: &str) -> bool {
             | "think"
             | "git"
             | "tmux"
+            | "rlm_repl"
     )
 }
 

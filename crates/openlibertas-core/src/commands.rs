@@ -32,6 +32,8 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/yolo",
     "/plan",
     "/compact",
+    // RLM
+    "/rlm",
     // Tools
     "/mcp",
     "/tools",
@@ -52,6 +54,7 @@ pub fn command_category(cmd: &str) -> &'static str {
         | "/title" | "/branch" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
         "/agents" | "/yolo" | "/plan" | "/compact" => "Agent",
+        "/rlm" => "RLM",
         "/mcp" | "/tools" => "Tools",
         "/voice" => "Voice",
         "/voice_device" => "Voice",
@@ -87,6 +90,7 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/yolo" => "Toggle auto-approval for tools",
         "/plan" => "Toggle plan mode (read-only research)",
         "/compact" => "Compact conversation context",
+        "/rlm" => "Toggle RLM (recursive language model) mode",
         "/mcp" => "Show MCP server status",
         "/tools" => "Toggle tools panel",
         "/voice" => "Toggle voice chat mode",
@@ -123,6 +127,7 @@ pub enum SlashCommand {
     Yolo,
     Plan,
     Compact,
+    Rlm,
     Mcp,
     Tools,
     Voice,
@@ -173,6 +178,7 @@ impl SlashCommand {
             "/yolo" => Some(SlashCommand::Yolo),
             "/plan" => Some(SlashCommand::Plan),
             "/compact" => Some(SlashCommand::Compact),
+            "/rlm" => Some(SlashCommand::Rlm),
             "/tools" => Some(SlashCommand::Tools),
             "/voice" => Some(SlashCommand::Voice),
             "/voice_device" => {
@@ -363,6 +369,7 @@ pub fn build_help_message() -> String {
         ),
         ("Chat", &["/search", "/edit", "/remove"][..]),
         ("Agent", &["/agents", "/yolo"][..]),
+        ("RLM", &["/rlm"][..]),
         ("Tools", &["/mcp", "/tools"][..]),
         ("Voice", &["/voice", "/voice_device"][..]),
         ("System", &["/quit"][..]),

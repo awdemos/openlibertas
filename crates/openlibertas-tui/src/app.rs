@@ -100,6 +100,7 @@ pub struct App {
     pub current_session_id: Option<String>,
     pub current_session_parent_id: Option<String>,
     pub current_session_branch_point: Option<usize>,
+    pub rlm_mode: bool,
 }
 
 impl App {
@@ -180,6 +181,7 @@ impl App {
             current_session_id: None,
             current_session_parent_id: None,
             current_session_branch_point: None,
+            rlm_mode: false,
         }
     }
 
@@ -362,6 +364,26 @@ impl App {
                     ))
                 } else {
                     Some(format!("No compaction needed ({} messages)", before))
+                }
+            }
+            SlashCommand::Rlm => {
+                self.rlm_mode = !self.rlm_mode;
+                if self.rlm_mode {
+                    self.engine.set_system_prompt(
+                        "You are in RLM mode. Use the `rlm_repl` tool to execute Python code. \
+When you have your final answer, output 'FINAL(answer)' on its own line.".to_string(),
+                    );
+                    self.engine.set_agent_prompt(String::new());
+                    if self.engine.agents().status
+                        == openlibertas_core::engine::AgentStatus::Disabled
+                    {
+                        self.engine.agents_mut().status =
+                            openlibertas_core::engine::AgentStatus::Idle;
+                    }
+                    Some("RLM mode enabled. The model will use Python code execution.".to_string())
+                } else {
+                    self.set_provider(self.models.provider.clone());
+                    Some("RLM mode disabled.".to_string())
                 }
             }
             SlashCommand::Edit(n) => {

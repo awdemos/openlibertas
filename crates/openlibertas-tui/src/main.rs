@@ -1099,6 +1099,27 @@ async fn main() -> Result<()> {
                         }
                         openlibertas_core::agent_loop::LoopAction::Stop => {
                             let _ = app.autosave();
+                            if app.rlm_mode {
+                                let final_answer = app
+                                    .engine
+                                    .chat()
+                                    .messages
+                                    .last()
+                                    .filter(|m| m.role == Role::Assistant)
+                                    .and_then(|m| {
+                                        let start = m.content.find("FINAL(")?;
+                                        let end = m.content[start..].find(')')?;
+                                        Some(m.content[start + 6..start + end].trim().to_string())
+                                    });
+                                if let Some(answer) = final_answer {
+                                    app.engine.add_system_message(format!(
+                                        "[RLM] Final answer: {}",
+                                        answer
+                                    ));
+                                    app.rlm_mode = false;
+                                    app.set_provider(app.models.provider.clone());
+                                }
+                            }
                             if app.voice.is_enabled() {
                                 if let Some(last_msg) = app.engine.chat_mut().messages.last() {
                                     if last_msg.role == Role::Assistant

@@ -342,6 +342,8 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
+    let rlm_indicator = if app.rlm_mode { " [RLM]" } else { "" };
+
     let left_spans = vec![
         Span::styled(
             "OpenLibertas",
@@ -352,6 +354,12 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(
             format!(" {} ", conn_symbol),
             Style::default().fg(conn_color),
+        ),
+        Span::styled(
+            rlm_indicator,
+            Style::default()
+                .fg(app.theme.error_color())
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             branch_indicator,
@@ -825,6 +833,8 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     let prompt_symbol = if app.voice.is_enabled() {
         "🎙 "
+    } else if app.rlm_mode {
+        "🐍 "
     } else if app.engine.agents().status == openlibertas_core::engine::AgentStatus::Disabled {
         "> "
     } else {
@@ -896,6 +906,8 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
                     status.clone()
                 } else if app.engine.chat().streaming {
                     "Streaming...".to_string()
+                } else if app.rlm_mode {
+                    "RLM mode — model will execute Python code".to_string()
                 } else {
                     String::new()
                 };
@@ -1975,6 +1987,14 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
                 ("Tab (empty input)", "Enable agents or cycle persona"),
                 ("", "When enabled, LLM uses tools repeatedly"),
                 ("", "to complete multi-step tasks automatically."),
+            ],
+        ),
+        (
+            "RLM",
+            vec![
+                ("/rlm", "Toggle recursive language model mode"),
+                ("", "Model executes Python code via rlm_repl tool"),
+                ("", "Outputs FINAL(answer) when done."),
             ],
         ),
         (
