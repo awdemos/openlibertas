@@ -1,16 +1,23 @@
-use crate::domain::{FunctionDefinition, ToolDefinition};
-use anyhow::{Context, Result};
-use serde_json::Value;
-use std::process::Command;
-
 pub mod agent;
+pub mod assembler;
+pub mod executor;
 pub mod filesystem;
 pub mod git;
 pub mod meta;
+pub mod registry;
 pub mod search;
 pub mod shell;
 pub mod tmux;
 pub mod web;
+
+pub use assembler::MessageAssembler;
+pub use executor::{extract_key_argument, tool_needs_approval, ToolExecutor};
+pub use registry::ToolRegistry;
+
+use crate::domain::{FunctionDefinition, ToolDefinition};
+use anyhow::{Context, Result};
+use serde_json::Value;
+use std::process::Command;
 
 /// A built-in tool that can be executed directly without MCP.
 #[derive(Debug, Clone)]

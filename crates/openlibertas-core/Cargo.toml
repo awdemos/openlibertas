@@ -27,6 +27,7 @@ rodio = { version = "0.19", features = ["symphonia"] }
 hound = "3.5"
 unicode-width = "0.2"
 glob = "0.3"
+tiktoken-rs = "0.11"
 
 
 

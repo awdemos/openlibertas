@@ -126,6 +126,8 @@ pub struct Config {
     pub model: Option<String>,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
     #[serde(default)]
     pub elevenlabs_api_key: Option<SecretString>,
     #[serde(default)]
@@ -153,6 +155,7 @@ impl Default for Config {
             providers: vec![Provider::local_default()],
             model: None,
             max_tokens: default_max_tokens(),
+            context_window: None,
             elevenlabs_api_key: None,
             elevenlabs_voice_id: None,
             models_dir: default_models_dir(),
@@ -223,6 +226,14 @@ impl Config {
                 warn!("Invalid OPENLIBERTAS_MAX_TOKENS value, using default");
             }
         }
+        if let Ok(window) = std::env::var("OPENLIBERTAS_CONTEXT_WINDOW") {
+            if let Ok(window) = window.parse() {
+                info!("Overriding context window from environment: {}", window);
+                config.context_window = Some(window);
+            } else {
+                warn!("Invalid OPENLIBERTAS_CONTEXT_WINDOW value, ignoring");
+            }
+        }
         if let Ok(key) = std::env::var("ELEVENLABS_API_KEY") {
             info!("Loading ElevenLabs API key from environment");
             config.elevenlabs_api_key = Some(SecretString::new(key));
@@ -234,6 +245,13 @@ impl Config {
 
         info!("Config loaded: {} providers", config.providers.len());
         Ok(config)
+    }
+
+    /// Return the effective context window size in tokens.
+    /// If `context_window` is explicitly configured, use it;
+    /// otherwise fall back to `max_tokens * 4` as a rough heuristic.
+    pub fn effective_context_window(&self) -> u32 {
+        self.context_window.unwrap_or(self.max_tokens.saturating_mul(4))
     }
 
     pub fn config_path() -> Option<PathBuf> {
@@ -381,6 +399,7 @@ mod tests {
             providers: vec![Provider::local_default()],
             model: Some("test-model".to_string()),
             max_tokens: 4096,
+            context_window: Some(8192),
             elevenlabs_api_key: None,
             elevenlabs_voice_id: None,
             models_dir: default_models_dir(),
@@ -392,6 +411,7 @@ mod tests {
         let deserialized: Config = toml::from_str(&toml_str).unwrap();
         assert_eq!(deserialized.model, Some("test-model".to_string()));
         assert_eq!(deserialized.max_tokens, 4096);
+        assert_eq!(deserialized.context_window, Some(8192));
         assert_eq!(deserialized.providers.len(), 1);
     }
 
@@ -402,6 +422,26 @@ mod tests {
         "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.providers.is_empty());
+    }
+
+    #[test]
+    fn config_effective_context_window_explicit() {
+        let config = Config {
+            context_window: Some(16000),
+            max_tokens: 2048,
+            ..Config::default()
+        };
+        assert_eq!(config.effective_context_window(), 16000);
+    }
+
+    #[test]
+    fn config_effective_context_window_fallback() {
+        let config = Config {
+            context_window: None,
+            max_tokens: 2048,
+            ..Config::default()
+        };
+        assert_eq!(config.effective_context_window(), 8192);
     }
 
     #[test]

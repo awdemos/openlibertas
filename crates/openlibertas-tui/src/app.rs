@@ -105,6 +105,7 @@ impl App {
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
         let voice_input_device = config.input_device.clone();
+        let context_window = config.effective_context_window() as usize;
         let local_models = openlibertas_core::model_scanner::scan_local_models(&config.models_dir);
         let filtered_local: Vec<Model> = if config.filter_require_voice_and_tools {
             local_models
@@ -135,7 +136,9 @@ impl App {
             },
             store,
             engine: {
-                let mut engine = ChatEngine::new().with_env_context(EnvContext::detect());
+                let mut engine = ChatEngine::new()
+                    .with_context_window(context_window)
+                    .with_env_context(EnvContext::detect());
                 if let Some(config_dir) =
                     Config::config_path().and_then(|p| p.parent().map(|p| p.to_path_buf()))
                 {
@@ -545,8 +548,8 @@ impl App {
             SlashCommand::New => {
                 self.engine.clear_messages();
                 self.engine.input_mut().buffer.clear();
-                self.engine.tools_mut().clear_pending_tool_calls();
-                self.engine.tools_mut().clear_tool_results();
+                self.engine.tool_executor_mut().clear_pending_tool_calls();
+                self.engine.tool_executor_mut().clear_tool_results();
                 let loaded = self.load_context_files();
                 if loaded.is_empty() {
                     Some("New session started".to_string())

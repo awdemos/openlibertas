@@ -56,7 +56,7 @@ fn attach_chat_stream(
     let max_tokens = app.config.max_tokens;
     let tools = app.engine.tools_for_request();
     app.engine.chat_mut().cancel_token = tokio_util::sync::CancellationToken::new();
-    app.engine.tools_mut().clear_pending_tool_calls();
+    app.engine.tool_executor_mut().clear_pending_tool_calls();
     let stream_rx = registry.chat_with_fallback(
         &app.models.provider,
         model,
@@ -1146,7 +1146,7 @@ async fn main() -> Result<()> {
                 Event::ChatEvent(ChatEvent::Cancelled) => {
                     app.finish_stream();
                     app.engine.finish_agent_loop();
-                    app.engine.tools_mut().clear_pending_tool_calls();
+                    app.engine.tool_executor_mut().clear_pending_tool_calls();
                 }
                 Event::BackendHealthCheck(Ok(())) => {
                     app.connection_status = app::ConnectionStatus::Connected;
@@ -1158,7 +1158,7 @@ async fn main() -> Result<()> {
                     let enhanced = enhance_error_with_suggestion(&err);
                     app.finish_stream();
                     app.engine.finish_agent_loop();
-                    app.engine.tools_mut().clear_pending_tool_calls();
+                    app.engine.tool_executor_mut().clear_pending_tool_calls();
                     app.engine.add_error_message(enhanced);
                 }
                 Event::Input(CEvent::Resize(_, _)) => {}

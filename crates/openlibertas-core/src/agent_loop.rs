@@ -60,11 +60,10 @@ impl AgentLoop {
                 "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
                 max_iterations
             ));
-            engine.tools_mut().clear_pending_tool_calls();
             return LoopAction::Stop;
         }
 
-        if engine.tools_mut().has_pending_tool_calls() {
+        if engine.tool_executor().has_pending_tool_calls() {
             let results = engine.execute_pending_tools().await;
 
             for result in &results {
@@ -84,7 +83,7 @@ impl AgentLoop {
             }
 
             let switch_requests: Vec<(String, bool)> = engine
-                .tools_mut()
+                .tool_executor()
                 .pending_tool_calls()
                 .iter()
                 .filter_map(|tc| {
@@ -129,8 +128,8 @@ impl AgentLoop {
 
             let mut tool_messages = engine.assemble_tool_result_messages();
 
-            engine.tools_mut().clear_pending_tool_calls();
-            engine.tools_mut().clear_tool_results();
+            engine.tool_executor_mut().clear_pending_tool_calls();
+            engine.tool_executor_mut().clear_tool_results();
 
             if engine.agents().status == AgentStatus::Active {
                 let compacted = engine.chat_mut().compactor.compact(&tool_messages);
@@ -157,7 +156,6 @@ impl AgentLoop {
             LoopAction::Continue(tool_messages)
         } else {
             engine.finish_agent_loop();
-            engine.tools_mut().clear_pending_tool_calls();
             LoopAction::Stop
         }
     }

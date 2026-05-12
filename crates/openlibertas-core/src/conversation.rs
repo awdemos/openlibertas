@@ -1,38 +1,79 @@
 pub mod tool_parser;
 
 use crate::domain::Role;
-use crate::domain::{Message, ToolCall};
+use crate::domain::{estimate_messages_tokens, Message, ToolCall};
 
 const MAX_TOOL_RESULT_CHARS: usize = 4000;
 
 #[derive(Debug, Clone)]
+enum MessageBlock {
+    Single(Message),
+    ToolCallPair {
+        assistant: Message,
+        results: Vec<Message>,
+    },
+}
+
+impl MessageBlock {
+    fn estimate_tokens(&self) -> usize {
+        match self {
+            MessageBlock::Single(msg) => msg.estimate_tokens(),
+            MessageBlock::ToolCallPair { assistant, results } => {
+                let results_tokens: usize = results.iter().map(|r| r.estimate_tokens()).sum();
+                assistant.estimate_tokens().saturating_add(results_tokens)
+            }
+        }
+    }
+
+    fn into_messages(self) -> Vec<Message> {
+        match self {
+            MessageBlock::Single(msg) => vec![msg],
+            MessageBlock::ToolCallPair { assistant, results } => {
+                let mut msgs = vec![assistant];
+                msgs.extend(results);
+                msgs
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ContextCompactor {
-    pub message_threshold: usize,
-    pub preserve_recent: usize,
+    pub context_window: usize,
+    pub threshold_ratio: f32,
+    pub preserve_ratio: f32,
     pub compaction_count: usize,
 }
 
 impl Default for ContextCompactor {
     fn default() -> Self {
         Self {
-            message_threshold: 20,
-            preserve_recent: 6,
+            context_window: 8192,
+            threshold_ratio: 0.75,
+            preserve_ratio: 0.50,
             compaction_count: 0,
         }
     }
 }
 
 impl ContextCompactor {
-    pub fn new(message_threshold: usize, preserve_recent: usize) -> Self {
+    pub fn with_context_window(context_window: usize) -> Self {
         Self {
-            message_threshold,
-            preserve_recent,
-            compaction_count: 0,
+            context_window,
+            ..Default::default()
         }
     }
 
+    pub fn threshold_tokens(&self) -> usize {
+        (self.context_window as f32 * self.threshold_ratio) as usize
+    }
+
+    pub fn preserve_tokens(&self) -> usize {
+        (self.context_window as f32 * self.preserve_ratio) as usize
+    }
+
     pub fn should_compact(&self, messages: &[Message]) -> bool {
-        messages.len() > self.message_threshold
+        estimate_messages_tokens(messages) > self.threshold_tokens()
     }
 
     pub fn compact(&mut self, messages: &[Message]) -> Vec<Message> {
@@ -41,75 +82,141 @@ impl ContextCompactor {
         }
 
         let mut system_msgs: Vec<Message> = Vec::new();
-        let mut non_system: Vec<&Message> = Vec::new();
+        let mut non_system: Vec<Message> = Vec::new();
 
         for msg in messages {
             if msg.role == Role::System {
                 system_msgs.push(msg.clone());
             } else {
-                non_system.push(msg);
+                non_system.push(msg.clone());
             }
         }
 
-        let total_non_system = non_system.len();
-        if total_non_system <= self.preserve_recent {
-            let mut result = system_msgs;
-            result.extend(non_system.into_iter().cloned());
-            return result;
+        let system_tokens: usize = system_msgs.iter().map(|m| m.estimate_tokens()).sum();
+        let preserve_budget = self.preserve_tokens().saturating_sub(system_tokens);
+
+        let blocks = Self::build_blocks(&non_system);
+        if blocks.is_empty() {
+            return system_msgs;
         }
 
-        let drop_count = total_non_system - self.preserve_recent;
-
-        let mut dropped_users = 0usize;
-        let mut dropped_assistants = 0usize;
-        let mut dropped_tools = 0usize;
-        for msg in non_system.iter().take(drop_count) {
-            match msg.role {
-                Role::User => dropped_users += 1,
-                Role::Assistant => dropped_assistants += 1,
-                Role::Tool => dropped_tools += 1,
-                _ => {}
+        // Keep the most recent blocks that fit within the preserve budget.
+        let mut preserved_blocks: Vec<MessageBlock> = Vec::new();
+        let mut preserved_tokens = 0usize;
+        for block in blocks.iter().rev() {
+            let block_tokens = block.estimate_tokens();
+            if preserved_tokens + block_tokens > preserve_budget && !preserved_blocks.is_empty() {
+                break;
             }
+            preserved_tokens += block_tokens;
+            preserved_blocks.push(block.clone());
         }
+        preserved_blocks.reverse();
+
+        let dropped_count = blocks.len().saturating_sub(preserved_blocks.len());
 
         let mut result = system_msgs;
 
-        let mut summary_parts = Vec::new();
-        if dropped_users > 0 {
-            summary_parts.push(format!("{} user", dropped_users));
-        }
-        if dropped_assistants > 0 {
-            summary_parts.push(format!("{} assistant", dropped_assistants));
-        }
-        if dropped_tools > 0 {
-            summary_parts.push(format!("{} tool", dropped_tools));
+        if dropped_count > 0 {
+            let summary = self.summarize_dropped(&blocks[..dropped_count]);
+            result.push(Message {
+                role: Role::System,
+                content: summary,
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         }
 
-        let summary = if summary_parts.is_empty() {
-            format!("[{} earlier messages compacted]", drop_count)
-        } else {
-            format!(
-                "[Context compacted: {} messages summarized ({}). Recent context preserved.]",
-                drop_count,
-                summary_parts.join(", ")
-            )
-        };
-
-        result.push(Message {
-            role: Role::System,
-            content: summary,
-            tool_calls: None,
-            tool_call_id: None,
-            timestamp: None,
-            reasoning_content: None,
-        });
-
-        for msg in non_system.iter().skip(drop_count) {
-            result.push((*msg).clone());
+        for block in preserved_blocks {
+            result.extend(block.into_messages());
         }
 
         self.compaction_count += 1;
         result
+    }
+
+    fn build_blocks(messages: &[Message]) -> Vec<MessageBlock> {
+        let mut blocks = Vec::new();
+        let mut i = 0;
+        while i < messages.len() {
+            let msg = &messages[i];
+            if msg.role == Role::Assistant
+                && msg.tool_calls.is_some()
+                && !msg.tool_calls.as_ref().unwrap().is_empty()
+            {
+                let call_ids: std::collections::HashSet<&str> = msg
+                    .tool_calls
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|tc| tc.id.as_str())
+                    .collect();
+                let mut results = Vec::new();
+                let mut j = i + 1;
+                while j < messages.len() && messages[j].role == Role::Tool {
+                    if let Some(ref id) = messages[j].tool_call_id {
+                        if call_ids.contains(id.as_str()) {
+                            results.push(messages[j].clone());
+                            j += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+                blocks.push(MessageBlock::ToolCallPair {
+                    assistant: msg.clone(),
+                    results,
+                });
+                i = j;
+            } else {
+                blocks.push(MessageBlock::Single(msg.clone()));
+                i += 1;
+            }
+        }
+        blocks
+    }
+
+    fn summarize_dropped(&self, blocks: &[MessageBlock]) -> String {
+        let mut dropped_users = 0usize;
+        let mut dropped_assistants = 0usize;
+        let mut dropped_tools = 0usize;
+        for block in blocks {
+            match block {
+                MessageBlock::Single(msg) => match msg.role {
+                    Role::User => dropped_users += 1,
+                    Role::Assistant => dropped_assistants += 1,
+                    Role::Tool => dropped_tools += 1,
+                    _ => {}
+                },
+                MessageBlock::ToolCallPair { results, .. } => {
+                    dropped_assistants += 1;
+                    dropped_tools += results.len();
+                }
+            }
+        }
+
+        let mut summary_parts = Vec::new();
+        if dropped_users > 0 {
+            summary_parts.push(format!("{} user message(s)", dropped_users));
+        }
+        if dropped_assistants > 0 {
+            summary_parts.push(format!("{} assistant message(s)", dropped_assistants));
+        }
+        if dropped_tools > 0 {
+            summary_parts.push(format!("{} tool message(s)", dropped_tools));
+        }
+
+        if summary_parts.is_empty() {
+            format!("[{} earlier message blocks compacted]", blocks.len())
+        } else {
+            format!(
+                "[Context compacted: {} older message blocks summarized ({}). Recent context preserved.]",
+                blocks.len(),
+                summary_parts.join(", ")
+            )
+        }
     }
 }
 
@@ -460,7 +567,7 @@ mod tests {
 
     #[test]
     fn compactor_does_nothing_below_threshold() {
-        let mut compactor = ContextCompactor::new(10, 4);
+        let mut compactor = ContextCompactor::with_context_window(1000);
         let messages: Vec<Message> = (0..5)
             .map(|i| Message {
                 role: if i % 2 == 0 {
@@ -483,7 +590,7 @@ mod tests {
 
     #[test]
     fn compactor_preserves_system_messages() {
-        let mut compactor = ContextCompactor::new(5, 2);
+        let mut compactor = ContextCompactor::with_context_window(30);
         let messages = vec![
             Message {
                 role: Role::System,
@@ -545,13 +652,13 @@ mod tests {
 
         let result = compactor.compact(&messages);
         assert!(result.iter().any(|m| m.content == "sys1"));
-        assert_eq!(result.len(), 4);
+        assert!(result.iter().any(|m| m.content.contains("compacted")));
         assert_eq!(compactor.compaction_count, 1);
     }
 
     #[test]
     fn compactor_adds_summary_message() {
-        let mut compactor = ContextCompactor::new(5, 2);
+        let mut compactor = ContextCompactor::with_context_window(50);
         let messages = vec![
             Message {
                 role: Role::User,
@@ -609,13 +716,13 @@ mod tests {
             .find(|m| m.role == Role::System && m.content.contains("compacted"));
         assert!(summary.is_some());
         let summary = summary.unwrap();
-        assert!(summary.content.contains("2 user"));
-        assert!(summary.content.contains("2 assistant"));
+        assert!(summary.content.contains("user message(s)"));
+        assert!(summary.content.contains("assistant message(s)"));
     }
 
     #[test]
     fn compactor_preserves_recent_messages() {
-        let mut compactor = ContextCompactor::new(5, 2);
+        let mut compactor = ContextCompactor::with_context_window(50);
         let messages = vec![
             Message {
                 role: Role::User,
@@ -676,7 +783,7 @@ mod tests {
 
     #[test]
     fn compactor_counts_tool_messages() {
-        let mut compactor = ContextCompactor::new(5, 2);
+        let mut compactor = ContextCompactor::with_context_window(50);
         let messages = vec![
             Message {
                 role: Role::User,
@@ -733,7 +840,115 @@ mod tests {
             .iter()
             .find(|m| m.role == Role::System && m.content.contains("compacted"))
             .unwrap();
-        assert!(summary.content.contains("1 tool"));
+        assert!(summary.content.contains("tool message(s)"));
+    }
+
+    #[test]
+    fn compactor_preserves_tool_call_pairs_atomically() {
+        let mut compactor = ContextCompactor::with_context_window(80);
+        let messages = vec![
+            Message {
+                role: Role::User,
+                content: "u1".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a1".to_string(),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "tool".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }]),
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            },
+            Message {
+                role: Role::Tool,
+                content: "result1".to_string(),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                timestamp: None,
+                reasoning_content: None,
+            },
+            Message {
+                role: Role::User,
+                content: "u2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            },
+            Message {
+                role: Role::Assistant,
+                content: "a2".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            },
+        ];
+
+        let result = compactor.compact(&messages);
+        let has_assistant_with_call = result.iter().any(|m| {
+            m.role == Role::Assistant
+                && m.tool_calls.is_some()
+                && m.tool_calls.as_ref().unwrap().iter().any(|tc| tc.id == "call_1")
+        });
+        let has_tool_result = result
+            .iter()
+            .any(|m| m.role == Role::Tool && m.tool_call_id == Some("call_1".to_string()));
+        assert_eq!(
+            has_assistant_with_call, has_tool_result,
+            "tool call pair must be preserved atomically"
+        );
+    }
+
+    #[test]
+    fn compactor_uses_token_budget_not_message_count() {
+        // Many very short messages (low token count) should NOT trigger compaction
+        // when the context window is large enough.
+        let mut compactor = ContextCompactor::with_context_window(1000);
+        let short_messages: Vec<Message> = (0..30)
+            .map(|i| Message {
+                role: if i % 2 == 0 { Role::User } else { Role::Assistant },
+                content: "x".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            })
+            .collect();
+
+        let result = compactor.compact(&short_messages);
+        assert_eq!(compactor.compaction_count, 0);
+        assert_eq!(result.len(), 30);
+
+        // A few very long messages (high token count) SHOULD trigger compaction
+        // even with the same message count that was safe above.
+        let mut compactor = ContextCompactor::with_context_window(100);
+        let long_content = "word ".repeat(200);
+        let long_messages: Vec<Message> = (0..6)
+            .map(|i| Message {
+                role: if i % 2 == 0 { Role::User } else { Role::Assistant },
+                content: long_content.clone(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            })
+            .collect();
+
+        let result = compactor.compact(&long_messages);
+        assert_eq!(compactor.compaction_count, 1);
+        assert!(result.len() < long_messages.len() + 2);
     }
 
     #[test]

@@ -2,6 +2,7 @@ use crate::conversation::parse_file_context;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
+use crate::tools::ToolExecutor;
 use tracing::info;
 
 use super::ChatEngine;
@@ -29,7 +30,7 @@ impl ChatEngine {
         let tool_instructions = if self.tool_format.expects_native_format() {
             None
         } else {
-            self.tools.tool_instructions(self.tool_format)
+            self.tool_registry.tool_instructions(self.tool_format)
         };
         let env_section = self.env_context.as_ref().map(|ctx| ctx.to_prompt_section());
 
@@ -133,7 +134,7 @@ impl ChatEngine {
         });
         self.chat.streaming = true;
         self.chat.auto_scroll = true;
-        self.tools.clear_pending();
+        self.tool_executor.clear_pending();
         messages
     }
 
@@ -186,7 +187,11 @@ impl ChatEngine {
                                 arr.len()
                             );
                             for item in arr {
-                                if Self::extract_tool_call_from_json(item, &mut self.tools) {
+                                if Self::extract_tool_call_from_json(
+                                    item,
+                                    &self.tool_registry,
+                                    &mut self.tool_executor,
+                                ) {
                                     found_tools = true;
                                 }
                             }
@@ -194,51 +199,63 @@ impl ChatEngine {
 
                         if json_val.is_object() {
                             info!("Sanitizer detected JSON object, checking for tool call");
-                            if Self::extract_tool_call_from_json(&json_val, &mut self.tools) {
+                            if Self::extract_tool_call_from_json(
+                                &json_val,
+                                &self.tool_registry,
+                                &mut self.tool_executor,
+                            ) {
                                 found_tools = true;
                             }
                         }
 
                         if found_tools {
-                            let tool_count = self.tools.pending_tool_calls().len();
+                            let tool_count = self.tool_executor.pending_tool_calls().len();
                             info!(
                                 "Sanitizer extracted {} tool calls from content JSON",
                                 tool_count
                             );
                             last.content = String::new();
-                            last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
+                            last.tool_calls = Some(self.tool_executor.pending_tool_calls().to_vec());
                         }
                     }
                 }
                 ToolFormat::Xml => {
                     let content = last.content.clone();
-                    if Self::extract_tool_calls_from_xml(&content, &mut self.tools) {
-                        let tool_count = self.tools.pending_tool_calls().len();
+                    if Self::extract_tool_calls_from_xml(
+                        &content,
+                        &self.tool_registry,
+                        &mut self.tool_executor,
+                    ) {
+                        let tool_count = self.tool_executor.pending_tool_calls().len();
                         info!(
                             "Sanitizer extracted {} tool calls from XML content",
                             tool_count
                         );
                         last.content = String::new();
-                        last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
+                        last.tool_calls = Some(self.tool_executor.pending_tool_calls().to_vec());
                     }
                 }
             }
         }
     }
 
-    fn extract_tool_call_from_json(item: &serde_json::Value, tools: &mut ToolRegistry) -> bool {
+    fn extract_tool_call_from_json(
+        item: &serde_json::Value,
+        registry: &ToolRegistry,
+        executor: &mut ToolExecutor,
+    ) -> bool {
         if let (Some(name), Some(args)) = (
             item.get("name").and_then(|v| v.as_str()),
             item.get("arguments").or_else(|| item.get("args")),
         ) {
-            if !tools.has_tool(name) {
+            if !registry.has_tool(name) {
                 return false;
             }
             let args_str = serde_json::to_string(args).unwrap_or_default();
-            tools.add_tool_call(ToolCall {
+            executor.add_tool_call(ToolCall {
                 id: format!(
                     "extracted_{}_{}",
-                    tools.pending_tool_calls().len(),
+                    executor.pending_tool_calls().len(),
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -261,13 +278,13 @@ impl ChatEngine {
                 .and_then(|f| f.get("arguments"))
                 .and_then(|v| v.as_str()),
         ) {
-            if !tools.has_tool(name) {
+            if !registry.has_tool(name) {
                 return false;
             }
-            tools.add_tool_call(ToolCall {
+            executor.add_tool_call(ToolCall {
                 id: format!(
                     "extracted_{}_{}",
-                    tools.pending_tool_calls().len(),
+                    executor.pending_tool_calls().len(),
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -285,7 +302,11 @@ impl ChatEngine {
         false
     }
 
-    fn extract_tool_calls_from_xml(content: &str, tools: &mut ToolRegistry) -> bool {
+    fn extract_tool_calls_from_xml(
+        content: &str,
+        registry: &ToolRegistry,
+        executor: &mut ToolExecutor,
+    ) -> bool {
         let mut found = false;
         let mut rest = content;
 
@@ -297,7 +318,7 @@ impl ChatEngine {
 
                 // Try to parse inner content as JSON first.
                 if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(inner.trim()) {
-                    if Self::extract_tool_call_from_json(&json_val, tools) {
+                    if Self::extract_tool_call_from_json(&json_val, registry, executor) {
                         found = true;
                         continue;
                     }
@@ -306,11 +327,11 @@ impl ChatEngine {
                 // Fall back to XML tag extraction.
                 if let Some(name) = Self::extract_xml_tag_content(inner, "name") {
                     if let Some(args) = Self::extract_xml_tag_content(inner, "arguments") {
-                        if tools.has_tool(&name) {
-                            tools.add_tool_call(ToolCall {
+                        if registry.has_tool(&name) {
+                            executor.add_tool_call(ToolCall {
                                 id: format!(
                                     "xml_{}_{}",
-                                    tools.pending_tool_calls().len(),
+                                    executor.pending_tool_calls().len(),
                                     std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
@@ -356,15 +377,15 @@ impl ChatEngine {
     }
 
     pub fn add_tool_call(&mut self, tool_call: ToolCall) {
-        self.tools.add_tool_call(tool_call);
+        self.tool_executor.add_tool_call(tool_call);
     }
 
     pub fn finish_stream(&mut self) {
         self.chat.streaming = false;
-        if !self.tools.pending_tool_calls().is_empty() {
+        if !self.tool_executor.pending_tool_calls().is_empty() {
             if let Some(last) = self.chat.messages.last_mut() {
                 if last.role == Role::Assistant {
-                    last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
+                    last.tool_calls = Some(self.tool_executor.pending_tool_calls().to_vec());
                 }
             }
         }
@@ -509,7 +530,7 @@ mod tests {
     fn finish_stream_sets_tool_calls() {
         let mut engine = ChatEngine::new();
         engine.push_user_message("test");
-        engine.tools_mut().add_tool_call(crate::domain::ToolCall {
+        engine.tool_executor.add_tool_call(crate::domain::ToolCall {
             id: "t1".to_string(),
             call_type: "function".to_string(),
             function: crate::domain::FunctionCall {

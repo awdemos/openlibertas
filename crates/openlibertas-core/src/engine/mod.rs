@@ -14,6 +14,7 @@ use crate::history::HistoryStore;
 use crate::mcp::McpClient;
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
+use crate::tools::{MessageAssembler, ToolExecutor};
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -108,8 +109,8 @@ pub struct ChatState {
     pub compactor: ContextCompactor,
 }
 
-impl Default for ChatState {
-    fn default() -> Self {
+impl ChatState {
+    pub fn with_context_window(context_window: usize) -> Self {
         Self {
             messages: Vec::new(),
             scroll: 0,
@@ -117,8 +118,14 @@ impl Default for ChatState {
             auto_scroll: true,
             cancel_token: tokio_util::sync::CancellationToken::new(),
             spinner_frame: 0,
-            compactor: ContextCompactor::default(),
+            compactor: ContextCompactor::with_context_window(context_window),
         }
+    }
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        Self::with_context_window(8192)
     }
 }
 
@@ -126,7 +133,9 @@ pub struct ChatEngine {
     chat: ChatState,
     input: InputState,
     agents: AgentState,
-    tools: ToolRegistry,
+    tool_registry: ToolRegistry,
+    tool_executor: ToolExecutor,
+    message_assembler: MessageAssembler,
     system_prompt: Option<String>,
     agent_prompt: Option<String>,
     env_context: Option<EnvContext>,
@@ -141,7 +150,9 @@ impl Default for ChatEngine {
             chat: ChatState::default(),
             input: InputState::default(),
             agents: AgentState::default(),
-            tools: ToolRegistry::default(),
+            tool_registry: ToolRegistry::default(),
+            tool_executor: ToolExecutor::default(),
+            message_assembler: MessageAssembler::default(),
             system_prompt: None,
             agent_prompt: None,
             env_context: None,
@@ -155,6 +166,11 @@ impl Default for ChatEngine {
 impl ChatEngine {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_context_window(mut self, context_window: usize) -> Self {
+        self.chat = ChatState::with_context_window(context_window);
+        self
     }
 
     pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {
@@ -178,7 +194,7 @@ impl ChatEngine {
     }
 
     pub fn with_mcp_client(mut self, client: McpClient) -> Self {
-        self.tools = self.tools.with_client(client);
+        self.tool_executor = self.tool_executor.with_client(client);
         self
     }
 
@@ -214,11 +230,19 @@ impl ChatEngine {
     }
 
     pub fn tools(&self) -> &ToolRegistry {
-        &self.tools
+        &self.tool_registry
     }
 
     pub fn tools_mut(&mut self) -> &mut ToolRegistry {
-        &mut self.tools
+        &mut self.tool_registry
+    }
+
+    pub fn tool_executor(&self) -> &ToolExecutor {
+        &self.tool_executor
+    }
+
+    pub fn tool_executor_mut(&mut self) -> &mut ToolExecutor {
+        &mut self.tool_executor
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -251,7 +275,7 @@ impl ChatEngine {
 
     pub fn tools_for_request(&self) -> Option<Vec<ToolDefinition>> {
         let plan_mode = self.agents.mode == AgentMode::Plan;
-        self.tools.tools_for_request(plan_mode)
+        self.tool_registry.definitions_for_api(plan_mode)
     }
 
     pub fn assemble_tool_result_messages(&self) -> Vec<Message> {
@@ -260,20 +284,22 @@ impl ChatEngine {
         } else {
             None
         };
-        self.tools.assemble_messages_with_agent_context(
+        self.message_assembler.assemble(
             &self.chat.messages,
             Some("active").filter(|_| self.agents.status == AgentStatus::Active),
             agent_prompt,
+            self.tool_executor.pending_tool_calls(),
+            self.tool_executor.tool_results(),
         )
     }
 
     pub async fn execute_pending_tools(&mut self) -> Vec<crate::domain::ToolExecutionResult> {
         let results = self
-            .tools
+            .tool_executor
             .execute_pending_tools(self.agents.yolo_mode)
             .await;
 
-        for msg in self.tools.create_tool_result_messages() {
+        for msg in self.tool_executor.create_tool_result_messages() {
             self.chat.messages.push(msg);
         }
 

@@ -1,4 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+fn cl100k_bpe() -> &'static tiktoken_rs::CoreBPE {
+    static BPE: OnceLock<tiktoken_rs::CoreBPE> = OnceLock::new();
+    BPE.get_or_init(|| tiktoken_rs::cl100k_base().expect("cl100k_base should initialize"))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -153,6 +159,68 @@ pub struct Message {
     pub timestamp: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+}
+
+impl Message {
+    /// Estimate the token count of this message using tiktoken-rs.
+    /// Falls back to a character-based heuristic (~4 chars per token)
+    /// if the tokenizer is unavailable.
+    pub fn estimate_tokens(&self) -> usize {
+        let mut text = String::new();
+        text.push_str(&self.role.to_string());
+        text.push('\n');
+        text.push_str(&self.content);
+
+        if let Some(ref tool_calls) = self.tool_calls {
+            for tc in tool_calls {
+                text.push_str(&tc.id);
+                text.push_str(&tc.call_type);
+                text.push_str(&tc.function.name);
+                text.push_str(&tc.function.arguments);
+            }
+        }
+        if let Some(ref tool_call_id) = self.tool_call_id {
+            text.push_str(tool_call_id);
+        }
+        if let Some(ref reasoning) = self.reasoning_content {
+            text.push_str(reasoning);
+        }
+
+        // Use tiktoken for approximate count; add a small per-message overhead
+        // to account for role/name formatting tokens that tiktoken-rs may not
+        // capture precisely in this flat representation.
+        let base = cl100k_bpe()
+            .encode_with_special_tokens(&text)
+            .len();
+        base.saturating_add(3).max(1)
+    }
+
+    /// Fallback estimate when tiktoken-rs is unavailable.
+    /// Uses the rule of thumb that ~4 characters ≈ 1 token.
+    pub fn fallback_token_estimate(&self) -> usize {
+        let mut chars = self.content.chars().count();
+        chars += self.role.to_string().chars().count();
+        if let Some(ref tool_calls) = self.tool_calls {
+            for tc in tool_calls {
+                chars += tc.id.chars().count();
+                chars += tc.call_type.chars().count();
+                chars += tc.function.name.chars().count();
+                chars += tc.function.arguments.chars().count();
+            }
+        }
+        if let Some(ref tool_call_id) = self.tool_call_id {
+            chars += tool_call_id.chars().count();
+        }
+        if let Some(ref reasoning) = self.reasoning_content {
+            chars += reasoning.chars().count();
+        }
+        (chars / 4).max(1).saturating_add(3)
+    }
+}
+
+/// Estimate total tokens for a slice of messages.
+pub fn estimate_messages_tokens(messages: &[Message]) -> usize {
+    messages.iter().map(|m| m.estimate_tokens()).sum()
 }
 
 #[derive(Debug, Serialize, Clone)]
