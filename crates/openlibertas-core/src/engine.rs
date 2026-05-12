@@ -12,6 +12,7 @@ use crate::domain::{FunctionCall, Message, ToolCall, ToolDefinition};
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
 use crate::mcp::McpClient;
+use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
 use tracing::{info, warn};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -131,7 +132,7 @@ pub struct ChatEngine {
     system_prompt: Option<String>,
     agent_prompt: Option<String>,
     env_context: Option<EnvContext>,
-    supports_native_tools: bool,
+    tool_format: ToolFormat,
     completion_engine: CompletionEngine,
     history_store: Option<HistoryStore>,
 }
@@ -146,7 +147,7 @@ impl Default for ChatEngine {
             system_prompt: None,
             agent_prompt: None,
             env_context: None,
-            supports_native_tools: false,
+            tool_format: ToolFormat::Native,
             completion_engine: CompletionEngine::new(),
             history_store: None,
         }
@@ -232,8 +233,8 @@ impl ChatEngine {
         self.agent_prompt = Some(prompt.into());
     }
 
-    pub fn set_supports_native_tools(&mut self, supports: bool) {
-        self.supports_native_tools = supports;
+    pub fn set_tool_format(&mut self, tool_format: ToolFormat) {
+        self.tool_format = tool_format;
     }
 
     pub fn env_context(&self) -> Option<&EnvContext> {
@@ -270,85 +271,100 @@ impl ChatEngine {
     pub fn push_user_message(&mut self, content: impl Into<String>) -> Vec<Message> {
         let content = content.into();
         let parsed = parse_file_context(&content);
-        let mut messages = self.chat.messages.clone();
+
+        let mut system_messages = Vec::new();
 
         if self.agents.status == AgentStatus::Active {
             if let Some(prompt) = &self.agent_prompt {
-                messages.insert(
-                    0,
-                    Message {
-                        role: Role::System,
-                        content: prompt.clone(),
-                        tool_calls: None,
-                        tool_call_id: None,
-                        timestamp: None,
-                        reasoning_content: None,
-                    },
-                );
+                system_messages.push(Message {
+                    role: Role::System,
+                    content: prompt.clone(),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    timestamp: None,
+                    reasoning_content: None,
+                });
             }
         }
 
-        let tool_instructions = if self.supports_native_tools {
+        let tool_instructions = if self.tool_format.expects_native_format() {
             None
         } else {
-            self.tools.tool_instructions()
+            self.tools.tool_instructions(self.tool_format)
         };
         let env_section = self.env_context.as_ref().map(|ctx| ctx.to_prompt_section());
 
         if let Some(prompt) = &self.system_prompt {
-            if !messages
-                .iter()
-                .any(|m| m.role == Role::System && m.content.starts_with(prompt))
-            {
-                let mut full_prompt = if let Some(tool_text) = &tool_instructions {
-                    format!("{}\n\n{}", prompt, tool_text)
-                } else {
-                    prompt.clone()
-                };
-                if let Some(env) = &env_section {
-                    full_prompt.push_str(env);
-                }
-                messages.insert(
-                    0,
-                    Message {
-                        role: Role::System,
-                        content: full_prompt,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        timestamp: None,
-                        reasoning_content: None,
-                    },
-                );
+            let mut full_prompt = if let Some(tool_text) = &tool_instructions {
+                format!("{}\n\n{}", prompt, tool_text)
+            } else {
+                prompt.clone()
+            };
+            if let Some(env) = &env_section {
+                full_prompt.push_str(env);
             }
+            system_messages.push(Message {
+                role: Role::System,
+                content: full_prompt,
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         } else if let Some(tool_text) = &tool_instructions {
             let mut full_prompt = tool_text.clone();
             if let Some(env) = &env_section {
                 full_prompt.push_str(env);
             }
-            messages.insert(
-                0,
-                Message {
-                    role: Role::System,
-                    content: full_prompt,
-                    tool_calls: None,
-                    tool_call_id: None,
-                    timestamp: None,
-                    reasoning_content: None,
-                },
-            );
+            system_messages.push(Message {
+                role: Role::System,
+                content: full_prompt,
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         } else if let Some(env) = &env_section {
-            messages.insert(
-                0,
-                Message {
-                    role: Role::System,
-                    content: env.clone(),
-                    tool_calls: None,
-                    tool_call_id: None,
-                    timestamp: None,
-                    reasoning_content: None,
-                },
-            );
+            system_messages.push(Message {
+                role: Role::System,
+                content: env.clone(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+            });
         }
+
+        if !system_messages.is_empty() {
+            let already_present = system_messages.iter().enumerate().all(|(i, sys_msg)| {
+                self.chat.messages.get(i).map_or(false, |m| {
+                    m.role == Role::System && m.content == sys_msg.content
+                })
+            });
+
+            if !already_present {
+                let mut to_remove = Vec::new();
+                for (i, msg) in self.chat.messages.iter().enumerate() {
+                    if msg.role != Role::System {
+                        break;
+                    }
+                    if system_messages.iter().any(|s| s.content == msg.content) {
+                        to_remove.push(i);
+                    } else {
+                        break;
+                    }
+                }
+                for &idx in to_remove.iter().rev() {
+                    self.chat.messages.remove(idx);
+                }
+
+                for msg in &system_messages {
+                    self.chat.messages.insert(0, msg.clone());
+                }
+            }
+        }
+
+        let mut messages = self.chat.messages.clone();
 
         let ts = Some(now_timestamp());
         messages.push(Message {
@@ -409,56 +425,76 @@ impl ChatEngine {
                 return;
             }
             Self::strip_think_tags(&mut last.content);
-            let content = &last.content;
-            let trimmed = content.trim();
 
-            let json_text = if trimmed.starts_with("```") {
-                trimmed
-                    .trim_start_matches("```json")
-                    .trim_start_matches("```")
-                    .trim_end_matches("```")
-                    .trim()
-            } else {
-                trimmed
-            };
-
-            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(json_text) {
-                if let Some(thought) = json_val.get("thought").and_then(|v| v.as_str()) {
-                    info!("Sanitizer extracted thought: {} chars", thought.len());
-                    last.content = thought.to_string();
+            match self.tool_format {
+                ToolFormat::Native | ToolFormat::None => {
+                    // No content parsing needed for native or no-tool formats.
                     return;
                 }
+                ToolFormat::ContentJson => {
+                    let content = &last.content;
+                    let trimmed = content.trim();
 
-                let mut found_tools = false;
+                    let json_text = if trimmed.starts_with("```") {
+                        trimmed
+                            .trim_start_matches("```json")
+                            .trim_start_matches("```")
+                            .trim_end_matches("```")
+                            .trim()
+                    } else {
+                        trimmed
+                    };
 
-                if let Some(arr) = json_val.as_array() {
-                    info!(
-                        "Sanitizer detected JSON array with {} items, checking for tool calls",
-                        arr.len()
-                    );
-                    for item in arr {
-                        if Self::extract_tool_call_from_json(item, &mut self.tools) {
-                            found_tools = true;
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(json_text) {
+                        if let Some(thought) = json_val.get("thought").and_then(|v| v.as_str()) {
+                            info!("Sanitizer extracted thought: {} chars", thought.len());
+                            last.content = thought.to_string();
+                            return;
+                        }
+
+                        let mut found_tools = false;
+
+                        if let Some(arr) = json_val.as_array() {
+                            info!(
+                                "Sanitizer detected JSON array with {} items, checking for tool calls",
+                                arr.len()
+                            );
+                            for item in arr {
+                                if Self::extract_tool_call_from_json(item, &mut self.tools) {
+                                    found_tools = true;
+                                }
+                            }
+                        }
+
+                        if json_val.is_object() {
+                            info!("Sanitizer detected JSON object, checking for tool call");
+                            if Self::extract_tool_call_from_json(&json_val, &mut self.tools) {
+                                found_tools = true;
+                            }
+                        }
+
+                        if found_tools {
+                            let tool_count = self.tools.pending_tool_calls().len();
+                            info!(
+                                "Sanitizer extracted {} tool calls from content JSON",
+                                tool_count
+                            );
+                            last.content = String::new();
+                            last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
                         }
                     }
                 }
-
-                if json_val.is_object() {
-                    info!("Sanitizer detected JSON object, checking for tool call");
-                    if Self::extract_tool_call_from_json(&json_val, &mut self.tools) {
-                        found_tools = true;
+                ToolFormat::Xml => {
+                    let content = last.content.clone();
+                    if Self::extract_tool_calls_from_xml(&content, &mut self.tools) {
+                        let tool_count = self.tools.pending_tool_calls().len();
+                        info!(
+                            "Sanitizer extracted {} tool calls from XML content",
+                            tool_count
+                        );
+                        last.content = String::new();
+                        last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
                     }
-                }
-
-                if found_tools {
-                    let tool_count = self.tools.pending_tool_calls().len();
-                    info!(
-                        "Sanitizer extracted {} tool calls from content JSON",
-                        tool_count
-                    );
-                    last.content = String::new();
-                    last.tool_calls = Some(self.tools.pending_tool_calls().to_vec());
-                    return;
                 }
             }
         }
@@ -474,7 +510,14 @@ impl ChatEngine {
             }
             let args_str = serde_json::to_string(args).unwrap_or_default();
             tools.add_tool_call(ToolCall {
-                id: format!("extracted_{}_{}", tools.pending_tool_calls().len(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
+                id: format!(
+                    "extracted_{}_{}",
+                    tools.pending_tool_calls().len(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                ),
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: name.to_string(),
@@ -496,7 +539,14 @@ impl ChatEngine {
                 return false;
             }
             tools.add_tool_call(ToolCall {
-                id: format!("extracted_{}_{}", tools.pending_tool_calls().len(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
+                id: format!(
+                    "extracted_{}_{}",
+                    tools.pending_tool_calls().len(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                ),
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: name.to_string(),
@@ -507,6 +557,64 @@ impl ChatEngine {
         }
 
         false
+    }
+
+    fn extract_tool_calls_from_xml(content: &str, tools: &mut ToolRegistry) -> bool {
+        let mut found = false;
+        let mut rest = content;
+
+        while let Some(start) = rest.find("<tool_call>") {
+            let after_start = &rest[start + "<tool_call>".len()..];
+            if let Some(end) = after_start.find("</tool_call>") {
+                let inner = &after_start[..end];
+                rest = &after_start[end + "</tool_call>".len()..];
+
+                // Try to parse inner content as JSON first.
+                if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(inner.trim()) {
+                    if Self::extract_tool_call_from_json(&json_val, tools) {
+                        found = true;
+                        continue;
+                    }
+                }
+
+                // Fall back to XML tag extraction.
+                if let Some(name) = Self::extract_xml_tag_content(inner, "name") {
+                    if let Some(args) = Self::extract_xml_tag_content(inner, "arguments") {
+                        if tools.has_tool(&name) {
+                            tools.add_tool_call(ToolCall {
+                                id: format!(
+                                    "xml_{}_{}",
+                                    tools.pending_tool_calls().len(),
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis()
+                                ),
+                                call_type: "function".to_string(),
+                                function: FunctionCall {
+                                    name,
+                                    arguments: args,
+                                },
+                            });
+                            found = true;
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        found
+    }
+
+    fn extract_xml_tag_content(xml: &str, tag: &str) -> Option<String> {
+        let open = format!("<{}>", tag);
+        let close = format!("</{}>", tag);
+        let start = xml.find(&open)? + open.len();
+        let after_open = &xml[start..];
+        let end = after_open.find(&close)?;
+        Some(after_open[..end].trim().to_string())
     }
 
     pub fn append_reasoning_chunk(&mut self, chunk: &str) {
@@ -854,13 +962,13 @@ impl ChatEngine {
         let after = &self.input.buffer[safe_pos..];
         let mut chars = after.char_indices().peekable();
         while let Some((_, ch)) = chars.peek() {
-            if ch.is_whitespace() {
+            if !ch.is_whitespace() {
                 break;
             }
             chars.next();
         }
         while let Some((_, ch)) = chars.peek() {
-            if !ch.is_whitespace() {
+            if ch.is_whitespace() {
                 break;
             }
             chars.next();
@@ -1133,9 +1241,10 @@ mod tests {
         let mut engine = ChatEngine::new();
         let messages = engine.push_user_message("Hello");
         assert_eq!(engine.chat.messages.len(), 2);
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].role, Role::System);
-        assert_eq!(messages[1].role, Role::User);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, Role::User);
+        assert_eq!(engine.chat.messages[0].role, Role::User);
+        assert_eq!(engine.chat.messages[1].role, Role::Assistant);
     }
 
     #[test]
@@ -1148,6 +1257,46 @@ mod tests {
             messages2.iter().filter(|m| m.role == Role::System).count(),
             1
         );
+    }
+
+    #[test]
+    fn system_prompt_persisted_in_chat_messages() {
+        let mut engine = ChatEngine::new().with_system_prompt("You are helpful");
+        let _messages = engine.push_user_message("Hello");
+
+        assert_eq!(engine.chat.messages[0].role, Role::System);
+        assert_eq!(engine.chat.messages[0].content, "You are helpful");
+    }
+
+    #[test]
+    fn agent_prompt_persisted_in_chat_messages() {
+        let mut engine = ChatEngine::new()
+            .with_system_prompt("You are helpful")
+            .with_agent_prompt("You are an agent");
+        engine.agents.status = AgentStatus::Active;
+
+        let _messages = engine.push_user_message("Hello");
+
+        assert_eq!(engine.chat.messages[0].role, Role::System);
+        assert_eq!(engine.chat.messages[0].content, "You are helpful");
+        assert_eq!(engine.chat.messages[1].role, Role::System);
+        assert_eq!(engine.chat.messages[1].content, "You are an agent");
+    }
+
+    #[test]
+    fn no_duplicate_system_prompts_on_subsequent_messages() {
+        let mut engine = ChatEngine::new().with_system_prompt("You are helpful");
+        let _ = engine.push_user_message("Hello");
+        let _ = engine.push_user_message("Again");
+
+        let system_count = engine
+            .chat
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::System)
+            .count();
+        assert_eq!(system_count, 1);
+        assert_eq!(engine.chat.messages[0].content, "You are helpful");
     }
 
     #[test]
@@ -1338,6 +1487,7 @@ mod tests {
     #[test]
     fn sanitize_extracts_tool_call_from_json_content() {
         let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::ContentJson);
         engine.push_user_message("Read the file");
         engine.append_stream_chunk(
             r#"{
@@ -1365,6 +1515,7 @@ mod tests {
     #[test]
     fn sanitize_ignores_unknown_tool_names() {
         let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::ContentJson);
         engine.push_user_message("Explain this JSON");
         engine.append_stream_chunk(
             r#"{
@@ -1381,7 +1532,116 @@ mod tests {
             !last.content.is_empty(),
             "content should NOT be cleared for unknown tool"
         );
-        assert!(last.tool_calls.is_none(), "tool_calls should NOT be present for unknown tool");
+        assert!(
+            last.tool_calls.is_none(),
+            "tool_calls should NOT be present for unknown tool"
+        );
+    }
+
+    #[test]
+    fn sanitize_extracts_tool_call_from_xml_content() {
+        let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::Xml);
+        engine.push_user_message("Read the file");
+        engine.append_stream_chunk(
+            r#"<tool_call>
+<name>read_file</name>
+<arguments>{"path": "/tmp/test.txt"}</arguments>
+</tool_call>"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(
+            last.content.is_empty(),
+            "content should be cleared, got: {:?}",
+            last.content
+        );
+        assert!(last.tool_calls.is_some(), "tool_calls should be present");
+        let tcs = last.tool_calls.as_ref().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0].function.name, "read_file");
+        assert!(tcs[0].function.arguments.contains("/tmp/test.txt"));
+    }
+
+    #[test]
+    fn sanitize_xml_ignores_unknown_tool_names() {
+        let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::Xml);
+        engine.push_user_message("Explain this XML");
+        engine.append_stream_chunk(
+            r#"<tool_call>
+<name>calculate</name>
+<arguments>{"expression": "15 + 27"}</arguments>
+</tool_call>"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(
+            !last.content.is_empty(),
+            "content should NOT be cleared for unknown tool"
+        );
+        assert!(
+            last.tool_calls.is_none(),
+            "tool_calls should NOT be present for unknown tool"
+        );
+    }
+
+    #[test]
+    fn sanitize_xml_fallback_to_json_in_inner_content() {
+        let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::Xml);
+        engine.push_user_message("Run a tool");
+        engine.append_stream_chunk(
+            r#"<tool_call>
+{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}
+</tool_call>"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(last.content.is_empty());
+        assert!(last.tool_calls.is_some());
+        let tcs = last.tool_calls.as_ref().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0].function.name, "read_file");
+    }
+
+    #[test]
+    fn sanitize_native_does_not_parse_content() {
+        let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::Native);
+        engine.push_user_message("Read the file");
+        engine.append_stream_chunk(
+            r#"{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(
+            !last.content.is_empty(),
+            "content should NOT be parsed in Native mode"
+        );
+        assert!(last.tool_calls.is_none());
+    }
+
+    #[test]
+    fn sanitize_none_does_not_parse_content() {
+        let mut engine = ChatEngine::new();
+        engine.set_tool_format(ToolFormat::None);
+        engine.push_user_message("Read the file");
+        engine.append_stream_chunk(
+            r#"{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}"#,
+        );
+        engine.sanitize_assistant_content();
+
+        let last = engine.chat.messages.last().unwrap();
+        assert!(
+            !last.content.is_empty(),
+            "content should NOT be parsed in None mode"
+        );
+        assert!(last.tool_calls.is_none());
     }
 
     #[test]

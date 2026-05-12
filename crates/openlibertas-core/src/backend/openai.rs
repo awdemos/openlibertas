@@ -7,9 +7,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
+use crate::backend::Backend;
 use crate::domain::*;
-
-pub mod registry;
+use crate::tool_format::ToolFormat;
 
 #[derive(Debug, Deserialize)]
 struct OllamaModelInfo {
@@ -108,27 +108,27 @@ pub struct OpenAiBackend {
     client: Client,
     base_url: String,
     api_key: crate::config::SecretString,
-    supports_tools: bool,
+    tool_format: ToolFormat,
     extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl OpenAiBackend {
     pub fn new(base_url: String, api_key: crate::config::SecretString) -> Self {
-        Self::with_tools(base_url, api_key, true)
+        Self::with_tool_format(base_url, api_key, ToolFormat::Native)
     }
 
-    pub fn with_tools(
+    pub fn with_tool_format(
         base_url: String,
         api_key: crate::config::SecretString,
-        supports_tools: bool,
+        tool_format: ToolFormat,
     ) -> Self {
-        Self::with_tools_and_params(base_url, api_key, supports_tools, None)
+        Self::with_tool_format_and_params(base_url, api_key, tool_format, None)
     }
 
-    pub fn with_tools_and_params(
+    pub fn with_tool_format_and_params(
         base_url: String,
         api_key: crate::config::SecretString,
-        supports_tools: bool,
+        tool_format: ToolFormat,
         extra_params: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Self {
         let client = Client::builder()
@@ -139,7 +139,7 @@ impl OpenAiBackend {
             client,
             base_url,
             api_key,
-            supports_tools,
+            tool_format,
             extra_params,
         }
     }
@@ -160,7 +160,7 @@ impl OpenAiBackend {
                 let mut models = data.data;
                 for model in &mut models {
                     let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-                    model.supports_tools = self.supports_tools || inferred_tools;
+                    model.supports_tools = self.tool_format != ToolFormat::None || inferred_tools;
                     model.supports_voice = inferred_voice;
                 }
                 return Ok(models);
@@ -197,7 +197,7 @@ impl OpenAiBackend {
             .map(|m| Model {
                 id: m.name,
                 provider: ProviderId::new(""),
-                supports_tools: self.supports_tools,
+                supports_tools: self.tool_format != ToolFormat::None,
                 supports_voice: false,
                 local: true,
             })
@@ -205,7 +205,7 @@ impl OpenAiBackend {
 
         for model in &mut models {
             let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-            model.supports_tools = self.supports_tools || inferred_tools;
+            model.supports_tools = self.tool_format != ToolFormat::None || inferred_tools;
             model.supports_voice = inferred_voice;
         }
 
@@ -231,7 +231,7 @@ impl OpenAiBackend {
         let msg_count = messages.len();
         let api_messages: Vec<crate::domain::ApiMessage> =
             messages.into_iter().map(Into::into).collect();
-        let tools_for_req = if self.supports_tools {
+        let tools_for_req = if self.tool_format.sends_native_tools() {
             tools.clone()
         } else {
             None
@@ -249,7 +249,7 @@ impl OpenAiBackend {
         let client = self.client.clone();
         let base_url = self.base_url.clone();
         let api_key = self.api_key.clone();
-        let supports_tools = self.supports_tools;
+        let tool_format = self.tool_format;
 
         let tools_count = req.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         info!(
@@ -364,7 +364,11 @@ impl OpenAiBackend {
                         },
                         temperature,
                     }),
-                    tools: if supports_tools { tools } else { None },
+                    tools: if tool_format.sends_native_tools() {
+                        tools
+                    } else {
+                        None
+                    },
                 };
                 info!("Falling back to Ollama native API: {}", ollama_url);
                 match client
@@ -499,10 +503,12 @@ impl OpenAiBackend {
                     }
                 }
                 Err(e) => {
-                    // Graceful recovery: send accumulated tool calls before error
                     let tool_count = accumulated_tool_calls.len();
                     if tool_count > 0 {
-                        info!("Stream error recovery: sending {} accumulated tool calls", tool_count);
+                        info!(
+                            "Stream error recovery: sending {} accumulated tool calls",
+                            tool_count
+                        );
                         for (_, tool_call) in accumulated_tool_calls {
                             let _ = tx.send(ChatEvent::ToolCall(tool_call));
                         }
@@ -612,8 +618,42 @@ impl OpenAiBackend {
     }
 }
 
-// OpenAiBackend is the sole backend implementation.
-// New providers are handled via different base_url/config, not new backend types.
+impl Backend for OpenAiBackend {
+    fn chat(
+        &self,
+        model: String,
+        messages: Vec<Message>,
+        max_tokens: u32,
+        tools: Option<Vec<ToolDefinition>>,
+        cancel_token: tokio_util::sync::CancellationToken,
+        temperature: Option<f32>,
+    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+        self.chat(
+            model,
+            messages,
+            max_tokens,
+            tools,
+            cancel_token,
+            temperature,
+        )
+    }
+
+    fn fetch_models(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
+        Box::pin(self.fetch_models())
+    }
+
+    fn health_check(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async move { self.fetch_models().await.map(|_| ()) })
+    }
+
+    fn cancel_token(&self) -> tokio_util::sync::CancellationToken {
+        tokio_util::sync::CancellationToken::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {

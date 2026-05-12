@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::backend::OpenAiBackend;
+use crate::backend::{Backend, OpenAiBackend};
 use crate::config::Provider;
 use crate::domain::{ChatEvent, Message, ProviderId, ToolDefinition};
 
@@ -28,22 +28,23 @@ struct ProviderHealth {
 /// - Circuit-breaker health tracking per provider
 #[derive(Clone)]
 pub struct BackendRegistry {
-    backends: HashMap<ProviderId, Arc<OpenAiBackend>>,
+    backends: HashMap<ProviderId, Arc<dyn Backend>>,
     health: Arc<Mutex<HashMap<ProviderId, ProviderHealth>>>,
 }
 
 impl BackendRegistry {
     pub fn new(providers: &[Provider]) -> Self {
-        let mut backends = HashMap::new();
+        let mut backends: HashMap<ProviderId, Arc<dyn Backend>> = HashMap::new();
         let mut health = HashMap::new();
         for provider in providers {
             if provider.enabled {
-                let backend = Arc::new(OpenAiBackend::with_tools_and_params(
-                    provider.base_url.clone(),
-                    provider.api_key.clone(),
-                    provider.supports_tools,
-                    provider.extra_params.clone(),
-                ));
+                let backend: Arc<dyn Backend> =
+                    Arc::new(OpenAiBackend::with_tool_format_and_params(
+                        provider.base_url.clone(),
+                        provider.api_key.clone(),
+                        provider.tool_format,
+                        provider.extra_params.clone(),
+                    ));
                 let id = ProviderId::new(&provider.name);
                 backends.insert(id.clone(), backend);
                 health.insert(
@@ -61,7 +62,7 @@ impl BackendRegistry {
         }
     }
 
-    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<OpenAiBackend>> {
+    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<dyn Backend>> {
         self.backends.get(provider)
     }
 
@@ -89,7 +90,7 @@ impl BackendRegistry {
     ///
     /// Tries `preferred` name first (case-insensitive), then falls back
     /// to the default provider. Returns `None` if no backends exist.
-    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<OpenAiBackend>> {
+    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<dyn Backend>> {
         if let Some(name) = preferred {
             let id = ProviderId::new(name);
             if let Some(backend) = self.backends.get(&id) {
@@ -99,7 +100,7 @@ impl BackendRegistry {
         self.default_backend()
     }
 
-    pub fn default_backend(&self) -> Option<&Arc<OpenAiBackend>> {
+    pub fn default_backend(&self) -> Option<&Arc<dyn Backend>> {
         self.backends.values().next()
     }
 
@@ -153,7 +154,7 @@ impl BackendRegistry {
         let (tx, rx) = mpsc::unbounded_channel();
         let preferred = preferred_provider.clone();
 
-        let mut providers: Vec<(ProviderId, Arc<OpenAiBackend>)> = Vec::new();
+        let mut providers: Vec<(ProviderId, Arc<dyn Backend>)> = Vec::new();
         if let Some(backend) = self.backends.get(&preferred) {
             providers.push((preferred.clone(), backend.clone()));
         }
@@ -174,7 +175,8 @@ impl BackendRegistry {
                         if let Some(record) = h.get(&provider_id) {
                             if record.consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD {
                                 if let Some(last) = record.last_failure {
-                                    last.elapsed() >= Duration::from_secs(CIRCUIT_BREAKER_TIMEOUT_SECS)
+                                    last.elapsed()
+                                        >= Duration::from_secs(CIRCUIT_BREAKER_TIMEOUT_SECS)
                                 } else {
                                     true
                                 }
@@ -213,9 +215,7 @@ impl BackendRegistry {
                 let mut can_fallback = true;
                 while let Some(event) = stream_rx.recv().await {
                     match &event {
-                        ChatEvent::Text(_)
-                        | ChatEvent::Reasoning(_)
-                        | ChatEvent::ToolCall(_) => {
+                        ChatEvent::Text(_) | ChatEvent::Reasoning(_) | ChatEvent::ToolCall(_) => {
                             can_fallback = false;
                         }
                         ChatEvent::Cancelled => {
@@ -269,7 +269,11 @@ impl BackendRegistry {
             } else {
                 let _ = tx.send(ChatEvent::Error(format!(
                     "All providers failed. Tried: {}",
-                    tried.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+                    tried
+                        .iter()
+                        .map(|p| p.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
         });
@@ -281,16 +285,17 @@ impl BackendRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::SecretString;
+    use crate::tool_format::ToolFormat;
 
     fn test_providers() -> Vec<Provider> {
-        use crate::config::SecretString;
         vec![
             Provider {
                 name: "local".to_string(),
                 base_url: "http://localhost:11434/v1".to_string(),
                 api_key: SecretString::new("sk-test".to_string()),
                 enabled: true,
-                supports_tools: true,
+                tool_format: ToolFormat::Native,
                 extra_params: None,
             },
             Provider {
@@ -298,7 +303,7 @@ mod tests {
                 base_url: "https://api.kimi.com/v1".to_string(),
                 api_key: SecretString::new("sk-kimi".to_string()),
                 enabled: true,
-                supports_tools: true,
+                tool_format: ToolFormat::Native,
                 extra_params: None,
             },
         ]
@@ -325,9 +330,9 @@ mod tests {
         let providers = vec![Provider {
             name: "disabled".to_string(),
             base_url: "http://example.com".to_string(),
-            api_key: crate::config::SecretString::new("sk-test".to_string()),
+            api_key: SecretString::new("sk-test".to_string()),
             enabled: false,
-            supports_tools: false,
+            tool_format: ToolFormat::None,
             extra_params: None,
         }];
         let registry = BackendRegistry::new(&providers);

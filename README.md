@@ -4,7 +4,24 @@
 
 A terminal-based AI chat client with multi-provider support, MCP tools, session management, and intuitive TUI navigation.
 
+> **Free Forever** — OpenLibertas will be free to use forever. No subscriptions, no paywalls, no feature gating.
+
 > **Warning:** This project is under active development and is buggy. PRs welcome.
+
+[![💝 Sponsor this project](https://img.shields.io/badge/💝_Sponsor_this_project-ea4aaa?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/openlibertas)
+
+### 💝 Support OpenLibertas
+
+🚀 **If OpenLibertas helps you, consider [sponsoring](https://github.com/sponsors/openlibertas) — 100% of support goes to keeping it free forever.**
+
+- **$5/month**: Coffee tier ☕ - Eternal gratitude + sponsor badge
+- **$25/month**: Bug prioritizer 🐛 - Priority support + name in [SPONSORS.md](SPONSORS.md)
+- **$100/month**: Corporate backer 🏢 - Logo placement + monthly office hours
+- **$500/month**: Infrastructure partner 🚀 - Direct support + roadmap input
+
+[**🎯 Become a Sponsor**](https://github.com/sponsors/openlibertas) | See our amazing [sponsors](SPONSORS.md) 🙏
+
+---
 
 ## Features
 

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::{info, warn};
 
+use crate::tool_format::ToolFormat;
+
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
@@ -43,7 +45,7 @@ impl Serialize for SecretString {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct Provider {
     pub name: String,
@@ -52,14 +54,55 @@ pub struct Provider {
     pub api_key: SecretString,
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "default_supports_tools")]
-    pub supports_tools: bool,
+    pub tool_format: ToolFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-fn default_supports_tools() -> bool {
-    true
+impl<'de> Deserialize<'de> for Provider {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ProviderHelper {
+            name: String,
+            base_url: String,
+            #[serde(default)]
+            api_key: SecretString,
+            #[serde(default)]
+            enabled: bool,
+            #[serde(default)]
+            tool_format: Option<ToolFormat>,
+            #[serde(default)]
+            supports_tools: Option<bool>,
+            #[serde(default)]
+            extra_params: Option<serde_json::Map<String, serde_json::Value>>,
+        }
+
+        let helper = ProviderHelper::deserialize(deserializer)?;
+
+        let tool_format = if let Some(tf) = helper.tool_format {
+            tf
+        } else if let Some(st) = helper.supports_tools {
+            if st {
+                ToolFormat::Native
+            } else {
+                ToolFormat::None
+            }
+        } else {
+            ToolFormat::default()
+        };
+
+        Ok(Provider {
+            name: helper.name,
+            base_url: helper.base_url,
+            api_key: helper.api_key,
+            enabled: helper.enabled,
+            tool_format,
+            extra_params: helper.extra_params,
+        })
+    }
 }
 
 impl Provider {
@@ -69,7 +112,7 @@ impl Provider {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
-            supports_tools: true,
+            tool_format: ToolFormat::Native,
             extra_params: None,
         }
     }
@@ -245,7 +288,7 @@ mod tests {
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
         assert_eq!(p.api_key.expose_secret(), DEFAULT_API_KEY);
         assert!(p.enabled);
-        assert!(p.supports_tools);
+        assert_eq!(p.tool_format, ToolFormat::Native);
         assert!(p.extra_params.is_none());
     }
 
@@ -256,7 +299,7 @@ mod tests {
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new("sk-test".to_string()),
             enabled: false,
-            supports_tools: false,
+            tool_format: ToolFormat::None,
             extra_params: None,
         };
         let toml_str = toml::to_string(&p).unwrap();
@@ -269,17 +312,51 @@ mod tests {
         assert_eq!(deserialized.name, p.name);
         assert_eq!(deserialized.base_url, p.base_url);
         assert!(!deserialized.enabled);
-        assert!(!deserialized.supports_tools);
+        assert_eq!(deserialized.tool_format, ToolFormat::None);
     }
 
     #[test]
-    fn provider_supports_tools_defaults_to_true() {
+    fn provider_tool_format_defaults_to_native() {
         let toml_str = r#"
             name = "test"
             base_url = "http://test:8080/v1"
         "#;
         let p: Provider = toml::from_str(toml_str).unwrap();
-        assert!(p.supports_tools);
+        assert_eq!(p.tool_format, ToolFormat::Native);
+    }
+
+    #[test]
+    fn provider_supports_tools_backward_compat_false() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+            supports_tools = false
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.tool_format, ToolFormat::None);
+    }
+
+    #[test]
+    fn provider_supports_tools_backward_compat_true() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+            supports_tools = true
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.tool_format, ToolFormat::Native);
+    }
+
+    #[test]
+    fn provider_tool_format_explicit_overrides_supports_tools() {
+        let toml_str = r#"
+            name = "test"
+            base_url = "http://test:8080/v1"
+            tool_format = "ContentJson"
+            supports_tools = false
+        "#;
+        let p: Provider = toml::from_str(toml_str).unwrap();
+        assert_eq!(p.tool_format, ToolFormat::ContentJson);
     }
 
     #[test]
@@ -291,7 +368,7 @@ mod tests {
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
             enabled: true,
-            supports_tools: true,
+            tool_format: ToolFormat::Native,
             extra_params: Some(extra),
         };
         let json = serde_json::to_value(&p).unwrap();

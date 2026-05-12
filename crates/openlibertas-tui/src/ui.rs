@@ -893,7 +893,6 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((cursor_x, area.y + 1));
 }
 
-
 fn draw_completions_popup(frame: &mut Frame, app: &App, input_area: Rect) {
     let items = app.completion_items();
     if items.is_empty() {
@@ -942,7 +941,11 @@ fn draw_completions_popup(frame: &mut Frame, app: &App, input_area: Rect) {
                 Style::default().fg(app.theme.foreground())
             };
 
-            let marker = if i == app.completion_selected() { "▸ " } else { "  " };
+            let marker = if i == app.completion_selected() {
+                "▸ "
+            } else {
+                "  "
+            };
             let text = if item.description.is_empty() {
                 format!("{}{}", marker, item.label)
             } else {
@@ -1178,7 +1181,10 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
         .title(if app.session_search.is_empty() {
             format!(" Saved Sessions ({}) ", total_sessions)
         } else {
-            format!(" Saved Sessions ({} / {}) ", total_sessions, app.session_search)
+            format!(
+                " Saved Sessions ({} / {}) ",
+                total_sessions, app.session_search
+            )
         })
         .title_style(
             Style::default()
@@ -1219,7 +1225,9 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
 
                 let title = meta.title.as_deref().unwrap_or("Untitled");
                 let model_str = meta.model.as_deref().unwrap_or("unknown");
-                let time_str = meta.updated_at.as_ref()
+                let time_str = meta
+                    .updated_at
+                    .as_ref()
                     .or(Some(&meta.created_at))
                     .map(|s| openlibertas_core::store::format_relative_time(s))
                     .unwrap_or_default();
@@ -1277,8 +1285,7 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
             })
             .collect();
 
-        let list = List::new(items)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        let list = List::new(items).highlight_style(Style::default().add_modifier(Modifier::BOLD));
         frame.render_widget(list, content_area);
     }
 

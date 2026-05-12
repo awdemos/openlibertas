@@ -80,8 +80,16 @@ pub fn shell(args: Value) -> Result<String> {
     });
 
     let output = match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
-        Ok(result) => result.with_context(|| format!("Failed to execute command: {}", args.command))?,
-        Err(_) => return Err(anyhow::anyhow!("Command timed out after {} seconds: {}", timeout_secs, args.command)),
+        Ok(result) => {
+            result.with_context(|| format!("Failed to execute command: {}", args.command))?
+        }
+        Err(_) => {
+            return Err(anyhow::anyhow!(
+                "Command timed out after {} seconds: {}",
+                timeout_secs,
+                args.command
+            ))
+        }
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);

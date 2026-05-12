@@ -85,8 +85,11 @@ fn enhance_error_with_suggestion(err: &str) -> String {
     } else {
         return err.to_string();
     };
-    format!("{}
-Suggestion: {}", err, suggestion)
+    format!(
+        "{}
+Suggestion: {}",
+        err, suggestion
+    )
 }
 
 fn spawn_voice_transcription(
@@ -729,7 +732,12 @@ async fn main() -> Result<()> {
                                         }
                                         let messages = app.push_user_message();
                                         let _ = app.autosave();
-                                        attach_chat_stream(&mut app, &registry, &mut event_stream, messages);
+                                        attach_chat_stream(
+                                            &mut app,
+                                            &registry,
+                                            &mut event_stream,
+                                            messages,
+                                        );
                                         app.engine.input_mut().buffer.clear();
                                         app.engine.input_mut().cursor_pos = 0;
                                         app.engine.input_mut().selection_anchor = None;
@@ -765,9 +773,7 @@ async fn main() -> Result<()> {
                                 {
                                     app.overlay = Overlay::None;
                                     app.refresh_completions();
-                                } else if buf.starts_with('/')
-                                    && !buf.contains(' ')
-                                {
+                                } else if buf.starts_with('/') && !buf.contains(' ') {
                                     app.overlay = Overlay::Palette;
                                     app.update_command_palette();
                                     app.refresh_completions();

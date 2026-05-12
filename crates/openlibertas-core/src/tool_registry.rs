@@ -2,6 +2,7 @@ use crate::conversation::build_tool_result_messages;
 use crate::domain::{now_timestamp, Role, ToolExecutionResult};
 use crate::domain::{Message, ToolCall, ToolDefinition};
 use crate::mcp::{McpClient, McpTool};
+use crate::tool_format::ToolFormat;
 use crate::tools;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -140,7 +141,7 @@ impl ToolRegistry {
         }
     }
 
-    pub fn tool_instructions(&self) -> Option<String> {
+    pub fn tool_instructions(&self, tool_format: ToolFormat) -> Option<String> {
         let mut tool_lines = Vec::new();
         for tool in &self.builtin_tools {
             let params = serde_json::to_string(&tool.parameters).unwrap_or_default();
@@ -159,7 +160,7 @@ impl ToolRegistry {
         if tool_lines.is_empty() {
             None
         } else {
-            Some(format!(
+            let mut instructions = format!(
                 "You have access to the following tools. When a tool can help answer the user's question, you MUST invoke it by producing a tool_calls array containing the function name and arguments.\n\n\
                 Available tools:\n{}\n\n\
                 RULES:\n\
@@ -170,7 +171,9 @@ impl ToolRegistry {
                 4. Do not describe what the tool does. Do not write example code. Do not say 'I will use'.\n\
                 5. Call the tool directly — results will be provided to you automatically.",
                 tool_lines.join("\n")
-            ))
+            );
+            instructions.push_str(tool_format.tool_instructions_suffix());
+            Some(instructions)
         }
     }
 
@@ -187,17 +190,23 @@ impl ToolRegistry {
 
         if let Some(prompt) = agent_prompt {
             if agent_status == Some("active") {
-                result.insert(
-                    0,
-                    Message {
-                        role: Role::System,
-                        content: prompt.to_string(),
-                        tool_calls: None,
-                        tool_call_id: None,
-                        timestamp: None,
-                        reasoning_content: None,
-                    },
-                );
+                let already_present = result
+                    .iter()
+                    .take_while(|m| m.role == Role::System)
+                    .any(|m| m.content == prompt);
+                if !already_present {
+                    result.insert(
+                        0,
+                        Message {
+                            role: Role::System,
+                            content: prompt.to_string(),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            timestamp: None,
+                            reasoning_content: None,
+                        },
+                    );
+                }
             }
         }
 
@@ -242,7 +251,8 @@ impl ToolRegistry {
                             let key_arg = key_arg.clone();
                             let builtin_result = tokio::task::spawn_blocking(move || {
                                 tools::execute_builtin(&tool_name, args)
-                            }).await;
+                            })
+                            .await;
                             match builtin_result {
                                 Ok(Ok(output)) => ToolExecutionResult::Success {
                                     tool_name: tool_call.function.name.clone(),
@@ -489,5 +499,33 @@ mod tests {
     fn extract_key_argument_no_match() {
         let args = r#"{}"#;
         assert_eq!(extract_key_argument("unknown", args), "");
+    }
+
+    #[test]
+    fn tool_instructions_native_returns_none_when_empty() {
+        let registry = ToolRegistry::default();
+        assert!(registry.tool_instructions(ToolFormat::Native).is_some());
+    }
+
+    #[test]
+    fn tool_instructions_content_json_appends_suffix() {
+        let registry = ToolRegistry::default();
+        let instructions = registry.tool_instructions(ToolFormat::ContentJson).unwrap();
+        assert!(instructions.contains("JSON object or array"));
+    }
+
+    #[test]
+    fn tool_instructions_xml_appends_suffix() {
+        let registry = ToolRegistry::default();
+        let instructions = registry.tool_instructions(ToolFormat::Xml).unwrap();
+        assert!(instructions.contains("<tool_call>"));
+    }
+
+    #[test]
+    fn tool_instructions_none_same_as_native_suffix() {
+        let registry = ToolRegistry::default();
+        let native = registry.tool_instructions(ToolFormat::Native).unwrap();
+        let none = registry.tool_instructions(ToolFormat::None).unwrap();
+        assert_eq!(native, none);
     }
 }

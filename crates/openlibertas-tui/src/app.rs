@@ -184,14 +184,14 @@ impl App {
         let provider = provider.into();
         let prompt = self.prompt_manager.get_prompt(provider.as_str());
         self.engine.set_system_prompt(prompt.to_string());
-        let supports_tools = self
+        let tool_format = self
             .config
             .providers
             .iter()
             .find(|p| ProviderId::new(&p.name) == provider)
-            .map(|p| p.supports_tools)
-            .unwrap_or(true);
-        self.engine.set_supports_native_tools(supports_tools);
+            .map(|p| p.tool_format)
+            .unwrap_or_default();
+        self.engine.set_tool_format(tool_format);
         self.models.provider = provider;
     }
 
