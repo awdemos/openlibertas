@@ -265,8 +265,8 @@ mod tests {
 
     #[test]
     fn extract_key_argument_reads_path() {
-        let args = r#"{"path": "/tmp/test.txt"}"#;
-        assert_eq!(extract_key_argument("read_file", args), "/tmp/test.txt");
+        let args = r#"{"path": "/path/to/test.txt"}"#;
+        assert_eq!(extract_key_argument("read_file", args), "/path/to/test.txt");
     }
 
     #[test]

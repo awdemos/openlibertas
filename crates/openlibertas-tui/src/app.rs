@@ -23,7 +23,7 @@ use openlibertas_core::search;
 use openlibertas_core::store::SessionStore;
 use openlibertas_core::voice::VoiceManager;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
@@ -64,6 +64,7 @@ pub struct ModelState {
     pub selected: usize,
     pub current: Option<String>,
     pub provider: ProviderId,
+    pub search: String,
 }
 
 pub struct App {
@@ -101,7 +102,9 @@ pub struct App {
     pub current_session_id: Option<String>,
     pub current_session_parent_id: Option<String>,
     pub current_session_branch_point: Option<usize>,
+    pub current_session_has_branches: bool,
     pub rlm_mode: bool,
+    pub error_banner: Option<(String, Instant)>,
     pub mcp_selected_server: usize,
     pub mcp_selected_tool: usize,
     pub mcp_health: HashMap<String, bool>,
@@ -139,6 +142,7 @@ impl App {
                 selected: 0,
                 current: None,
                 provider: ProviderId::new(""),
+                search: String::new(),
             },
             overlay: Overlay::None,
             search: SearchState {
@@ -189,7 +193,9 @@ impl App {
             current_session_id: None,
             current_session_parent_id: None,
             current_session_branch_point: None,
+            current_session_has_branches: false,
             rlm_mode: false,
+            error_banner: None,
             mcp_selected_server: 0,
             mcp_selected_tool: 0,
             mcp_health: HashMap::new(),
@@ -198,6 +204,29 @@ impl App {
             mcp_scroll: 0,
             cancel_token: None,
         }
+    }
+
+    pub fn set_error_banner(&mut self, msg: String) {
+        self.error_banner = Some((msg, Instant::now()));
+    }
+
+    pub fn clear_expired_error_banner(&mut self) {
+        if let Some((_, instant)) = self.error_banner {
+            if instant.elapsed() > Duration::from_secs(5) {
+                self.error_banner = None;
+            }
+        }
+    }
+
+    pub fn session_has_branches(&self) -> bool {
+        if let Some(ref id) = self.current_session_id {
+            if let Some(ref store) = self.store {
+                if let Ok(sessions) = store.list_with_meta() {
+                    return sessions.iter().any(|s| s.id == *id && !s.branches.is_empty());
+                }
+            }
+        }
+        false
     }
 
     pub fn voice_key_debounce(&self) -> bool {
@@ -232,9 +261,22 @@ impl App {
 
     pub fn execute_slash_command(&mut self, cmd: SlashCommand) -> Option<String> {
         match cmd {
-            SlashCommand::Help => {
-                self.overlay = Overlay::Help;
-                None
+            SlashCommand::Help(cmd) => {
+                if let Some(cmd_name) = cmd {
+                    let cmd_name = cmd_name.trim();
+                    if cmd_name.is_empty() {
+                        self.overlay = Overlay::Help;
+                        None
+                    } else {
+                        match openlibertas_core::commands::command_detailed_help(cmd_name) {
+                            Some(help) => Some(help),
+                            None => Some(format!("No detailed help for '/{}'. Use /help to see all commands.", cmd_name)),
+                        }
+                    }
+                } else {
+                    self.overlay = Overlay::Help;
+                    None
+                }
             }
             SlashCommand::Tools => {
                 self.overlay = if self.overlay == Overlay::Tools {
@@ -484,6 +526,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     ) {
                         Ok(_) => {
                             self.current_session_id = Some(id.clone());
+                            self.current_session_has_branches = self.session_has_branches();
                             Some(format!("Session '{}' saved", id))
                         }
                         Err(e) => Some(format!("Failed to save: {}", e)),
@@ -513,6 +556,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                             self.current_session_id = Some(name.clone());
                             self.current_session_parent_id = session.parent_id;
                             self.current_session_branch_point = session.branch_point;
+                            self.current_session_has_branches = self.session_has_branches();
                             Some(format!("Session '{}' loaded", name))
                         }
                         Err(e) => Some(format!("Failed to load: {}", e)),
@@ -546,16 +590,39 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     Some("Store not available".to_string())
                 }
             }
-            SlashCommand::Export(filename) => {
-                let fname = if filename.is_empty() {
-                    "chat.md".to_string()
+            SlashCommand::Export(arg) => {
+                let (format, path) = if arg.is_empty() || arg.contains('/') || arg.contains('.') {
+                    let path = if arg.is_empty() {
+                        "chat.md".to_string()
+                    } else {
+                        arg
+                    };
+                    (ExportFormat::from_extension(&path), path)
                 } else {
-                    filename
+                    let format = match arg.to_lowercase().as_str() {
+                        "json" => ExportFormat::Json,
+                        "txt" | "text" => ExportFormat::PlainText,
+                        _ => ExportFormat::Markdown,
+                    };
+                    let ext = match format {
+                        ExportFormat::Json => "json",
+                        ExportFormat::PlainText => "txt",
+                        ExportFormat::Markdown => "md",
+                    };
+                    let session_name = self
+                        .current_session_id
+                        .as_deref()
+                        .unwrap_or("untitled");
+                    let exports_dir = Config::data_dir()
+                        .map(|d| d.join("exports"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("exports"));
+                    let _ = std::fs::create_dir_all(&exports_dir);
+                    let path = exports_dir.join(format!("{}.{}", session_name, ext));
+                    (format, path.to_string_lossy().to_string())
                 };
-                let format = ExportFormat::from_extension(&fname);
                 let content = self.export_session(format);
-                match std::fs::write(&fname, content) {
-                    Ok(_) => Some(format!("Exported to '{}'", fname)),
+                match std::fs::write(&path, content) {
+                    Ok(_) => Some(format!("Exported to '{}'", path)),
                     Err(e) => Some(format!("Failed to export: {}", e)),
                 }
             }
@@ -756,6 +823,21 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
             SlashCommand::Temperature(temp) => {
                 self.temperature = Some(temp);
                 Some(format!("Temperature set to: {}", temp))
+            }
+            SlashCommand::SetKey(provider, key) => {
+                if provider.is_empty() || key.is_empty() {
+                    Some("Usage: /set-key <provider> <key>".to_string())
+                } else {
+                    match openlibertas_core::credentials::CredentialManager::set_api_key(&provider, &key) {
+                        Ok(()) => {
+                            if let Some(p) = self.config.providers.iter_mut().find(|p| p.name == provider) {
+                                p.api_key = openlibertas_core::config::SecretString::new(key);
+                            }
+                            Some(format!("API key stored in keyring for provider '{}'", provider))
+                        }
+                        Err(e) => Some(format!("Failed to store API key: {}", e)),
+                    }
+                }
             }
             SlashCommand::Mouse => {
                 self.mouse_enabled = !self.mouse_enabled;
@@ -1173,6 +1255,7 @@ available tools to refine and polish your work."
                     self.current_session_id = Some(id.clone());
                     self.current_session_parent_id = session.parent_id;
                     self.current_session_branch_point = session.branch_point;
+                    self.current_session_has_branches = self.session_has_branches();
                     self.overlay = Overlay::None;
                     self.session_search.clear();
                     self.session_selected = 0;
@@ -1398,7 +1481,7 @@ mod tests {
     #[test]
     fn parse_help_command() {
         let cmd = App::parse_slash_command("/help");
-        assert_eq!(cmd, Some(SlashCommand::Help));
+        assert_eq!(cmd, Some(SlashCommand::Help(None)));
     }
 
     #[test]

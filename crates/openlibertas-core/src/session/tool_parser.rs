@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn parses_xml_tool_call() {
-        let text = r#"<tool name="read_file">{"path": "/tmp/test"}</tool>"#;
+        let text = r#"<tool name="read_file">{"path": "/path/to/test"}</tool>"#;
         let calls = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function.name, "read_file");
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn parses_mixed_formats() {
         let text = r#"{"name": "read", "arguments": {}}
-<tool name="write">{"path": "/tmp"}</tool>"#;
+        <tool name="write">{"path": "/path/to"}</tool>"#;
         let calls = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
     }

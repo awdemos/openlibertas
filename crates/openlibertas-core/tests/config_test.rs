@@ -61,7 +61,7 @@ max_tokens = 8192
 context_window = 32768
 elevenlabs_api_key = "sk-eleven"
 elevenlabs_voice_id = "voice-123"
-models_dir = "/tmp/models"
+models_dir = "/path/to/models"
 auto_save = false
 filter_require_voice_and_tools = true
 input_device = "Mic"
@@ -84,7 +84,7 @@ api_key = "sk-local"
     assert_eq!(deserialized.input_device, Some("Mic".to_string()));
     assert_eq!(
         deserialized.models_dir,
-        std::path::PathBuf::from("/tmp/models")
+        std::path::PathBuf::from("/path/to/models")
     );
 }
 

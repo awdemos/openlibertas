@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 use crate::capability::{ProviderCapabilities, ProviderKind};
+use crate::credentials::CredentialManager;
 use crate::tool_format::ToolFormat;
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
@@ -259,7 +260,10 @@ impl Config {
         }
 
         for provider in &mut config.providers {
-            let resolved = resolve_env_ref(provider.api_key.expose_secret());
+            let resolved = CredentialManager::get_api_key(
+                provider.api_key.expose_secret(),
+                &provider.name,
+            );
             provider.api_key = SecretString::new(resolved);
         }
 

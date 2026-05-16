@@ -87,13 +87,13 @@ mod tests {
     #[test]
     fn to_prompt_section_contains_fields() {
         let ctx = EnvContext {
-            work_dir: "/tmp/test".to_string(),
+            work_dir: "/path/to/project".to_string(),
             work_dir_ls: "total 0".to_string(),
             os: "linux".to_string(),
             shell: "/bin/bash".to_string(),
         };
         let section = ctx.to_prompt_section();
-        assert!(section.contains("/tmp/test"));
+        assert!(section.contains("/path/to/project"));
         assert!(section.contains("linux"));
         assert!(section.contains("/bin/bash"));
         assert!(section.contains("total 0"));

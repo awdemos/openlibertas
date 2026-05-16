@@ -11,6 +11,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
     "/models",
     "/theme",
     "/temp",
+    "/set-key",
     // Session
     "/new",
     "/clear",
@@ -50,7 +51,7 @@ pub const SLASH_COMMANDS: &[&str] = &[
 pub fn command_category(cmd: &str) -> &'static str {
     match cmd {
         "/help" => "Info",
-        "/model" | "/theme" | "/temp" | "/avatar" | "/avatar-menu" => "Config",
+        "/model" | "/theme" | "/temp" | "/avatar" | "/avatar-menu" | "/set-key" => "Config",
         "/new" | "/clear" | "/save" | "/load" | "/sessions" | "/delete" | "/export" | "/undo"
         | "/title" | "/branch" => "Session",
         "/search" | "/edit" | "/remove" => "Chat",
@@ -74,6 +75,7 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/avatar-menu" => "Open avatar configuration menu",
         "/theme" => "Change color theme",
         "/temp" => "Set LLM temperature (0.0-2.0)",
+        "/set-key" => "Store provider API key in OS keyring",
         "/new" => "Start new session",
         "/clear" => "Clear session history",
         "/save" => "Save session to disk",
@@ -105,10 +107,11 @@ pub fn command_description(cmd: &str) -> &'static str {
 /// Parsed slash command
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlashCommand {
-    Help,
+    Help(Option<String>),
     Model(String),
     Theme(String),
     Temperature(f32),
+    SetKey(String, String),
     New,
     Clear,
     Save(String),
@@ -148,7 +151,13 @@ impl SlashCommand {
         let parts: Vec<&str> = input.split_whitespace().collect();
 
         match parts[0] {
-            "/help" => Some(SlashCommand::Help),
+            "/help" => {
+                if parts.len() > 1 {
+                    Some(SlashCommand::Help(Some(parts[1..].join(" "))))
+                } else {
+                    Some(SlashCommand::Help(None))
+                }
+            }
             "/model" | "/models" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Model(parts[1..].join(" ")))
@@ -195,6 +204,15 @@ impl SlashCommand {
                     parts[1].parse::<f32>().ok().map(SlashCommand::Temperature)
                 } else {
                     Some(SlashCommand::Temperature(0.7))
+                }
+            }
+            "/set-key" => {
+                if parts.len() >= 3 {
+                    let provider = parts[1].to_string();
+                    let key = parts[2..].join(" ");
+                    Some(SlashCommand::SetKey(provider, key))
+                } else {
+                    Some(SlashCommand::SetKey(String::new(), String::new()))
                 }
             }
             "/save" => {
@@ -348,6 +366,50 @@ pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
         .collect()
 }
 
+/// Detailed help for a specific command
+pub fn command_detailed_help(cmd: &str) -> Option<String> {
+    let cmd = if cmd.starts_with('/') { cmd } else { &format!("/{}", cmd) };
+    let desc = command_description(cmd);
+    if desc.is_empty() {
+        return None;
+    }
+    let usage = match cmd {
+        "/help" => "Usage: /help [command]\nShow help panel or detailed help for a specific command.",
+        "/model" | "/models" => "Usage: /model [name]\nSwitch to a specific model or open the model picker.\nExamples: /model gpt-4, /model qwen2.5-coder",
+        "/theme" => "Usage: /theme [name]\nChange the color theme.\nAvailable themes: default, solarized-dark, solarized-light, tokyo-night, tokyo-night-storm, catppuccin, catppuccin-mocha, gruvbox-dark, gruvbox-light, one-dark, dracula, nord, monokai",
+        "/temp" => "Usage: /temp [0.0-2.0]\nSet the LLM temperature. Lower = more deterministic, higher = more creative.\nDefault: 0.7",
+        "/set-key" => "Usage: /set-key <provider> <key>\nStore a provider API key in the OS keyring.\nThe key will be retrieved automatically when loading config.\nExample: /set-key openai sk-abc123",
+        "/new" => "Usage: /new\nStart a new empty session.",
+        "/clear" => "Usage: /clear\nClear the current session history.",
+        "/save" => "Usage: /save [name]\nSave the current session. Auto-generates a name if none provided.",
+        "/load" => "Usage: /load [name]\nLoad a saved session or open the session manager.",
+        "/sessions" => "Usage: /sessions\nOpen the session manager popup.",
+        "/delete" => "Usage: /delete [name]\nDelete a saved session.",
+        "/export" => "Usage: /export [format|path]\nExport the current session.\nFormats: markdown (default), json, txt\nExamples: /export markdown, /export /path/to/chat.md",
+        "/undo" => "Usage: /undo\nRemove the last user-assistant message pair.",
+        "/title" => "Usage: /title <name>\nRename the current session.",
+        "/branch" => "Usage: /branch [message_index]\nCreate a new branch from a message index.\nDefault: branch from the last message.",
+        "/search" => "Usage: /search [query]\nSearch for text in the current session messages.",
+        "/edit" => "Usage: /edit <n>\nEdit the nth user message and re-send from that point.",
+        "/remove" => "Usage: /remove <n>\nRemove the nth message from the session.",
+        "/agents" => "Usage: /agents\nOpen the agent configuration panel.",
+        "/yolo" => "Usage: /yolo\nToggle auto-approval for destructive tools.",
+        "/plan" => "Usage: /plan\nToggle plan mode (read-only research).",
+        "/compact" => "Usage: /compact\nCompact the session context to reduce token usage.",
+        "/rlm" => "Usage: /rlm\nToggle RLM (recursive language model) mode for Python code execution.",
+        "/mcp" => "Usage: /mcp\nShow MCP server status panel.",
+        "/tools" => "Usage: /tools\nToggle the MCP tools panel.",
+        "/voice" => "Usage: /voice\nToggle voice chat mode (STT/TTS).",
+        "/voice_device" => "Usage: /voice_device [name]\nList or select the audio input device.",
+        "/mouse" => "Usage: /mouse\nToggle mouse capture for scrolling and clicking.",
+        "/quit" => "Usage: /quit\nExit the application.",
+        "/avatar" => "Usage: /avatar [on/off]\nToggle avatar display.",
+        "/avatar-menu" => "Usage: /avatar-menu\nOpen avatar configuration menu.",
+        _ => "",
+    };
+    Some(format!("{}\n\n{}\n\n{}\n\nCategory: {}", cmd, desc, usage, command_category(cmd)))
+}
+
 /// Build the help message with categorized commands
 pub fn build_help_message() -> String {
     use std::fmt::Write;
@@ -355,7 +417,7 @@ pub fn build_help_message() -> String {
 
     let categories = [
         ("Info", &["/help"][..]),
-        ("Config", &["/model", "/avatar", "/theme", "/temp"][..]),
+        ("Config", &["/model", "/avatar", "/theme", "/temp", "/set-key"][..]),
         (
             "Session",
             &[
@@ -423,7 +485,13 @@ mod tests {
     #[test]
     fn parse_help_command() {
         let cmd = SlashCommand::parse("/help");
-        assert_eq!(cmd, Some(SlashCommand::Help));
+        assert_eq!(cmd, Some(SlashCommand::Help(None)));
+    }
+
+    #[test]
+    fn parse_help_command_with_arg() {
+        let cmd = SlashCommand::parse("/help save");
+        assert_eq!(cmd, Some(SlashCommand::Help(Some("save".to_string()))));
     }
 
     #[test]
@@ -649,8 +717,8 @@ mod tests {
 
     #[test]
     fn parse_export_command_with_path() {
-        let cmd = SlashCommand::parse("/export /tmp/chat.md");
-        assert_eq!(cmd, Some(SlashCommand::Export("/tmp/chat.md".to_string())));
+        let cmd = SlashCommand::parse("/export /path/to/chat.md");
+        assert_eq!(cmd, Some(SlashCommand::Export("/path/to/chat.md".to_string())));
     }
 
     #[test]

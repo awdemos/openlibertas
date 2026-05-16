@@ -56,7 +56,7 @@ impl Runtime {
     ///
     /// - Loads config from the standard config path (falling back to defaults).
     /// - Builds the provider registry from configured providers.
-    /// - Initializes the session store at `~/.config/openlibertas/sessions/`.
+    /// - Initializes the session store in the configured data directory.
     /// - Initializes the history store if the config directory is available.
     /// - Initializes the MCP client from the opencode config if available.
     /// - Captures the current environment context.

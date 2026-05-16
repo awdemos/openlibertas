@@ -81,10 +81,23 @@ fn draw_models(frame: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(empty, chunks[1]);
     } else {
+        let search_lower = app.models.search.to_lowercase();
+        let filtered: Vec<(usize, &openlibertas_core::domain::Model)> = app
+            .models
+            .models
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                search_lower.is_empty()
+                    || m.id.to_lowercase().contains(&search_lower)
+                    || m.provider.as_str().to_lowercase().contains(&search_lower)
+            })
+            .collect();
+
         let mut items: Vec<ListItem> = Vec::new();
         let mut current_provider = "";
 
-        for (i, m) in app.models.models.iter().enumerate() {
+        for (i, m) in filtered.iter() {
             let provider = m.provider.as_str();
             if provider != current_provider {
                 if !items.is_empty() {
@@ -109,7 +122,8 @@ fn draw_models(frame: &mut Frame, app: &App) {
                 current_provider = provider;
             }
 
-            let is_selected = i == app.models.selected;
+            let is_selected = *i == app.models.selected;
+            let is_current = app.models.current.as_deref() == Some(&m.id);
             let style = if is_selected {
                 Style::default()
                     .bg(app.theme.primary())
@@ -119,13 +133,25 @@ fn draw_models(frame: &mut Frame, app: &App) {
                 Style::default().fg(app.theme.foreground())
             };
 
-            let marker = if is_selected { "▸ " } else { "  " };
+            let marker = if is_selected {
+                "▸ "
+            } else if is_current {
+                "● "
+            } else {
+                "  "
+            };
             let tool_indicator = if m.supports_tools { " ⚡" } else { "" };
             let voice_indicator = if m.supports_voice { " 🎤" } else { "" };
             let local_indicator = if m.local { " [local]" } else { "" };
             items.push(ListItem::new(Line::from(vec![
                 Span::styled(marker, Style::default().fg(app.theme.primary())),
                 Span::styled(m.id.clone(), style),
+                Span::styled(
+                    format!(" @ {}", provider),
+                    Style::default()
+                        .fg(app.theme.secondary())
+                        .add_modifier(Modifier::DIM),
+                ),
                 Span::styled(
                     local_indicator,
                     Style::default()
@@ -147,12 +173,16 @@ fn draw_models(frame: &mut Frame, app: &App) {
             ])));
         }
 
-        let total_models = app.models.models.len();
+        let title = if app.models.search.is_empty() {
+            format!(" Models ({}) ", app.models.models.len())
+        } else {
+            format!(" Models ({} / {}) ", filtered.len(), app.models.search)
+        };
         let list = List::new(items)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(" Models ({}) ", total_models))
+                    .title(title)
                     .title_style(
                         Style::default()
                             .fg(app.theme.primary())
@@ -163,36 +193,69 @@ fn draw_models(frame: &mut Frame, app: &App) {
         frame.render_widget(list, chunks[1]);
     }
 
-    let footer_spans = vec![
-        Span::styled(
-            "↑/↓",
-            Style::default()
-                .fg(app.theme.primary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
-        Span::styled(
-            "Enter",
-            Style::default()
-                .fg(app.theme.primary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
-        Span::styled(
-            "Esc",
-            Style::default()
-                .fg(app.theme.primary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Back  ", Style::default().fg(app.theme.system_color())),
-        Span::styled(
-            "q",
-            Style::default()
-                .fg(app.theme.primary())
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Quit", Style::default().fg(app.theme.system_color())),
-    ];
+    let footer_spans = if app.models.search.is_empty() {
+        vec![
+            Span::styled(
+                "↑/↓",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Esc",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Back  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Type",
+                Style::default()
+                    .fg(app.theme.secondary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" to filter", Style::default().fg(app.theme.system_color())),
+        ]
+    } else {
+        vec![
+            Span::styled(
+                "↑/↓",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Navigate  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Select  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Esc",
+                Style::default()
+                    .fg(app.theme.primary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Clear filter  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                "Backspace",
+                Style::default()
+                    .fg(app.theme.secondary())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Delete char", Style::default().fg(app.theme.system_color())),
+        ]
+    };
     let help = Paragraph::new(Line::from(footer_spans))
         .style(Style::default().fg(app.theme.system_color()))
         .alignment(Alignment::Center);
@@ -200,10 +263,16 @@ fn draw_models(frame: &mut Frame, app: &App) {
 }
 
 fn draw_chat(frame: &mut Frame, app: &App) {
+    let has_error = app.error_banner.is_some();
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
+            if has_error {
+                Constraint::Length(1)
+            } else {
+                Constraint::Length(0)
+            },
             Constraint::Min(3),
             Constraint::Length(1),
             Constraint::Length(3),
@@ -212,9 +281,15 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         .split(frame.area());
 
     draw_header(frame, app, main_chunks[0]);
-    draw_messages(frame, app, main_chunks[1]);
-    draw_status_bar(frame, app, main_chunks[2]);
-    draw_input(frame, app, main_chunks[3]);
+    if has_error {
+        draw_error_banner(frame, app, main_chunks[1]);
+    }
+    draw_messages(frame, app, main_chunks[if has_error { 2 } else { 1 }]);
+    draw_status_bar(frame, app, main_chunks[if has_error { 3 } else { 2 }]);
+    draw_input(frame, app, main_chunks[if has_error { 4 } else { 3 }]);
+
+    let status_idx = if has_error { 3 } else { 2 };
+    let input_idx = if has_error { 4 } else { 3 };
 
     match app.overlay {
         Overlay::Tools => draw_tools_panel(frame, app),
@@ -222,7 +297,7 @@ fn draw_chat(frame: &mut Frame, app: &App) {
         Overlay::Sessions => draw_sessions_panel(frame, app),
         Overlay::Palette => {
             if app.screen == Screen::Chat {
-                draw_command_palette(frame, app, main_chunks[2]);
+                draw_command_palette(frame, app, main_chunks[status_idx]);
             }
         }
         Overlay::Themes => draw_themes_panel(frame, app),
@@ -233,13 +308,25 @@ fn draw_chat(frame: &mut Frame, app: &App) {
     }
 
     if app.completion_active() && app.screen == Screen::Chat {
-        draw_completions_popup(frame, app, main_chunks[3]);
+        draw_completions_popup(frame, app, main_chunks[input_idx]);
     }
 
     if app.avatar_enabled {
         for avatar in &app.avatars {
             frame.render_widget(avatar, frame.area());
         }
+    }
+}
+
+fn draw_error_banner(frame: &mut Frame, app: &App, area: Rect) {
+    if let Some((ref msg, _)) = app.error_banner {
+        let banner = Paragraph::new(Line::from(vec![
+            Span::styled(" ✗ ", Style::default().fg(app.theme.error_color()).add_modifier(Modifier::BOLD)),
+            Span::styled(msg.clone(), Style::default().fg(app.theme.error_color())),
+        ]))
+        .style(Style::default().bg(app.theme.panel_bg()))
+        .alignment(Alignment::Center);
+        frame.render_widget(banner, area);
     }
 }
 
@@ -355,6 +442,12 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
+    let branches_indicator = if app.current_session_has_branches {
+        " ⎇"
+    } else {
+        ""
+    };
+
     let rlm_indicator = if app.rlm_mode { " [RLM]" } else { "" };
 
     let left_spans = vec![
@@ -379,6 +472,12 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default()
                 .fg(app.theme.secondary())
                 .add_modifier(Modifier::ITALIC),
+        ),
+        Span::styled(
+            branches_indicator,
+            Style::default()
+                .fg(app.theme.primary())
+                .add_modifier(Modifier::BOLD),
         ),
     ];
     let left_width: usize = left_spans.iter().map(|s| s.content.width()).sum();
@@ -2290,6 +2389,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
                 ("/model [name]", "Switch model or open picker"),
                 ("/theme [name]", "Change color theme"),
                 ("/temp [0.0-2.0]", "Set LLM temperature"),
+                ("/set-key <provider> <key>", "Store API key in OS keyring"),
                 ("/avatar [on/off]", "Toggle avatar display"),
                 ("/avatar-menu", "Open avatar configuration"),
             ],
