@@ -243,9 +243,9 @@ impl Config {
             if config_path.exists() {
                 info!("Loading config from {:?}", config_path);
                 let contents = std::fs::read_to_string(&config_path)
-                    .with_context(|| format!("Failed to read config from {:?}", config_path))?;
+                    .with_context(|| format!("Failed to read config from {config_path:?}"))?;
                 let file_config: Config = toml::from_str(&contents)
-                    .with_context(|| format!("Failed to parse config from {:?}", config_path))?;
+                    .with_context(|| format!("Failed to parse config from {config_path:?}"))?;
                 config = file_config;
             } else {
                 info!("Config file not found at {:?}, using defaults", config_path);
@@ -340,12 +340,12 @@ impl Config {
             .ok_or_else(|| anyhow::anyhow!("Could not determine config path"))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create config directory: {parent:?}"))?;
         }
         let contents =
             toml::to_string_pretty(self).with_context(|| "Failed to serialize config to TOML")?;
         std::fs::write(&path, contents)
-            .with_context(|| format!("Failed to write config to {:?}", path))?;
+            .with_context(|| format!("Failed to write config to {path:?}"))?;
         info!("Config saved to {:?}", path);
         Ok(())
     }

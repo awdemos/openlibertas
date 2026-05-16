@@ -228,7 +228,7 @@ impl Message {
 
 /// Estimate total tokens for a slice of messages.
 pub fn estimate_messages_tokens(messages: &[Message]) -> usize {
-    messages.iter().map(|m| m.estimate_tokens()).sum()
+    messages.iter().map(Message::estimate_tokens).sum()
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -338,8 +338,8 @@ impl ToolExecutionResult {
     pub fn content_for_message(&self) -> String {
         match self {
             ToolExecutionResult::Success { output, .. } => output.clone(),
-            ToolExecutionResult::Error { error, .. } => format!("Error: {}", error),
-            ToolExecutionResult::Skipped { reason, .. } => format!("Skipped: {}", reason),
+            ToolExecutionResult::Error { error, .. } => format!("Error: {error}"),
+            ToolExecutionResult::Skipped { reason, .. } => format!("Skipped: {reason}"),
         }
     }
 }

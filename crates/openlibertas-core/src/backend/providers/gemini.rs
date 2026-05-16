@@ -183,7 +183,7 @@ pub(crate) fn chat_gemini(
                 Ok(v) => v,
                 Err(e) => {
                     error!("Failed to serialize Gemini request: {}", e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {e}]")));
                     return;
                 }
             };
@@ -207,7 +207,7 @@ pub(crate) fn chat_gemini(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Gemini HTTP {} -- retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
-                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {} -- retrying {}/{} in {:?}]", status, retries, MAX_RETRIES, delay)));
+                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {status} -- retrying {retries}/{MAX_RETRIES} in {delay:?}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -221,12 +221,12 @@ pub(crate) fn chat_gemini(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Gemini connection error -- retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
-                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {}/{} in {:?}: {}]", retries, MAX_RETRIES, delay, e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {retries}/{MAX_RETRIES} in {delay:?}: {e}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
                     error!("Gemini chat connection failed after {} retries: {}", MAX_RETRIES, e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Error: {e}]")));
                     return;
                 }
             }
@@ -329,7 +329,7 @@ async fn stream_gemini(
                     let tool_call = ToolCall { id, call_type: "function".to_string(), function: FunctionCall { name, arguments: args_str } };
                     let _ = tx.send(BackendEvent::ToolCall(tool_call));
                 }
-                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
+                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {e}]")));
                 return;
             }
         }

@@ -149,7 +149,7 @@ pub fn read_file(args: Value) -> Result<String> {
         } else {
             line.to_string()
         };
-        result.push_str(&format!("{:4} | {}\n", line_num, display_line));
+        result.push_str(&format!("{line_num:4} | {display_line}\n"));
     }
 
     if lines.len() > MAX_LINES && offset == 0 && limit == MAX_LINES {
@@ -242,8 +242,7 @@ pub fn str_replace_file(args: Value) -> Result<String> {
     let count = content.matches(&args.old_str).count();
     if count > 1 && !args.replace_all {
         return Err(anyhow::anyhow!(
-            "old_str appears {} times in the file. Must be unique for replacement, or set replace_all=true.",
-            count
+            "old_str appears {count} times in the file. Must be unique for replacement, or set replace_all=true."
         ));
     }
 

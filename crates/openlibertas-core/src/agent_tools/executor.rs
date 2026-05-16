@@ -111,7 +111,7 @@ impl ToolExecutor {
                                 Err(e) => ToolExecutionResult::Error {
                                     tool_name: tool_call.function.name.clone(),
                                     key_arg,
-                                    error: format!("Tool execution panicked: {}", e),
+                                    error: format!("Tool execution panicked: {e}"),
                                 },
                             }
                         } else if let Some(client) = &self.client {
@@ -146,7 +146,7 @@ impl ToolExecutor {
                     Err(e) => ToolExecutionResult::Error {
                         tool_name: tool_call.function.name.clone(),
                         key_arg: key_arg.clone(),
-                        error: format!("Parse error: {}", e),
+                        error: format!("Parse error: {e}"),
                     },
                 };
             match &result {
@@ -174,7 +174,7 @@ impl ToolExecutor {
             results.push(result);
         }
 
-        self.tool_results = results.iter().map(|r| r.content_for_message()).collect();
+        self.tool_results = results.iter().map(super::super::domain::ToolExecutionResult::content_for_message).collect();
         results
     }
 

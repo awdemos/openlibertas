@@ -28,14 +28,14 @@ impl State {
         let path = Self::state_path().context("Could not determine state path")?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create state directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create state directory: {parent:?}"))?;
         }
         let json = serde_json::to_string_pretty(self).context("Failed to serialize state")?;
         let temp_path = path.with_extension("tmp");
         std::fs::write(&temp_path, json)
-            .with_context(|| format!("Failed to write state temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to write state temp file: {temp_path:?}"))?;
         std::fs::rename(&temp_path, &path)
-            .with_context(|| format!("Failed to rename state file to: {:?}", path))?;
+            .with_context(|| format!("Failed to rename state file to: {path:?}"))?;
         Ok(())
     }
 

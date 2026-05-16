@@ -42,7 +42,7 @@ fn to_markdown(messages: &[Message], model: Option<&str>) -> String {
         let ts_line = if ts.is_empty() {
             String::new()
         } else {
-            format!(" *{}*\n", ts)
+            format!(" *{ts}*\n")
         };
         md.push_str(&format!("## {}{}\n{}", role, ts_line, msg.content));
         if let Some(ref tool_calls) = msg.tool_calls {

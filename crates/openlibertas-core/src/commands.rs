@@ -368,7 +368,7 @@ pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
 
 /// Detailed help for a specific command
 pub fn command_detailed_help(cmd: &str) -> Option<String> {
-    let cmd = if cmd.starts_with('/') { cmd } else { &format!("/{}", cmd) };
+    let cmd = if cmd.starts_with('/') { cmd } else { &format!("/{cmd}") };
     let desc = command_description(cmd);
     if desc.is_empty() {
         return None;
@@ -442,10 +442,10 @@ pub fn build_help_message() -> String {
     ];
 
     for (category, commands) in &categories {
-        let _ = writeln!(output, "  [{}]", category);
+        let _ = writeln!(output, "  [{category}]");
         for cmd in *commands {
             let desc = command_description(cmd);
-            let _ = writeln!(output, "    {:14} - {}", cmd, desc);
+            let _ = writeln!(output, "    {cmd:14} - {desc}");
         }
         let _ = writeln!(output);
     }
@@ -466,9 +466,9 @@ pub struct LoadedSession {
 pub fn load_session(store: &SessionStore, name: &str) -> anyhow::Result<LoadedSession> {
     let path = store.session_path(name);
     let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read session: {}", name))?;
+        .with_context(|| format!("Failed to read session: {name}"))?;
     let session: crate::store::Session = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse session: {}", name))?;
+        .with_context(|| format!("Failed to parse session: {name}"))?;
 
     Ok(LoadedSession {
         messages: session.messages,

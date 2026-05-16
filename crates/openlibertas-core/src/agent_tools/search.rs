@@ -93,7 +93,7 @@ pub fn glob(args: Value) -> Result<String> {
     for entry in entries {
         match entry {
             Ok(path) => results.push(path.to_string_lossy().to_string()),
-            Err(e) => return Err(anyhow::anyhow!("Glob error: {}", e)),
+            Err(e) => return Err(anyhow::anyhow!("Glob error: {e}")),
         }
     }
 
@@ -112,7 +112,7 @@ pub fn grep(args: Value) -> Result<String> {
     let head_limit = args.head_limit.unwrap_or(250);
 
     let regex = regex::Regex::new(&pattern)
-        .with_context(|| format!("Invalid regex pattern: {}", pattern))?;
+        .with_context(|| format!("Invalid regex pattern: {pattern}"))?;
 
     let mut results = Vec::new();
     let base_path = Path::new(base);
@@ -122,7 +122,7 @@ pub fn grep(args: Value) -> Result<String> {
         search_file(base_path, &regex, &mut results, output_mode)?;
     } else if base_path.is_dir() {
         let glob_pattern = args.glob.as_deref().unwrap_or("*");
-        let pattern_str = format!("{}/{}", base, glob_pattern);
+        let pattern_str = format!("{base}/{glob_pattern}");
 
         let glob_iter = match glob::glob(&pattern_str) {
             Ok(iter) => iter,
@@ -139,7 +139,7 @@ pub fn grep(args: Value) -> Result<String> {
             }
         }
     } else {
-        return Err(anyhow::anyhow!("Path not found: {}", base));
+        return Err(anyhow::anyhow!("Path not found: {base}"));
     }
 
     if !errors.is_empty() {
@@ -156,8 +156,7 @@ pub fn grep(args: Value) -> Result<String> {
         if total > head_limit {
             results.truncate(head_limit);
             results.push(format!(
-                "\n[Truncated: {} results total, showing first {}]",
-                total, head_limit
+                "\n[Truncated: {total} results total, showing first {head_limit}]"
             ));
         }
         Ok(results.join("\n"))

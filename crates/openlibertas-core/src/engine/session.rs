@@ -33,11 +33,11 @@ impl ChatEngine {
         } else {
             self.tool_registry.tool_instructions(self.tool_format)
         };
-        let env_section = self.env_context.as_ref().map(|ctx| ctx.to_prompt_section());
+        let env_section = self.env_context.as_ref().map(super::super::env_context::EnvContext::to_prompt_section);
 
         if let Some(prompt) = &self.system_prompt {
             let mut full_prompt = if let Some(tool_text) = &tool_instructions {
-                format!("{}\n\n{}", prompt, tool_text)
+                format!("{prompt}\n\n{tool_text}")
             } else {
                 prompt.clone()
             };

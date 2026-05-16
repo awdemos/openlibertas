@@ -19,7 +19,7 @@ impl MessageBlock {
         match self {
             MessageBlock::Single(msg) => msg.estimate_tokens(),
             MessageBlock::ToolCallPair { assistant, results } => {
-                let results_tokens: usize = results.iter().map(|r| r.estimate_tokens()).sum();
+                let results_tokens: usize = results.iter().map(super::domain::Message::estimate_tokens).sum();
                 assistant.estimate_tokens().saturating_add(results_tokens)
             }
         }
@@ -92,7 +92,7 @@ impl ContextCompactor {
             }
         }
 
-        let system_tokens: usize = system_msgs.iter().map(|m| m.estimate_tokens()).sum();
+        let system_tokens: usize = system_msgs.iter().map(super::domain::Message::estimate_tokens).sum();
         let preserve_budget = self.preserve_tokens().saturating_sub(system_tokens);
 
         let blocks = Self::build_blocks(&non_system);
@@ -198,13 +198,13 @@ impl ContextCompactor {
 
         let mut summary_parts = Vec::new();
         if dropped_users > 0 {
-            summary_parts.push(format!("{} user message(s)", dropped_users));
+            summary_parts.push(format!("{dropped_users} user message(s)"));
         }
         if dropped_assistants > 0 {
-            summary_parts.push(format!("{} assistant message(s)", dropped_assistants));
+            summary_parts.push(format!("{dropped_assistants} assistant message(s)"));
         }
         if dropped_tools > 0 {
-            summary_parts.push(format!("{} tool message(s)", dropped_tools));
+            summary_parts.push(format!("{dropped_tools} tool message(s)"));
         }
 
         if summary_parts.is_empty() {
@@ -250,12 +250,12 @@ pub fn parse_file_context(input: &str) -> String {
 
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                let expanded = format!("--- {} ---\n```\n{}\n```", path_str, content);
+                let expanded = format!("--- {path_str} ---\n```\n{content}\n```");
                 replacements.push((full_match, expanded));
             }
             Err(e) => {
-                failed_files.push(format!("{}: {}", path_str, e));
-                replacements.push((full_match, format!("[Error reading {}: {}]", path_str, e)));
+                failed_files.push(format!("{path_str}: {e}"));
+                replacements.push((full_match, format!("[Error reading {path_str}: {e}]")));
             }
         }
     }

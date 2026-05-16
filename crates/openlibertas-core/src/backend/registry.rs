@@ -230,8 +230,7 @@ impl ProviderRegistry {
 
                 if let Some(prev) = tried.last() {
                     let _ = tx.send(BackendEvent::Text(format!(
-                        "\n[Provider '{}' failed, trying '{}']\n",
-                        prev, provider_id
+                        "\n[Provider '{prev}' failed, trying '{provider_id}']\n"
                     )));
                 }
 
@@ -306,7 +305,7 @@ impl ProviderRegistry {
                     "All providers failed. Tried: {}",
                     tried
                         .iter()
-                        .map(|p| p.as_str())
+                        .map(super::super::domain::ProviderId::as_str)
                         .collect::<Vec<_>>()
                         .join(", ")
                 )));

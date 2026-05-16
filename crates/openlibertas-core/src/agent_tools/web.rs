@@ -41,7 +41,7 @@ async fn fetch_url_async(url: String) -> Result<String> {
     let resp = client.get(&url).send().await?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(anyhow::anyhow!("HTTP {} fetching {}", status, url));
+        return Err(anyhow::anyhow!("HTTP {status} fetching {url}"));
     }
     let text = resp.text().await?;
     let truncated = if text.len() > 10000 {

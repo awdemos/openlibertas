@@ -129,9 +129,9 @@ impl McpClient {
 
     pub fn from_config_file(path: &Path) -> Result<Self> {
         let contents = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read config from {:?}", path))?;
+            .with_context(|| format!("Failed to read config from {path:?}"))?;
         let config: Value = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse config from {:?}", path))?;
+            .with_context(|| format!("Failed to parse config from {path:?}"))?;
 
         let mcp_section = config
             .get("mcp")
@@ -186,7 +186,7 @@ impl McpClient {
                         }
                     }
                     Err(e) => {
-                        let err_msg = format!("{}", e);
+                        let err_msg = format!("{e}");
                         tracing::error!("MCP server '{}' discovery failed: {}", name, err_msg);
                         errors.insert(name.clone(), err_msg);
                         statuses.insert(name.clone(), McpServerStatus::Failed);
@@ -201,7 +201,7 @@ impl McpClient {
                         }
                     }
                     Err(e) => {
-                        let err_msg = format!("{}", e);
+                        let err_msg = format!("{e}");
                         tracing::error!("MCP server '{}' discovery failed: {}", name, err_msg);
                         errors.insert(name.clone(), err_msg);
                         statuses.insert(name.clone(), McpServerStatus::Failed);
@@ -231,7 +231,7 @@ impl McpClient {
             .as_ref()
             .context("Local MCP server missing command")?;
         if cmd.is_empty() {
-            return Err(anyhow::anyhow!("Empty command for MCP server {}", name));
+            return Err(anyhow::anyhow!("Empty command for MCP server {name}"));
         }
 
         let mut child = Command::new(&cmd[0])
@@ -241,7 +241,7 @@ impl McpClient {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .with_context(|| format!("Failed to spawn MCP server {}", name))?;
+            .with_context(|| format!("Failed to spawn MCP server {name}"))?;
 
         let stdin = child.stdin.take().context("Failed to get stdin")?;
         let stdout = child.stdout.take().context("Failed to get stdout")?;
@@ -273,7 +273,7 @@ impl McpClient {
             }
         }
 
-        Err(anyhow::anyhow!("No response from MCP server {}", name))
+        Err(anyhow::anyhow!("No response from MCP server {name}"))
     }
 
     async fn discover_remote_tools(
@@ -304,7 +304,7 @@ impl McpClient {
                     Err(anyhow::anyhow!("HTTP {}", resp.status()))
                 }
             }
-            Err(e) => Err(anyhow::anyhow!("Failed to discover remote tools: {}", e)),
+            Err(e) => Err(anyhow::anyhow!("Failed to discover remote tools: {e}")),
         }
     }
 
@@ -312,14 +312,14 @@ impl McpClient {
         let tools = self.tools.lock().await;
         let (server_name, _) = tools
             .get(tool_name)
-            .context(format!("Tool {} not found", tool_name))?;
+            .context(format!("Tool {tool_name} not found"))?;
         let server_name = server_name.clone();
         drop(tools);
 
         let servers = &self.servers;
         let config = servers
             .get(&server_name)
-            .context(format!("Server {} not found", server_name))?;
+            .context(format!("Server {server_name} not found"))?;
 
         match config.server_type.as_str() {
             "local" => {
@@ -343,7 +343,7 @@ impl McpClient {
         let mut processes = self.processes.lock().await;
         let child = processes
             .get_mut(server_name)
-            .context(format!("MCP server {} not running", server_name))?;
+            .context(format!("MCP server {server_name} not running"))?;
 
         let stdin = child.stdin.as_mut().context("Failed to get stdin")?;
 
@@ -508,7 +508,7 @@ impl McpClient {
         let tools = self.tools.lock().await;
         let (server_name, tool) = tools
             .get(tool_name)
-            .context(format!("Tool {} not found", tool_name))?;
+            .context(format!("Tool {tool_name} not found"))?;
         let server_name = server_name.clone();
         let tool = tool.clone();
         drop(tools);
@@ -553,10 +553,7 @@ impl McpClient {
                 ))
             }
             Err(e) => Err(anyhow::anyhow!(
-                "✗ Tool '{}' test failed (server: {}): {}",
-                tool_name,
-                server_name,
-                e
+                "✗ Tool '{tool_name}' test failed (server: {server_name}): {e}"
             )),
         }
     }

@@ -49,8 +49,7 @@ fn validate_shell_command(command: &str) -> Result<()> {
     for pattern in &forbidden {
         if normalized.contains(pattern) {
             return Err(anyhow::anyhow!(
-                "Command blocked by sandbox: contains forbidden pattern '{}'",
-                pattern
+                "Command blocked by sandbox: contains forbidden pattern '{pattern}'"
             ));
         }
     }

@@ -80,7 +80,7 @@ impl HistoryStore {
             .open(&self.path)?;
 
         let json_line = serde_json::to_string(entry)?;
-        writeln!(file, "{}", json_line)?;
+        writeln!(file, "{json_line}")?;
 
         // Trim if exceeds limit
         self.trim_to_limit()?;

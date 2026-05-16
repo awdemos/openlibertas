@@ -41,7 +41,7 @@ impl ElevenLabsClient {
         audio_bytes: Vec<u8>,
         cancel: &CancellationToken,
     ) -> Result<String, crate::voice::error::VoiceError> {
-        let url = format!("{}/speech-to-text", ELEVENLABS_API_BASE);
+        let url = format!("{ELEVENLABS_API_BASE}/speech-to-text");
         let audio_len = audio_bytes.len();
         info!("STT request: {} bytes", audio_len);
 
@@ -80,8 +80,7 @@ impl ElevenLabsClient {
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 error!("STT HTTP error: {} - {}", status, body);
                 return Err(crate::voice::error::VoiceError::SttError(format!(
-                    "HTTP {}: {}",
-                    status, body
+                    "HTTP {status}: {body}"
                 )));
             }
 
@@ -168,8 +167,7 @@ impl ElevenLabsClient {
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 error!("TTS HTTP error: {} - {}", status, body);
                 return Err(crate::voice::error::VoiceError::TtsError(format!(
-                    "HTTP {}: {}",
-                    status, body
+                    "HTTP {status}: {body}"
                 )));
             }
 

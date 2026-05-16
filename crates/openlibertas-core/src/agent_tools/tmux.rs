@@ -21,8 +21,7 @@ const ALLOWED_TMUX_COMMANDS: &[&str] = &[
 fn validate_tmux_command(subcommand: &str) -> Result<()> {
     if !ALLOWED_TMUX_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
         return Err(anyhow::anyhow!(
-            "Tmux subcommand '{}' is not in the allowlist",
-            subcommand
+            "Tmux subcommand '{subcommand}' is not in the allowlist"
         ));
     }
     Ok(())

@@ -185,7 +185,7 @@ impl Agent for ChatAgent {
             if !text.is_empty() {
                 text.push('\n');
             }
-            text.push_str(&format!("@{}", file));
+            text.push_str(&format!("@{file}"));
         }
 
         let message_count_before = self.engine.chat().messages.len();
@@ -271,10 +271,9 @@ impl Agent for ChatAgent {
                 self.engine.finish_agent_loop();
                 let max = self.engine.agents().max_iterations;
                 self.engine.add_system_message(format!(
-                    "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
-                    max
+                    "[Agent stopped after {max} iterations. Provide more specific instructions if needed.]"
                 ));
-                self.status = AgentTurnState::Error(format!("Max iterations ({}) reached", max));
+                self.status = AgentTurnState::Error(format!("Max iterations ({max}) reached"));
                 let _ = wire.send(WireMessage::TurnFinished {
                     turn_id: turn_id.clone(),
                 });
@@ -365,7 +364,7 @@ impl Agent for ChatAgent {
         if let Some(name) = persona {
             self.engine.agents_mut().persona = name.clone();
             self.engine
-                .set_agent_prompt(format!("You are the {} agent.", name));
+                .set_agent_prompt(format!("You are the {name} agent."));
         } else {
             self.engine.set_agent_prompt("");
         }

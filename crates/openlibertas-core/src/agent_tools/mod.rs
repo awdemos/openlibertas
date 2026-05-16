@@ -72,7 +72,7 @@ pub fn execute_builtin(name: &str, args: Value) -> Result<String> {
         "switch_persona" => agent::switch_persona(args),
         "spawn_subagent" => agent::spawn_subagent(args),
         "rlm_repl" => rlm::rlm_repl(args),
-        _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", name)),
+        _ => Err(anyhow::anyhow!("Unknown built-in tool: {name}")),
     }
 }
 

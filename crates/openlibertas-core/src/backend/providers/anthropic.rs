@@ -176,7 +176,7 @@ pub(crate) fn chat_anthropic(
         temperature,
     };
 
-    let tools_count = req.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+    let tools_count = req.tools.as_ref().map(std::vec::Vec::len).unwrap_or(0);
     info!(
         "Anthropic chat request: model={}, messages={}, max_tokens={}, tools={} ({} definitions)",
         model, anthropic_messages.len(), max_tokens, req.tools.is_some(), tools_count
@@ -192,7 +192,7 @@ pub(crate) fn chat_anthropic(
     let extra_params = if extra.is_empty() { None } else { Some(extra) };
 
     tokio::spawn(async move {
-        let url = format!("{}/messages", base_url);
+        let url = format!("{base_url}/messages");
         let mut retries = 0;
         const MAX_RETRIES: u32 = 3;
 
@@ -206,7 +206,7 @@ pub(crate) fn chat_anthropic(
                 Ok(v) => v,
                 Err(e) => {
                     error!("Failed to serialize Anthropic request: {}", e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {e}]")));
                     return;
                 }
             };
@@ -232,7 +232,7 @@ pub(crate) fn chat_anthropic(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Anthropic HTTP {} -- retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
-                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {} -- retrying {}/{} in {:?}]", status, retries, MAX_RETRIES, delay)));
+                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {status} -- retrying {retries}/{MAX_RETRIES} in {delay:?}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -246,12 +246,12 @@ pub(crate) fn chat_anthropic(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Anthropic connection error -- retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
-                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {}/{} in {:?}: {}]", retries, MAX_RETRIES, delay, e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {retries}/{MAX_RETRIES} in {delay:?}: {e}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
                     error!("Anthropic chat connection failed after {} retries: {}", MAX_RETRIES, e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Error: {e}]")));
                     return;
                 }
             }
@@ -395,7 +395,7 @@ async fn stream_anthropic(
                         let _ = tx.send(BackendEvent::ToolCall(tool_call));
                     }
                 }
-                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
+                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {e}]")));
                 return;
             }
         }

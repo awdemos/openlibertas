@@ -30,10 +30,10 @@ impl CredentialManager {
 
     pub fn set_api_key(provider_name: &str, api_key: &str) -> Result<()> {
         let entry = keyring::Entry::new(KEYRING_SERVICE, provider_name)
-            .map_err(|e| anyhow::anyhow!("Failed to create keyring entry: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create keyring entry: {e}"))?;
         entry
             .set_password(api_key)
-            .map_err(|e| anyhow::anyhow!("Failed to store API key in keyring: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to store API key in keyring: {e}"))?;
         info!("API key stored in keyring for provider '{}'", provider_name);
         Ok(())
     }

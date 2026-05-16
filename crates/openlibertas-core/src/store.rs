@@ -47,7 +47,7 @@ pub struct SessionStore {
 impl SessionStore {
     pub fn new(data_dir: PathBuf) -> Result<Self> {
         fs::create_dir_all(&data_dir)
-            .with_context(|| format!("Failed to create data directory: {:?}", data_dir))?;
+            .with_context(|| format!("Failed to create data directory: {data_dir:?}"))?;
         Ok(Self { data_dir })
     }
 
@@ -88,15 +88,15 @@ impl SessionStore {
         let mut md = String::new();
         md.push_str("# Chat Session\n\n");
         if let Some(m) = model {
-            md.push_str(&format!("**Model:** {}\n\n", m));
+            md.push_str(&format!("**Model:** {m}\n\n"));
         }
-        md.push_str(&format!("**Date:** {}\n\n", now));
+        md.push_str(&format!("**Date:** {now}\n\n"));
         md.push_str("---\n\n");
         md.push_str(&export::export_messages(messages, model, ExportFormat::Markdown));
 
         let path = self.data_dir.join(id);
         fs::write(&path, md)
-            .with_context(|| format!("Failed to write markdown file: {:?}", path))?;
+            .with_context(|| format!("Failed to write markdown file: {path:?}"))?;
         Ok(())
     }
 
@@ -118,7 +118,7 @@ impl SessionStore {
         let session = Session {
             id: id.to_string(),
             title,
-            model: model.map(|s| s.to_string()),
+            model: model.map(std::string::ToString::to_string),
             created_at: existing
                 .as_ref()
                 .map(|e| e.created_at.clone())
@@ -133,14 +133,14 @@ impl SessionStore {
                 .unwrap_or_default(),
         };
 
-        let temp_path = self.data_dir.join(format!("{}.tmp", id));
+        let temp_path = self.data_dir.join(format!("{id}.tmp"));
         let final_path = self.session_path(id);
 
         let json = serde_json::to_string_pretty(&session).context("Failed to serialize session")?;
         fs::write(&temp_path, json)
-            .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to write temp file: {temp_path:?}"))?;
         fs::rename(&temp_path, &final_path)
-            .with_context(|| format!("Failed to rename temp file to: {:?}", final_path))?;
+            .with_context(|| format!("Failed to rename temp file to: {final_path:?}"))?;
 
         Ok(())
     }
@@ -161,24 +161,24 @@ impl SessionStore {
         let session = Session {
             id: id.to_string(),
             title,
-            model: model.map(|s| s.to_string()),
+            model: model.map(std::string::ToString::to_string),
             created_at: now.clone(),
             updated_at: Some(now),
             messages: messages.to_vec(),
-            parent_id: parent_id.map(|s| s.to_string()),
+            parent_id: parent_id.map(std::string::ToString::to_string),
             branch_point,
             branches: Vec::new(),
         };
 
-        let temp_path = self.data_dir.join(format!("{}.tmp", id));
+        let temp_path = self.data_dir.join(format!("{id}.tmp"));
         let final_path = self.session_path(id);
 
         let json =
             serde_json::to_string_pretty(&session).context("Failed to serialize branch session")?;
         fs::write(&temp_path, json)
-            .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
+            .with_context(|| format!("Failed to write temp file: {temp_path:?}"))?;
         fs::rename(&temp_path, &final_path)
-            .with_context(|| format!("Failed to rename temp file to: {:?}", final_path))?;
+            .with_context(|| format!("Failed to rename temp file to: {final_path:?}"))?;
 
         Ok(())
     }
@@ -189,16 +189,16 @@ impl SessionStore {
             return Ok(());
         }
         let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read parent session: {:?}", path))?;
+            .with_context(|| format!("Failed to read parent session: {path:?}"))?;
         let mut session: Session = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse parent session: {:?}", path))?;
+            .with_context(|| format!("Failed to parse parent session: {path:?}"))?;
 
         if !session.branches.contains(&branch_id.to_string()) {
             session.branches.push(branch_id.to_string());
             let json = serde_json::to_string_pretty(&session)
                 .context("Failed to serialize parent session")?;
             fs::write(&path, json)
-                .with_context(|| format!("Failed to write parent session: {:?}", path))?;
+                .with_context(|| format!("Failed to write parent session: {path:?}"))?;
         }
         Ok(())
     }
@@ -206,9 +206,9 @@ impl SessionStore {
     pub fn load(&self, id: &str) -> Result<Vec<Message>> {
         let path = self.session_path(id);
         let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read session: {:?}", path))?;
+            .with_context(|| format!("Failed to read session: {path:?}"))?;
         let session: Session = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse session: {:?}", path))?;
+            .with_context(|| format!("Failed to parse session: {path:?}"))?;
         Ok(session.messages)
     }
 
@@ -273,13 +273,13 @@ impl SessionStore {
         let path = self.session_path(id);
         if path.exists() {
             fs::remove_file(&path)
-                .with_context(|| format!("Failed to delete session: {:?}", path))?;
+                .with_context(|| format!("Failed to delete session: {path:?}"))?;
         }
         Ok(())
     }
 
     pub fn session_path(&self, id: &str) -> PathBuf {
-        self.data_dir.join(format!("{}.json", id))
+        self.data_dir.join(format!("{id}.json"))
     }
 }
 

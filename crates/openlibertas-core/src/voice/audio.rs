@@ -180,7 +180,7 @@ impl Recording {
         self.samples
             .iter()
             .map(|s| s.abs())
-            .fold(0.0f32, |a, b| a.max(b))
+            .fold(0.0f32, f32::max)
     }
 }
 
@@ -251,8 +251,7 @@ impl AudioRecorder {
                 found.ok_or_else(|| {
                     error!("Input device '{}' not found", name);
                     crate::voice::VoiceError::AudioError(format!(
-                        "Input device '{}' not found. Use /voice_device to list available devices.",
-                        name
+                        "Input device '{name}' not found. Use /voice_device to list available devices."
                     ))
                 })?
             }
@@ -437,7 +436,7 @@ pub fn is_silence(samples: &[f32], threshold: f32) -> bool {
     let max_amplitude = samples
         .iter()
         .map(|s| s.abs())
-        .fold(0.0f32, |a, b| a.max(b));
+        .fold(0.0f32, f32::max);
     max_amplitude < threshold
 }
 
@@ -465,7 +464,7 @@ pub fn normalize_audio(samples: &mut [f32], target_peak: f32) {
     let max_amp = samples
         .iter()
         .map(|s| s.abs())
-        .fold(0.0f32, |a, b| a.max(b));
+        .fold(0.0f32, f32::max);
     if max_amp > 0.0 && max_amp < target_peak {
         let gain = target_peak / max_amp;
         for sample in samples.iter_mut() {

@@ -14,8 +14,7 @@ const ALLOWED_GIT_COMMANDS: &[&str] = &[
 fn validate_git_command(subcommand: &str) -> Result<()> {
     if !ALLOWED_GIT_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
         return Err(anyhow::anyhow!(
-            "Git subcommand '{}' is not in the allowlist",
-            subcommand
+            "Git subcommand '{subcommand}' is not in the allowlist"
         ));
     }
     Ok(())
@@ -75,15 +74,14 @@ pub fn git(args: Value) -> Result<String> {
         let target = Path::new(&path);
         if target.is_absolute() {
             return Err(anyhow::anyhow!(
-                "Absolute paths are not allowed: {}. Use a relative path.",
-                path
+                "Absolute paths are not allowed: {path}. Use a relative path."
             ));
         }
         let resolved = sandbox.join(target);
         let canonical = resolved.canonicalize().unwrap_or(resolved.clone());
         let canonical_sandbox = sandbox.canonicalize().unwrap_or(sandbox);
         if !canonical.starts_with(&canonical_sandbox) {
-            return Err(anyhow::anyhow!("Path escapes working directory: {}", path));
+            return Err(anyhow::anyhow!("Path escapes working directory: {path}"));
         }
         cmd.current_dir(resolved);
     }

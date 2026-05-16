@@ -47,8 +47,7 @@ fn validate_python_code(code: &str) -> Result<()> {
     for pattern in &forbidden {
         if normalized.contains(pattern) {
             return Err(anyhow::anyhow!(
-                "Code blocked by sandbox: contains forbidden keyword '{}'",
-                pattern
+                "Code blocked by sandbox: contains forbidden keyword '{pattern}'"
             ));
         }
     }
@@ -81,8 +80,7 @@ pub fn rlm_repl(args: Value) -> Result<String> {
         Ok(result) => result.with_context(|| "Failed to execute Python code")?,
         Err(_) => {
             return Err(anyhow::anyhow!(
-                "Python execution timed out after {} seconds",
-                timeout_secs
+                "Python execution timed out after {timeout_secs} seconds"
             ))
         }
     };

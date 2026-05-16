@@ -127,7 +127,7 @@ impl CompletionEngine {
                 // Everything after "/model "
                 before_cursor
                     .strip_prefix("/model ")
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_default()
             }
             CompletionType::SlashCommand => before_cursor.to_string(),
@@ -238,7 +238,7 @@ impl CompletionEngine {
     /// Uses `git ls-files` if inside a git repo, otherwise walks the directory.
     /// Results are cached for 2 seconds.
     fn list_files(&self) -> Vec<String> {
-        let mut cache = self.file_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cache = self.file_cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -272,7 +272,7 @@ impl CompletionEngine {
                 let mut files: Vec<String> = stdout
                     .lines()
                     .filter(|l| !l.is_empty())
-                    .map(|l| l.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect();
                 files.sort();
                 return files;
@@ -286,7 +286,7 @@ impl CompletionEngine {
                 if let Ok(meta) = entry.metadata() {
                     let name = entry.file_name().to_string_lossy().to_string();
                     if meta.is_dir() {
-                        files.push(format!("{}/", name));
+                        files.push(format!("{name}/"));
                     } else {
                         files.push(name);
                     }

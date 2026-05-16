@@ -47,7 +47,7 @@ pub(crate) fn chat_openai(
     let api_key = mp.api_key.clone();
     let tool_format = mp.tool_format;
 
-    let tools_count = req.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+    let tools_count = req.tools.as_ref().map(std::vec::Vec::len).unwrap_or(0);
     info!(
         "Chat request: model={}, messages={}, max_tokens={}, tools={} ({} definitions)",
         model, msg_count, max_tokens, req.tools.is_some(), tools_count
@@ -59,7 +59,7 @@ pub(crate) fn chat_openai(
     }
 
     tokio::spawn(async move {
-        let url = format!("{}/chat/completions", base_url);
+        let url = format!("{base_url}/chat/completions");
         let mut retries = 0;
         const MAX_RETRIES: u32 = 3;
         let mut use_ollama = false;
@@ -83,7 +83,7 @@ pub(crate) fn chat_openai(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Chat HTTP {} -- retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
-                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {} -- retrying {}/{} in {:?}]", status, retries, MAX_RETRIES, delay)));
+                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {status} -- retrying {retries}/{MAX_RETRIES} in {delay:?}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -97,12 +97,12 @@ pub(crate) fn chat_openai(
                         retries += 1;
                         let delay = std::time::Duration::from_secs(2_u64.pow(retries));
                         warn!("Chat connection error -- retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
-                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {}/{} in {:?}: {}]", retries, MAX_RETRIES, delay, e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {retries}/{MAX_RETRIES} in {delay:?}: {e}]")));
                         tokio::time::sleep(delay).await;
                         continue;
                     }
                     error!("Chat connection failed after {} retries: {}", MAX_RETRIES, e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Error: {e}]")));
                     return;
                 }
             }
@@ -110,7 +110,7 @@ pub(crate) fn chat_openai(
 
         if use_ollama {
             let ollama_base = base_url.trim_end_matches("/v1");
-            let ollama_url = format!("{}/api/chat", ollama_base);
+            let ollama_url = format!("{ollama_base}/api/chat");
             let ollama_req = OllamaChatRequest {
                 model: model.clone(),
                 messages: api_messages,
@@ -136,7 +136,7 @@ pub(crate) fn chat_openai(
                 }
                 Err(e) => {
                     error!("Ollama chat connection failed: {}", e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {e}]")));
                     return;
                 }
             }
@@ -168,12 +168,12 @@ pub(crate) async fn fetch_models_openai(mp: &MultiProvider) -> Result<Vec<Model>
     }
 
     let ollama_base = mp.base_url.trim_end_matches("/v1");
-    let ollama_url = format!("{}/api/tags", ollama_base);
+    let ollama_url = format!("{ollama_base}/api/tags");
     let ollama_resp = mp.client.get(&ollama_url).bearer_auth(mp.api_key.expose_secret()).send().await.context("Failed to fetch models from Ollama endpoint")?;
 
     let ollama_status = ollama_resp.status();
     if !ollama_status.is_success() {
-        return Err(anyhow::anyhow!("HTTP {} (OpenAI) / HTTP {} (Ollama)", openai_status, ollama_status));
+        return Err(anyhow::anyhow!("HTTP {openai_status} (OpenAI) / HTTP {ollama_status} (Ollama)"));
     }
 
     let ollama_data: OllamaModelsResponse = ollama_resp.json().await.context("Failed to parse Ollama models response")?;
@@ -256,7 +256,7 @@ async fn stream_openai(
                     for (_, tool_call) in accumulated_tool_calls { let _ = tx.send(BackendEvent::ToolCall(tool_call)); }
                 }
                 error!("Chat stream error: {}", e);
-                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
+                let _ = tx.send(BackendEvent::Error(format!("[Stream error: {e}]")));
                 return;
             }
         }
@@ -312,7 +312,7 @@ async fn stream_ollama(
             }
             Err(e) => {
                 error!("Ollama stream error: {}", e);
-                let _ = tx.send(BackendEvent::Error(format!("[Ollama stream error: {}]", e)));
+                let _ = tx.send(BackendEvent::Error(format!("[Ollama stream error: {e}]")));
                 return;
             }
         }

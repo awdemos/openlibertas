@@ -53,8 +53,7 @@ pub async fn run_agent_loop(
             engine.finish_agent_loop();
             let max_iterations = engine.agents().max_iterations;
             engine.add_system_message(format!(
-                "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
-                max_iterations
+                "[Agent stopped after {max_iterations} iterations. Provide more specific instructions if needed.]"
             ));
             return LoopAction::Stop;
         }
@@ -95,7 +94,7 @@ pub async fn run_agent_loop(
                                     .map(String::from)?;
                                 let isolate = args
                                     .get("isolate")
-                                    .and_then(|v| v.as_bool())
+                                    .and_then(serde_json::Value::as_bool)
                                     .unwrap_or(false);
                                 Some((persona, isolate))
                             })
@@ -118,8 +117,7 @@ pub async fn run_agent_loop(
                     }
                 } else {
                     info!(
-                        "Agent: persona '{}' not found, staying as '{}'",
-                        persona, current_persona
+                        "Agent: persona '{persona}' not found, staying as '{current_persona}'"
                     );
                 }
             }
