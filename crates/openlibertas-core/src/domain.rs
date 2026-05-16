@@ -1,3 +1,4 @@
+use crate::capability::ProviderCapabilities;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -139,6 +140,14 @@ impl Model {
         let supports_tools = tool_patterns.iter().any(|p| lower.contains(p));
 
         (supports_tools, supports_voice)
+    }
+
+    pub fn apply_capabilities(models: &mut [Model], caps: &ProviderCapabilities) {
+        for model in models {
+            let (inferred_tools, inferred_voice) = Self::infer_capabilities(&model.id);
+            model.supports_tools = caps.tools || inferred_tools;
+            model.supports_voice = inferred_voice;
+        }
     }
 }
 

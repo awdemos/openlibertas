@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::agent_tools::BuiltinTool;
+use crate::agent_tools::{validation, BuiltinTool};
 
 #[derive(Debug, Deserialize)]
 struct RlmArgs {
@@ -43,15 +43,11 @@ fn validate_python_code(code: &str) -> Result<()> {
         "pathlib",
         "shutil",
     ];
-    let normalized = code.to_lowercase();
-    for pattern in &forbidden {
-        if normalized.contains(pattern) {
-            return Err(anyhow::anyhow!(
-                "Code blocked by sandbox: contains forbidden keyword '{pattern}'"
-            ));
-        }
-    }
-    Ok(())
+    validation::forbidden(
+        code,
+        &forbidden,
+        "Code blocked by sandbox: contains forbidden keyword '{pattern}'",
+    )
 }
 
 pub fn rlm_repl(args: Value) -> Result<String> {

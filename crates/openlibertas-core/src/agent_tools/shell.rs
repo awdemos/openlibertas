@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::process::Stdio;
 
-use crate::agent_tools::BuiltinTool;
+use crate::agent_tools::{validation, BuiltinTool};
 
 #[derive(Debug, Deserialize)]
 struct ShellArgs {
@@ -45,15 +45,11 @@ fn validate_shell_command(command: &str) -> Result<()> {
         "> /dev/sda",
         "mv / /dev/null",
     ];
-    let normalized = command.trim().to_lowercase();
-    for pattern in &forbidden {
-        if normalized.contains(pattern) {
-            return Err(anyhow::anyhow!(
-                "Command blocked by sandbox: contains forbidden pattern '{pattern}'"
-            ));
-        }
-    }
-    Ok(())
+    validation::forbidden(
+        command,
+        &forbidden,
+        "Command blocked by sandbox: contains forbidden pattern '{pattern}'",
+    )
 }
 
 pub fn shell(args: Value) -> Result<String> {

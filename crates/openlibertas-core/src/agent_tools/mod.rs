@@ -9,6 +9,7 @@ pub mod rlm;
 pub mod search;
 pub mod shell;
 pub mod tmux;
+pub mod validation;
 pub mod web;
 
 pub use assembler::MessageAssembler;

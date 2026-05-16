@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::agent_tools::BuiltinTool;
+use crate::agent_tools::{validation, BuiltinTool};
 
 const ALLOWED_TMUX_COMMANDS: &[&str] = &[
     "list-sessions",
@@ -19,12 +19,11 @@ const ALLOWED_TMUX_COMMANDS: &[&str] = &[
 ];
 
 fn validate_tmux_command(subcommand: &str) -> Result<()> {
-    if !ALLOWED_TMUX_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
-        return Err(anyhow::anyhow!(
-            "Tmux subcommand '{subcommand}' is not in the allowlist"
-        ));
-    }
-    Ok(())
+    validation::allowlist(
+        subcommand,
+        ALLOWED_TMUX_COMMANDS,
+        "Tmux subcommand '{value}' is not in the allowlist",
+    )
 }
 
 #[derive(Debug, Deserialize)]

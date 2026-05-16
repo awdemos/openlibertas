@@ -3,7 +3,7 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::backend::multi_provider::MultiProvider;
 use crate::backend::types::*;
@@ -60,90 +60,53 @@ pub(crate) fn chat_openai(
 
     tokio::spawn(async move {
         let url = format!("{base_url}/chat/completions");
-        let mut retries = 0;
-        const MAX_RETRIES: u32 = 3;
-        let mut use_ollama = false;
-        let mut resp = None;
 
-        loop {
-            match client.post(&url).bearer_auth(api_key.expose_secret()).json(&req).send().await {
-                Ok(r) => {
-                    let status = r.status();
-                    if status.is_success() {
-                        info!("Chat response: HTTP {}", status);
-                        resp = Some(r);
-                        break;
-                    }
-                    if status.as_u16() == 404 {
-                        use_ollama = true;
-                        break;
-                    }
-                    let is_transient = status.as_u16() == 429 || (502..=504).contains(&status.as_u16());
-                    if is_transient && retries < MAX_RETRIES {
-                        retries += 1;
-                        let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                        warn!("Chat HTTP {} -- retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
-                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {status} -- retrying {retries}/{MAX_RETRIES} in {delay:?}]")));
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    let body = r.text().await.unwrap_or_default();
-                    error!("Chat HTTP error: {} -- {}", status, body);
-                    let _ = tx.send(BackendEvent::Error(format!("[HTTP {}: {}]", status, if body.is_empty() { "Unknown error".to_string() } else { body })));
-                    return;
-                }
-                Err(e) => {
-                    if retries < MAX_RETRIES {
-                        retries += 1;
-                        let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                        warn!("Chat connection error -- retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
-                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {retries}/{MAX_RETRIES} in {delay:?}: {e}]")));
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    error!("Chat connection failed after {} retries: {}", MAX_RETRIES, e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Error: {e}]")));
-                    return;
-                }
-            }
-        }
-
-        if use_ollama {
-            let ollama_base = base_url.trim_end_matches("/v1");
-            let ollama_url = format!("{ollama_base}/api/chat");
-            let ollama_req = OllamaChatRequest {
-                model: model.clone(),
-                messages: api_messages,
-                stream: true,
-                options: Some(OllamaOptions {
-                    num_predict: if max_tokens > 0 { Some(max_tokens as i32) } else { None },
-                    temperature,
-                }),
-                tools: if tool_format.sends_native_tools() { tools } else { None },
-            };
-            info!("Falling back to Ollama native API: {}", ollama_url);
-            match client.post(&ollama_url).bearer_auth(api_key.expose_secret()).json(&ollama_req).send().await {
-                Ok(r) => {
-                    let status = r.status();
-                    if !status.is_success() {
-                        let body = r.text().await.unwrap_or_default();
-                        error!("Ollama chat HTTP error: {} -- {}", status, body);
-                        let _ = tx.send(BackendEvent::Error(format!("[Ollama HTTP {}: {}]", status, if body.is_empty() { "Unknown error".to_string() } else { body })));
-                        return;
-                    }
-                    stream_ollama(r, cancel_token, tx).await;
-                    return;
-                }
-                Err(e) => {
-                    error!("Ollama chat connection failed: {}", e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {e}]")));
-                    return;
-                }
-            }
-        }
+        let resp = crate::backend::multi_provider::send_with_retries(
+            || async {
+                client.post(&url).bearer_auth(api_key.expose_secret()).json(&req).send().await
+            },
+            crate::backend::multi_provider::RetryConfig {
+                retry_label: "Chat",
+                error_label: "Chat",
+            },
+            &tx,
+            |s| s == 404,
+        ).await;
 
         if let Some(resp) = resp {
-            stream_openai(resp, cancel_token, tx).await;
+            if resp.status().as_u16() == 404 {
+                let ollama_base = base_url.trim_end_matches("/v1");
+                let ollama_url = format!("{ollama_base}/api/chat");
+                let ollama_req = OllamaChatRequest {
+                    model: model.clone(),
+                    messages: api_messages,
+                    stream: true,
+                    options: Some(OllamaOptions {
+                        num_predict: if max_tokens > 0 { Some(max_tokens as i32) } else { None },
+                        temperature,
+                    }),
+                    tools: if tool_format.sends_native_tools() { tools } else { None },
+                };
+                info!("Falling back to Ollama native API: {}", ollama_url);
+                match client.post(&ollama_url).bearer_auth(api_key.expose_secret()).json(&ollama_req).send().await {
+                    Ok(r) => {
+                        let status = r.status();
+                        if !status.is_success() {
+                            let body = r.text().await.unwrap_or_default();
+                            error!("Ollama chat HTTP error: {} -- {}", status, body);
+                            let _ = tx.send(BackendEvent::Error(format!("[Ollama HTTP {}: {}]", status, if body.is_empty() { "Unknown error".to_string() } else { body })));
+                            return;
+                        }
+                        stream_ollama(r, cancel_token, tx).await;
+                    }
+                    Err(e) => {
+                        error!("Ollama chat connection failed: {}", e);
+                        let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {e}]")));
+                    }
+                }
+            } else {
+                stream_openai(resp, cancel_token, tx).await;
+            }
         }
     });
 
@@ -158,13 +121,13 @@ pub(crate) async fn fetch_models_openai(mp: &MultiProvider) -> Result<Vec<Model>
     if openai_status.is_success() {
         if let Ok(data) = resp.json::<ModelsResponse>().await {
             let mut models = data.data;
-            for model in &mut models {
-                let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-                model.supports_tools = mp.capabilities.tools || inferred_tools;
-                model.supports_voice = inferred_voice;
-            }
+            Model::apply_capabilities(&mut models, &mp.capabilities);
             return Ok(models);
         }
+    }
+
+    if openai_status.as_u16() != 404 {
+        return Err(anyhow::anyhow!("HTTP {openai_status} from models endpoint"));
     }
 
     let ollama_base = mp.base_url.trim_end_matches("/v1");
@@ -173,7 +136,7 @@ pub(crate) async fn fetch_models_openai(mp: &MultiProvider) -> Result<Vec<Model>
 
     let ollama_status = ollama_resp.status();
     if !ollama_status.is_success() {
-        return Err(anyhow::anyhow!("HTTP {openai_status} (OpenAI) / HTTP {ollama_status} (Ollama)"));
+        return Err(anyhow::anyhow!("HTTP {ollama_status} from Ollama models endpoint"));
     }
 
     let ollama_data: OllamaModelsResponse = ollama_resp.json().await.context("Failed to parse Ollama models response")?;
@@ -186,11 +149,7 @@ pub(crate) async fn fetch_models_openai(mp: &MultiProvider) -> Result<Vec<Model>
         local: true,
     }).collect();
 
-    for model in &mut models {
-        let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-        model.supports_tools = mp.capabilities.tools || inferred_tools;
-        model.supports_voice = inferred_voice;
-    }
+    Model::apply_capabilities(&mut models, &mp.capabilities);
 
     Ok(models)
 }

@@ -1,5 +1,3 @@
-pub mod tool_parser;
-
 use crate::domain::Role;
 use crate::domain::{estimate_messages_tokens, Message, ToolCall};
 

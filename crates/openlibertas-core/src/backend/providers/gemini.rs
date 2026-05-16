@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::backend::multi_provider::MultiProvider;
+use crate::backend::types::*;
 use crate::domain::*;
 
 #[derive(Debug, Serialize)]
@@ -85,9 +86,6 @@ pub struct GeminiCandidate {
 pub struct GeminiContentResponse {
     #[serde(default)]
     pub parts: Vec<GeminiPartResponse>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -107,8 +105,6 @@ pub struct GeminiFunctionCallResponse {
 pub struct GeminiErrorDetail {
     pub code: i32,
     pub message: String,
-    #[allow(dead_code)]
-    pub status: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,61 +171,36 @@ pub(crate) fn chat_gemini(
 
     tokio::spawn(async move {
         let url = format!("{}/models/{}:streamGenerateContent?key={}", base_url.trim_end_matches('/'), model, api_key.expose_secret());
-        let mut retries = 0;
-        const MAX_RETRIES: u32 = 3;
 
-        loop {
-            let mut req_json = match serde_json::to_value(&req) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Failed to serialize Gemini request: {}", e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {e}]")));
-                    return;
-                }
-            };
-
-            if let Some(ref extra) = extra_params {
-                if let Some(obj) = req_json.as_object_mut() {
-                    for (k, v) in extra { obj.insert(k.clone(), v.clone()); }
-                }
+        let mut req_json = match serde_json::to_value(&req) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to serialize Gemini request: {}", e);
+                let _ = tx.send(BackendEvent::Error(format!("[Serialization error: {e}]")));
+                return;
             }
+        };
 
-            match client.post(&url).header("content-type", "application/json").json(&req_json).send().await {
-                Ok(r) => {
-                    let status = r.status();
-                    if status.is_success() {
-                        info!("Gemini chat response: HTTP {}", status);
-                        stream_gemini(r, cancel_token, tx).await;
-                        return;
-                    }
-                    let is_transient = status.as_u16() == 429 || (502..=504).contains(&status.as_u16());
-                    if is_transient && retries < MAX_RETRIES {
-                        retries += 1;
-                        let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                        warn!("Gemini HTTP {} -- retrying {}/{} in {:?}", status, retries, MAX_RETRIES, delay);
-                        let _ = tx.send(BackendEvent::Error(format!("[HTTP {status} -- retrying {retries}/{MAX_RETRIES} in {delay:?}]")));
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    let body = r.text().await.unwrap_or_default();
-                    error!("Gemini chat HTTP error: {} -- {}", status, body);
-                    let _ = tx.send(BackendEvent::Error(format!("[HTTP {}: {}]", status, if body.is_empty() { "Unknown error".to_string() } else { body })));
-                    return;
-                }
-                Err(e) => {
-                    if retries < MAX_RETRIES {
-                        retries += 1;
-                        let delay = std::time::Duration::from_secs(2_u64.pow(retries));
-                        warn!("Gemini connection error -- retrying {}/{} in {:?}: {}", retries, MAX_RETRIES, delay, e);
-                        let _ = tx.send(BackendEvent::Error(format!("[Connection error -- retrying {retries}/{MAX_RETRIES} in {delay:?}: {e}]")));
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    error!("Gemini chat connection failed after {} retries: {}", MAX_RETRIES, e);
-                    let _ = tx.send(BackendEvent::Error(format!("[Error: {e}]")));
-                    return;
-                }
+        if let Some(ref extra) = extra_params {
+            if let Some(obj) = req_json.as_object_mut() {
+                for (k, v) in extra { obj.insert(k.clone(), v.clone()); }
             }
+        }
+
+        let resp = crate::backend::multi_provider::send_with_retries(
+            || async {
+                client.post(&url).header("content-type", "application/json").json(&req_json).send().await
+            },
+            crate::backend::multi_provider::RetryConfig {
+                retry_label: "Gemini",
+                error_label: "Gemini chat",
+            },
+            &tx,
+            |_| false,
+        ).await;
+
+        if let Some(resp) = resp {
+            stream_gemini(resp, cancel_token, tx).await;
         }
     });
 
@@ -254,11 +225,7 @@ pub(crate) async fn fetch_models_gemini(mp: &MultiProvider) -> Result<Vec<Model>
         Model { id, provider: ProviderId::new(""), supports_tools: mp.capabilities.tools, supports_voice: false, local: false }
     }).collect();
 
-    for model in &mut models {
-        let (inferred_tools, inferred_voice) = Model::infer_capabilities(&model.id);
-        model.supports_tools = mp.capabilities.tools || inferred_tools;
-        model.supports_voice = inferred_voice;
-    }
+    Model::apply_capabilities(&mut models, &mp.capabilities);
 
     Ok(models)
 }

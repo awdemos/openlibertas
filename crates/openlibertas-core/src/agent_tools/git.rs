@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::agent_tools::BuiltinTool;
+use crate::agent_tools::{validation, BuiltinTool};
 
 const ALLOWED_GIT_COMMANDS: &[&str] = &[
     "status", "diff", "log", "branch", "show", "blame", "stash", "remote", "add", "commit", "push",
@@ -12,12 +12,11 @@ const ALLOWED_GIT_COMMANDS: &[&str] = &[
 ];
 
 fn validate_git_command(subcommand: &str) -> Result<()> {
-    if !ALLOWED_GIT_COMMANDS.contains(&subcommand.to_lowercase().as_str()) {
-        return Err(anyhow::anyhow!(
-            "Git subcommand '{subcommand}' is not in the allowlist"
-        ));
-    }
-    Ok(())
+    validation::allowlist(
+        subcommand,
+        ALLOWED_GIT_COMMANDS,
+        "Git subcommand '{value}' is not in the allowlist",
+    )
 }
 
 #[derive(Debug, Deserialize)]

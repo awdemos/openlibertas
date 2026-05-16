@@ -57,6 +57,29 @@ fn spawn_voice_transcription(
     });
 }
 
+fn stop_voice_recording(
+    app: &mut App,
+    sender: tokio::sync::mpsc::UnboundedSender<Event>,
+) {
+    app.voice_status = None;
+    match app.voice.stop_recording() {
+        Ok((generation, audio_bytes)) => {
+            if audio_bytes.len() > 44 {
+                app.pending_voice_generation = Some(generation);
+                let api_key = app.voice.api_key().cloned();
+                spawn_voice_transcription(api_key, audio_bytes, generation, sender);
+            } else {
+                app.voice_status = Some("No audio captured — check microphone".to_string());
+                app.voice.cancel();
+            }
+        }
+        Err(e) => {
+            app.voice_status = Some(format!("Recording failed: {}", e));
+            app.voice.cancel();
+        }
+    }
+}
+
 /// Provider wrapper that delegates chat to [`ProviderRegistry::chat_with_fallback`].
 #[derive(Clone)]
 struct RegistryBackend {
@@ -381,24 +404,7 @@ async fn main() -> Result<()> {
             app.engine.add_system_message(
                 "[Voice] Recording stopped — maximum duration reached.".to_string(),
             );
-            app.voice_status = None;
-            match app.voice.stop_recording() {
-                Ok((generation, audio_bytes)) => {
-                    if audio_bytes.len() > 44 {
-                        app.pending_voice_generation = Some(generation);
-                        let sender = event_stream.sender();
-                        let api_key = app.voice.api_key().cloned();
-                        spawn_voice_transcription(api_key, audio_bytes, generation, sender);
-                    } else {
-                        app.voice_status = Some("No audio captured — check microphone".to_string());
-                        app.voice.cancel();
-                    }
-                }
-                Err(e) => {
-                    app.voice_status = Some(format!("Recording failed: {}", e));
-                    app.voice.cancel();
-                }
-            }
+            stop_voice_recording(&mut app, event_stream.sender());
         }
 
         // Activity timeout fallback: if push-to-talk is active and no key
@@ -414,24 +420,7 @@ async fn main() -> Result<()> {
                 .is_some_and(|t| t.elapsed().as_millis() >= 2000)
         {
             info!("Voice activity timeout: stopping recording");
-            app.voice_status = None;
-            match app.voice.stop_recording() {
-                Ok((generation, audio_bytes)) => {
-                    if audio_bytes.len() > 44 {
-                        app.pending_voice_generation = Some(generation);
-                        let sender = event_stream.sender();
-                        let api_key = app.voice.api_key().cloned();
-                        spawn_voice_transcription(api_key, audio_bytes, generation, sender);
-                    } else {
-                        app.voice_status = Some("No audio captured — check microphone".to_string());
-                        app.voice.cancel();
-                    }
-                }
-                Err(e) => {
-                    app.voice_status = Some(format!("Recording failed: {}", e));
-                    app.voice.cancel();
-                }
-            }
+            stop_voice_recording(&mut app, event_stream.sender());
         }
 
         if mouse_captured != app.mouse_enabled {
@@ -477,36 +466,12 @@ async fn main() -> Result<()> {
                         )
                     {
                         info!("Ctrl+Space release: stopping recording");
-                        app.voice_status = None;
                         if !app.voice.has_min_recording_duration() {
                             app.voice_status =
                                 Some("Recording too short — hold Ctrl+Space longer".to_string());
                             app.voice.cancel();
                         } else {
-                            match app.voice.stop_recording() {
-                                Ok((generation, audio_bytes)) => {
-                                    if audio_bytes.len() <= 44 {
-                                        app.voice_status = Some(
-                                            "No audio captured — check microphone".to_string(),
-                                        );
-                                        app.voice.cancel();
-                                    } else {
-                                        app.pending_voice_generation = Some(generation);
-                                        let sender = event_stream.sender();
-                                        let api_key = app.voice.api_key().cloned();
-                                        spawn_voice_transcription(
-                                            api_key,
-                                            audio_bytes,
-                                            generation,
-                                            sender,
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    app.voice_status = Some(format!("Recording failed: {}", e));
-                                    app.voice.cancel();
-                                }
-                            }
+                            stop_voice_recording(&mut app, event_stream.sender());
                         }
                     }
                 }
