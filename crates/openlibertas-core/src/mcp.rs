@@ -432,7 +432,7 @@ impl McpClient {
         }
     }
 
-    pub fn server_names(&self) -> Vec<String> {
+    pub async fn server_names(&self) -> Vec<String> {
         self.servers
             .iter()
             .filter(|(_, c)| c.enabled)
@@ -654,8 +654,8 @@ mod tests {
         assert!(!result.is_error);
     }
 
-    #[test]
-    fn mcp_client_from_config_file() {
+    #[tokio::test]
+    async fn mcp_client_from_config_file() {
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("test_mcp_config.json");
         let config_json = r#"{
@@ -675,15 +675,15 @@ mod tests {
         std::fs::write(&config_path, config_json).unwrap();
 
         let client = McpClient::from_config_file(&config_path).unwrap();
-        let names = client.server_names();
+        let names = client.server_names().await;
         assert_eq!(names.len(), 1);
         assert_eq!(names[0], "filesystem");
 
         std::fs::remove_file(&config_path).unwrap();
     }
 
-    #[test]
-    fn mcp_client_server_names_filters_disabled() {
+    #[tokio::test]
+    async fn mcp_client_server_names_filters_disabled() {
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("test_mcp_filter.json");
         let config_json = r#"{
@@ -703,7 +703,7 @@ mod tests {
         std::fs::write(&config_path, config_json).unwrap();
 
         let client = McpClient::from_config_file(&config_path).unwrap();
-        let names = client.server_names();
+        let names = client.server_names().await;
         assert_eq!(names.len(), 1);
         assert_eq!(names[0], "enabled_server");
 

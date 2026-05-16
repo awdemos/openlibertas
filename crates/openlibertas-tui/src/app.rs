@@ -111,6 +111,7 @@ pub struct App {
     pub mcp_test_result: Option<String>,
     pub mcp_show_detail: bool,
     pub mcp_scroll: usize,
+    pub mcp_server_names_cache: Vec<String>,
     pub cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
@@ -174,7 +175,7 @@ impl App {
             agent_selected: 0,
             voice: {
                 let mut vm = VoiceManager::new(voice_api_key, voice_id);
-                vm.config.input_device = voice_input_device;
+                vm.set_input_device(voice_input_device);
                 vm
             },
             voice_status: None,
@@ -202,6 +203,7 @@ impl App {
             mcp_test_result: None,
             mcp_show_detail: false,
             mcp_scroll: 0,
+            mcp_server_names_cache: Vec::new(),
             cancel_token: None,
         }
     }
@@ -496,16 +498,12 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     Overlay::Mcp
                 };
                 if self.overlay == Overlay::Mcp {
-                    if let Some(client) = self.engine.tools().client() {
-                        let servers = client.server_names();
-                        if servers.is_empty() {
-                            Some("No MCP servers configured".to_string())
-                        } else {
-                            let list = servers.join("\n  ");
-                            Some(format!("MCP Servers:\n  {}", list))
-                        }
+                    let servers = self.mcp_server_names();
+                    if servers.is_empty() {
+                        Some("No MCP servers configured".to_string())
                     } else {
-                        Some("MCP client not initialized".to_string())
+                        let list = servers.join("\n  ");
+                        Some(format!("MCP Servers:\n  {}", list))
                     }
                 } else {
                     Some("MCP panel hidden".to_string())
@@ -765,7 +763,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
             }
             SlashCommand::Voice => {
                 let was_enabled = self.voice.is_enabled();
-                if !was_enabled && self.voice.config.api_key.is_none() {
+                if !was_enabled && self.voice.api_key().is_none() {
                     Some("Voice mode requires an ElevenLabs API key. Set ELEVENLABS_API_KEY or add elevenlabs_api_key to config.toml".to_string())
                 } else {
                     let enabled = self.voice.toggle();
@@ -811,7 +809,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                         Err(e) => Some(format!("Failed to list devices: {}", e)),
                     }
                 } else {
-                    self.voice.config.input_device = Some(device.clone());
+                    self.voice.set_input_device(Some(device.clone()));
                     self.config.input_device = Some(device.clone());
                     let msg = format!("Voice input device set to: {}", device);
                     if let Err(e) = self.config.save() {
@@ -1325,11 +1323,7 @@ available tools to refine and polish your work."
     }
 
     pub fn mcp_server_names(&self) -> Vec<String> {
-        self.engine
-            .tools()
-            .client()
-            .as_ref()
-            .map_or(Vec::new(), |c| c.server_names())
+        self.mcp_server_names_cache.clone()
     }
 
     pub fn mcp_server_count(&self) -> usize {

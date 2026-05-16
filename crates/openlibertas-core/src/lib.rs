@@ -34,7 +34,7 @@ pub use agent_tools::{extract_key_argument, tool_needs_approval, MessageAssemble
 
 #[cfg(test)]
 pub mod test_utils;
-pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
+pub use agent_loop::{run_agent_loop, LoopAction, PersonaResolver};
 pub use backend::Provider;
 pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};

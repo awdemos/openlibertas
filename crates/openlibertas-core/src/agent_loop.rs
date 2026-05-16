@@ -36,16 +36,12 @@ where
     }
 }
 
-/// Orchestrates the agent loop after a chat stream completes.
-pub struct AgentLoop;
-
-impl AgentLoop {
-    /// Run one iteration of the agent loop.
-    ///
-    /// This should be called after `BackendEvent::Done` is received. It handles
-    /// finishing the stream, executing pending tools, persona switches,
-    /// context compaction, and preparing messages for the next turn.
-    pub async fn run(
+/// Run one iteration of the agent loop.
+///
+/// This should be called after `BackendEvent::Done` is received. It handles
+/// finishing the stream, executing pending tools, persona switches,
+/// context compaction, and preparing messages for the next turn.
+pub async fn run_agent_loop(
         engine: &mut ChatEngine,
         persona_resolver: &dyn PersonaResolver,
     ) -> LoopAction {
@@ -162,4 +158,3 @@ impl AgentLoop {
             LoopAction::Stop
         }
     }
-}

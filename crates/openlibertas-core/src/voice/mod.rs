@@ -6,10 +6,10 @@ pub mod state;
 pub use audio::{
     compute_stats, default_input_device_name, list_input_devices, AudioStats, InputDeviceInfo,
 };
+pub use client::ElevenLabsClient as VoiceClient;
 pub use state::VoiceState;
 
 use audio::{encode_wav, AudioPlayer, AudioRecorder, Recording};
-use client::ElevenLabsClient;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -284,6 +284,42 @@ impl VoiceManager {
         self.cancel_flag.store(false, Ordering::Relaxed);
     }
 
+    /// Returns the configured API key for voice services.
+    pub fn api_key(&self) -> Option<&crate::config::SecretString> {
+        self.config.api_key.as_ref()
+    }
+
+    /// Returns the configured voice ID for TTS.
+    pub fn voice_id(&self) -> &str {
+        &self.config.voice_id
+    }
+
+    /// Sets the preferred audio input device.
+    pub fn set_input_device(&mut self, device: Option<String>) {
+        self.config.input_device = device;
+    }
+
+    /// Returns the cancel flag shared with async voice operations.
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel_flag)
+    }
+
+    /// Returns whether push-to-talk is currently active.
+    pub fn push_to_talk_active(&self) -> bool {
+        self.push_to_talk_active
+    }
+
+    /// Sets the voice state directly.
+    ///
+    /// # Invariants
+    /// Callers should prefer using the high-level transition methods (`toggle`,
+    /// `cancel`, `start_recording`, `stop_recording`) instead of this setter.
+    /// Direct state changes bypass internal bookkeeping (e.g. `recording_in_progress`,
+    /// stream cleanup) and can leave the manager in an inconsistent state.
+    pub fn set_state(&mut self, state: VoiceState) {
+        self.state = state;
+    }
+
     pub fn queue_speech(&mut self, text: String) -> Option<String> {
         if self.tts_playing {
             self.tts_queue.push(text);
@@ -333,29 +369,6 @@ impl VoiceManager {
 
         Ok(())
     }
-
-    pub async fn synthesize_speech(&self, text: &str) -> Result<Vec<u8>, VoiceError> {
-        let api_key = self
-            .config
-            .api_key
-            .as_ref()
-            .ok_or(VoiceError::MissingApiKey)?;
-        let client = ElevenLabsClient::new(api_key.clone(), self.config.voice_id.clone())?;
-        client.text_to_speech(text).await
-    }
-
-    pub async fn transcribe_audio(&self, audio_bytes: Vec<u8>) -> Result<String, VoiceError> {
-        if audio_bytes.is_empty() {
-            return Ok(String::new());
-        }
-        let api_key = self
-            .config
-            .api_key
-            .as_ref()
-            .ok_or(VoiceError::MissingApiKey)?;
-        let client = ElevenLabsClient::new(api_key.clone(), self.config.voice_id.clone())?;
-        client.transcribe(audio_bytes).await
-    }
 }
 
 pub async fn stt_transcribe(
@@ -366,7 +379,7 @@ pub async fn stt_transcribe(
         return Ok(String::new());
     }
     let api_key = api_key.ok_or(VoiceError::MissingApiKey)?;
-    let client = ElevenLabsClient::new(api_key, DEFAULT_VOICE_ID.to_string())?;
+    let client = VoiceClient::new(api_key, DEFAULT_VOICE_ID.to_string())?;
     client.transcribe(audio_bytes).await
 }
 
@@ -376,7 +389,7 @@ pub async fn tts_synthesize(
     text: &str,
 ) -> Result<Vec<u8>, VoiceError> {
     let api_key = api_key.ok_or(VoiceError::MissingApiKey)?;
-    let client = ElevenLabsClient::new(api_key, voice_id)?;
+    let client = VoiceClient::new(api_key, voice_id)?;
     client.text_to_speech(text).await
 }
 

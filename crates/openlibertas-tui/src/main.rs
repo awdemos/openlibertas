@@ -294,6 +294,7 @@ async fn main() -> Result<()> {
 
     if let Some(client) = runtime.mcp_client.as_ref() {
         app.engine.tools_mut().set_client(Some(client.clone()));
+        app.mcp_server_names_cache = client.server_names().await;
     }
 
     for provider in runtime.config.providers.iter() {
@@ -386,7 +387,7 @@ async fn main() -> Result<()> {
                     if audio_bytes.len() > 44 {
                         app.pending_voice_generation = Some(generation);
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
+                        let api_key = app.voice.api_key().cloned();
                         spawn_voice_transcription(api_key, audio_bytes, generation, sender);
                     } else {
                         app.voice_status = Some("No audio captured — check microphone".to_string());
@@ -419,7 +420,7 @@ async fn main() -> Result<()> {
                     if audio_bytes.len() > 44 {
                         app.pending_voice_generation = Some(generation);
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
+                        let api_key = app.voice.api_key().cloned();
                         spawn_voice_transcription(api_key, audio_bytes, generation, sender);
                     } else {
                         app.voice_status = Some("No audio captured — check microphone".to_string());
@@ -465,7 +466,7 @@ async fn main() -> Result<()> {
                         "KeyRelease: code={:?}, is_space={}, push_to_talk={}, state={:?}",
                         key.code,
                         is_space,
-                        app.voice.push_to_talk_active,
+                        app.voice.push_to_talk_active(),
                         app.voice.state()
                     );
                     if is_space
@@ -492,7 +493,7 @@ async fn main() -> Result<()> {
                                     } else {
                                         app.pending_voice_generation = Some(generation);
                                         let sender = event_stream.sender();
-                                        let api_key = app.voice.config.api_key.clone();
+                                        let api_key = app.voice.api_key().cloned();
                                         spawn_voice_transcription(
                                             api_key,
                                             audio_bytes,
@@ -1239,7 +1240,7 @@ async fn main() -> Result<()> {
                     }
 
                     app.voice_status = None;
-                    app.voice.state = openlibertas_core::voice::VoiceState::Ready;
+                    app.voice.set_state(openlibertas_core::voice::VoiceState::Ready);
                     app.engine.input_mut().buffer = text.to_string();
                     app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
                     app.engine.input_mut().selection_anchor = None;
@@ -1266,9 +1267,9 @@ async fn main() -> Result<()> {
                         app.voice.clear_tts_queue();
                     } else if let Some(text) = app.voice.next_queued_speech() {
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
-                        let voice_id = app.voice.config.voice_id.clone();
-                        let cancel_flag = app.voice.cancel_flag.clone();
+                        let api_key = app.voice.api_key().cloned();
+                        let voice_id = app.voice.voice_id().to_string();
+                        let cancel_flag = app.voice.cancel_flag();
                         tokio::spawn(async move {
                             match openlibertas_core::voice::tts_synthesize(api_key, voice_id, &text)
                                 .await
@@ -1298,9 +1299,9 @@ async fn main() -> Result<()> {
                     app.voice_status = None;
                     if let Some(text) = app.voice.next_queued_speech() {
                         let sender = event_stream.sender();
-                        let api_key = app.voice.config.api_key.clone();
-                        let voice_id = app.voice.config.voice_id.clone();
-                        let cancel_flag = app.voice.cancel_flag.clone();
+                        let api_key = app.voice.api_key().cloned();
+                        let voice_id = app.voice.voice_id().to_string();
+                        let cancel_flag = app.voice.cancel_flag();
                         tokio::spawn(async move {
                             match openlibertas_core::voice::tts_synthesize(api_key, voice_id, &text)
                                 .await
@@ -1358,9 +1359,9 @@ async fn main() -> Result<()> {
                                     let text = last_msg.content.clone();
                                     if let Some(text_to_speak) = app.voice.queue_speech(text) {
                                         let sender = event_stream.sender();
-                                        let api_key = app.voice.config.api_key.clone();
-                                        let voice_id = app.voice.config.voice_id.clone();
-                                        let cancel_flag = app.voice.cancel_flag.clone();
+                                        let api_key = app.voice.api_key().cloned();
+                                        let voice_id = app.voice.voice_id().to_string();
+                                        let cancel_flag = app.voice.cancel_flag();
                                         tokio::spawn(async move {
                                             match openlibertas_core::voice::tts_synthesize(
                                                 api_key,
