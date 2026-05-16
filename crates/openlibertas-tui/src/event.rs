@@ -8,21 +8,22 @@ use openlibertas_core::mcp::McpTool;
 use openlibertas_core::soul::WireMessage;
 use std::collections::HashMap;
 
+/// Tuple of (tools, server statuses, server descriptions).
+pub type McpToolsResult = Result<
+    (
+        Vec<McpTool>,
+        HashMap<String, McpServerStatus>,
+        HashMap<String, String>,
+    ),
+    String,
+>;
+
 #[derive(Debug, Clone)]
 pub enum Event {
     Input(CEvent),
     Agent(WireMessage),
     ModelsLoaded(Result<Vec<Model>, String>),
-    McpToolsLoaded(
-        Result<
-            (
-                Vec<McpTool>,
-                HashMap<String, McpServerStatus>,
-                HashMap<String, String>,
-            ),
-            String,
-        >,
-    ),
+    McpToolsLoaded(McpToolsResult),
     McpDiagnosticsLoaded(HashMap<String, McpServerDiagnostics>),
     McpHealthCheck(Result<HashMap<String, bool>, String>),
     McpToolTest(Result<String, String>),

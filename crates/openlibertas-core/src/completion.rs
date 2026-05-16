@@ -125,11 +125,10 @@ impl CompletionEngine {
             }
             CompletionType::Model => {
                 // Everything after "/model "
-                if before_cursor.starts_with("/model ") {
-                    before_cursor[7..].to_string()
-                } else {
-                    String::new()
-                }
+                before_cursor
+                    .strip_prefix("/model ")
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
             }
             CompletionType::SlashCommand => before_cursor.to_string(),
         }

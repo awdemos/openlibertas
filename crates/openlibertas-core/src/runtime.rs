@@ -102,14 +102,22 @@ impl Runtime {
     }
 }
 
+#[allow(clippy::panic)]
 impl Default for Runtime {
     fn default() -> Self {
         // Infallible default: use an in-memory session store and default config.
         let config = Arc::new(Config::default());
         let backend_registry = Arc::new(ProviderRegistry::new(&config.providers));
         let session_store = Arc::new(
-            SessionStore::new(std::env::temp_dir().join("openlibertas-sessions"))
-                .expect("temp dir should always be writable"),
+            {
+                let path = std::env::temp_dir().join("openlibertas-sessions");
+                SessionStore::new(path.clone()).unwrap_or_else(|_| {
+                    let _ = std::fs::create_dir_all(&path);
+                    SessionStore::new(path).unwrap_or_else(|_| {
+                        panic!("temp dir should always be writable")
+                    })
+                })
+            },
         );
         Self {
             config,

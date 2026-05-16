@@ -143,38 +143,36 @@ impl ContextCompactor {
         let mut i = 0;
         while i < messages.len() {
             let msg = &messages[i];
-            if msg.role == Role::Assistant
-                && msg.tool_calls.is_some()
-                && !msg.tool_calls.as_ref().unwrap().is_empty()
-            {
-                let call_ids: std::collections::HashSet<&str> = msg
-                    .tool_calls
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|tc| tc.id.as_str())
-                    .collect();
-                let mut results = Vec::new();
-                let mut j = i + 1;
-                while j < messages.len() && messages[j].role == Role::Tool {
-                    if let Some(ref id) = messages[j].tool_call_id {
-                        if call_ids.contains(id.as_str()) {
-                            results.push(messages[j].clone());
-                            j += 1;
-                            continue;
+            if msg.role == Role::Assistant {
+                if let Some(tool_calls) = msg.tool_calls.as_ref() {
+                    if !tool_calls.is_empty() {
+                        let call_ids: std::collections::HashSet<&str> = tool_calls
+                            .iter()
+                            .map(|tc| tc.id.as_str())
+                            .collect();
+                        let mut results = Vec::new();
+                        let mut j = i + 1;
+                        while j < messages.len() && messages[j].role == Role::Tool {
+                            if let Some(ref id) = messages[j].tool_call_id {
+                                if call_ids.contains(id.as_str()) {
+                                    results.push(messages[j].clone());
+                                    j += 1;
+                                    continue;
+                                }
+                            }
+                            break;
                         }
+                        blocks.push(MessageBlock::ToolCallPair {
+                            assistant: msg.clone(),
+                            results,
+                        });
+                        i = j;
+                        continue;
                     }
-                    break;
                 }
-                blocks.push(MessageBlock::ToolCallPair {
-                    assistant: msg.clone(),
-                    results,
-                });
-                i = j;
-            } else {
-                blocks.push(MessageBlock::Single(msg.clone()));
-                i += 1;
             }
+            blocks.push(MessageBlock::Single(msg.clone()));
+            i += 1;
         }
         blocks
     }

@@ -32,6 +32,42 @@ pub struct ProviderRegistry {
     health: Arc<Mutex<HashMap<ProviderId, ProviderHealth>>>,
 }
 
+/// Parameters for a chat request with fallback.
+pub struct ChatRequest {
+    pub model: String,
+    pub messages: Vec<Message>,
+    pub max_tokens: u32,
+    pub tools: Option<Vec<ToolDefinition>>,
+    pub temperature: Option<f32>,
+}
+
+impl ChatRequest {
+    pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
+        Self {
+            model: model.into(),
+            messages,
+            max_tokens: 4096,
+            tools: None,
+            temperature: None,
+        }
+    }
+
+    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+}
+
 impl ProviderRegistry {
     pub fn new(configs: &[ProviderConfig]) -> Self {
         let mut providers: HashMap<ProviderId, Arc<dyn Provider>> = HashMap::new();
@@ -145,12 +181,8 @@ impl ProviderRegistry {
     pub fn chat_with_fallback(
         &self,
         preferred_provider: &ProviderId,
-        model: String,
-        messages: Vec<Message>,
-        max_tokens: u32,
-        tools: Option<Vec<ToolDefinition>>,
+        request: ChatRequest,
         cancel_token: CancellationToken,
-        temperature: Option<f32>,
     ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let (tx, rx) = mpsc::unbounded_channel();
         let preferred = preferred_provider.clone();
@@ -204,12 +236,12 @@ impl ProviderRegistry {
                 }
 
                 let mut stream_rx = provider.chat(
-                    model.clone(),
-                    messages.clone(),
-                    max_tokens,
-                    tools.clone(),
+                    request.model.clone(),
+                    request.messages.clone(),
+                    request.max_tokens,
+                    request.tools.clone(),
                     cancel_token.clone(),
-                    temperature,
+                    request.temperature,
                 );
 
                 let mut stream_failed = false;

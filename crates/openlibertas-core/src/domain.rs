@@ -3,7 +3,10 @@ use std::sync::OnceLock;
 
 fn cl100k_bpe() -> &'static tiktoken_rs::CoreBPE {
     static BPE: OnceLock<tiktoken_rs::CoreBPE> = OnceLock::new();
-    BPE.get_or_init(|| tiktoken_rs::cl100k_base().expect("cl100k_base should initialize"))
+    BPE.get_or_init(|| match tiktoken_rs::cl100k_base() {
+        Ok(bpe) => bpe,
+        Err(_e) => std::process::exit(1),
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -83,14 +83,18 @@ impl Provider for RegistryBackend {
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
     ) -> tokio::sync::mpsc::UnboundedReceiver<BackendEvent> {
+        let request = openlibertas_core::backend::registry::ChatRequest::new(model, messages)
+            .with_max_tokens(max_tokens)
+            .with_tools(tools.unwrap_or_default());
+        let request = if let Some(temp) = temperature {
+            request.with_temperature(temp)
+        } else {
+            request
+        };
         self.registry.chat_with_fallback(
             &self.preferred_provider,
-            model,
-            messages,
-            max_tokens,
-            tools,
+            request,
             cancel_token,
-            temperature,
         )
     }
 
