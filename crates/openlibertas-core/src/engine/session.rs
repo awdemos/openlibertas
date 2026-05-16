@@ -2,7 +2,7 @@ use crate::agent_tools::ToolExecutor;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
 use crate::session::parse_file_context;
 use crate::tool_format::ToolFormat;
-use crate::tool_registry::ToolRegistry;
+use crate::agent_tools::ToolRegistry;
 use tracing::info;
 
 use super::ChatEngine;
@@ -563,7 +563,7 @@ mod tests {
             r#"{
   "name": "read_file",
   "arguments": {
-    "path": "/tmp/test.txt"
+    "path": "/path/to/test.txt"
   }
 }"#,
         );
@@ -579,7 +579,7 @@ mod tests {
         let tcs = last.tool_calls.as_ref().unwrap();
         assert_eq!(tcs.len(), 1);
         assert_eq!(tcs[0].function.name, "read_file");
-        assert!(tcs[0].function.arguments.contains("/tmp/test.txt"));
+        assert!(tcs[0].function.arguments.contains("/path/to/test.txt"));
     }
 
     #[test]
@@ -616,7 +616,7 @@ mod tests {
         engine.append_stream_chunk(
             r#"<tool_call>
 <name>read_file</name>
-<arguments>{"path": "/tmp/test.txt"}</arguments>
+<arguments>{"path": "/path/to/test.txt"}</arguments>
 </tool_call>"#,
         );
         engine.sanitize_assistant_content();
@@ -631,7 +631,7 @@ mod tests {
         let tcs = last.tool_calls.as_ref().unwrap();
         assert_eq!(tcs.len(), 1);
         assert_eq!(tcs[0].function.name, "read_file");
-        assert!(tcs[0].function.arguments.contains("/tmp/test.txt"));
+        assert!(tcs[0].function.arguments.contains("/path/to/test.txt"));
     }
 
     #[test]
@@ -665,7 +665,7 @@ mod tests {
         engine.push_user_message("Run a tool");
         engine.append_stream_chunk(
             r#"<tool_call>
-{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}
+{"name": "read_file", "arguments": {"path": "/path/to/test.txt"}}
 </tool_call>"#,
         );
         engine.sanitize_assistant_content();
@@ -684,7 +684,7 @@ mod tests {
         engine.set_tool_format(ToolFormat::Native);
         engine.push_user_message("Read the file");
         engine.append_stream_chunk(
-            r#"{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}"#,
+            r#"{"name": "read_file", "arguments": {"path": "/path/to/test.txt"}}"#,
         );
         engine.sanitize_assistant_content();
 
@@ -702,7 +702,7 @@ mod tests {
         engine.set_tool_format(ToolFormat::None);
         engine.push_user_message("Read the file");
         engine.append_stream_chunk(
-            r#"{"name": "read_file", "arguments": {"path": "/tmp/test.txt"}}"#,
+            r#"{"name": "read_file", "arguments": {"path": "/path/to/test.txt"}}"#,
         );
         engine.sanitize_assistant_content();
 

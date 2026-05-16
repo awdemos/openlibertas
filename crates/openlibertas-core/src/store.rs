@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::domain::Message;
 use crate::domain::Role;
+use crate::export::{self, ExportFormat};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -91,23 +92,7 @@ impl SessionStore {
         }
         md.push_str(&format!("**Date:** {}\n\n", now));
         md.push_str("---\n\n");
-
-        for msg in messages {
-            let role = match msg.role {
-                Role::User => "User",
-                Role::Assistant => model.unwrap_or("Assistant"),
-                Role::System => "System",
-                Role::Tool => "Tool",
-            };
-            md.push_str(&format!("## {}\n\n{}", role, msg.content));
-            if let Some(ref tool_calls) = msg.tool_calls {
-                for tc in tool_calls {
-                    md.push_str(&format!("\n\n**Tool Call:** `{}`", tc.function.name));
-                    md.push_str(&format!("\n```json\n{}\n```", tc.function.arguments));
-                }
-            }
-            md.push_str("\n\n---\n\n");
-        }
+        md.push_str(&export::export_messages(messages, model, ExportFormat::Markdown));
 
         let path = self.data_dir.join(id);
         fs::write(&path, md)

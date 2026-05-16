@@ -11,6 +11,7 @@ pub mod capability;
 pub mod commands;
 pub mod completion;
 pub mod config;
+pub mod credentials;
 pub mod domain;
 pub mod engine;
 pub mod env_context;
@@ -26,8 +27,10 @@ pub mod soul;
 pub mod state;
 pub mod store;
 pub mod tool_format;
-pub mod tool_registry;
 pub mod voice;
+
+// Re-exports for backward compatibility — these moved from `tool_registry` to `agent_tools`.
+pub use agent_tools::{extract_key_argument, tool_needs_approval, MessageAssembler, ToolExecutor, ToolRegistry};
 
 #[cfg(test)]
 pub mod test_utils;

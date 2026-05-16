@@ -26,15 +26,20 @@ impl std::fmt::Display for Role {
     }
 }
 
+/// Error returned when parsing an invalid [`Role`] string.
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+#[error("unknown role: {0}")]
+pub struct RoleParseError(String);
+
 impl std::str::FromStr for Role {
-    type Err = String;
+    type Err = RoleParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "user" => Ok(Role::User),
             "assistant" => Ok(Role::Assistant),
             "system" => Ok(Role::System),
             "tool" => Ok(Role::Tool),
-            _ => Err(format!("Unknown role: {}", s)),
+            _ => Err(RoleParseError(s.to_string())),
         }
     }
 }

@@ -19,6 +19,7 @@ use tracing::{debug, info, warn};
 mod app;
 mod avatar;
 mod event;
+mod layout;
 mod markdown;
 mod terminal;
 mod theme;
@@ -543,9 +544,13 @@ async fn main() -> Result<()> {
                                 let messages_area_width =
                                     term_size.width.saturating_sub(4) as usize;
                                 let y_in_messages = (mouse.row.saturating_sub(3)) as usize;
-                                if let Some(msg_idx) =
-                                    app.engine.message_at_y(y_in_messages, messages_area_width)
-                                {
+                                if let Some(msg_idx) = layout::message_at_y(
+                                    &app.engine.chat().messages,
+                                    app.engine.chat().scroll,
+                                    y_in_messages,
+                                    messages_area_width,
+                                    app.engine.chat().streaming,
+                                ) {
                                     if let Some(msg) = app.engine.chat_mut().messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
@@ -606,9 +611,13 @@ async fn main() -> Result<()> {
                                 let messages_area_width =
                                     term_size.width.saturating_sub(4) as usize;
                                 let y_in_messages = (mouse.row.saturating_sub(3)) as usize;
-                                if let Some(msg_idx) =
-                                    app.engine.message_at_y(y_in_messages, messages_area_width)
-                                {
+                                if let Some(msg_idx) = layout::message_at_y(
+                                    &app.engine.chat().messages,
+                                    app.engine.chat().scroll,
+                                    y_in_messages,
+                                    messages_area_width,
+                                    app.engine.chat().streaming,
+                                ) {
                                     if let Some(msg) = app.engine.chat_mut().messages.get(msg_idx) {
                                         let text = msg.content.clone();
                                         let encoded =
@@ -1157,7 +1166,8 @@ async fn main() -> Result<()> {
                     }
                 }
                 Event::ModelsLoaded(Err(e)) => {
-                    app.error = Some(e);
+                    app.error = Some(e.clone());
+                    app.set_error_banner(e);
                     app.loading = false;
                     app.connection_status = app::ConnectionStatus::Disconnected;
                 }
@@ -1175,7 +1185,9 @@ async fn main() -> Result<()> {
                     }
                 }
                 Event::McpToolsLoaded(Err(e)) => {
-                    app.error = Some(format!("MCP discovery failed: {}", e));
+                    let msg = format!("MCP discovery failed: {}", e);
+                    app.error = Some(msg.clone());
+                    app.set_error_banner(msg);
                 }
                 Event::McpDiagnosticsLoaded(diagnostics) => {
                     app.engine.tools_mut().set_diagnostics(diagnostics);
