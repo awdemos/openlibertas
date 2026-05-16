@@ -56,7 +56,7 @@ async fn fetch_url_async(url: String) -> Result<String> {
     Ok(truncated)
 }
 
-pub fn web_search_tool() -> crate::tools::BuiltinTool {
+pub fn web_search_tool() -> crate::agent_tools::BuiltinTool {
     crate::define_tool!(
         "web_search",
         "Search the web for information on a given query.",
@@ -74,7 +74,7 @@ pub fn web_search_tool() -> crate::tools::BuiltinTool {
     )
 }
 
-pub fn fetch_url_tool() -> crate::tools::BuiltinTool {
+pub fn fetch_url_tool() -> crate::agent_tools::BuiltinTool {
     crate::define_tool!(
         "fetch_url",
         "Fetch the content of a URL and return the page text.",

@@ -1,7 +1,7 @@
 use crate::domain::ToolDefinition;
 use crate::mcp::{McpClient, McpServerDiagnostics, McpTool};
 use crate::tool_format::ToolFormat;
-use crate::tools;
+use crate::agent_tools;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub struct ToolRegistry {
     client: Option<Arc<McpClient>>,
     available_tools: Vec<McpTool>,
-    builtin_tools: Vec<tools::BuiltinTool>,
+    builtin_tools: Vec<agent_tools::BuiltinTool>,
     server_statuses: HashMap<String, crate::domain::McpServerStatus>,
     diagnostics: HashMap<String, McpServerDiagnostics>,
     tool_server_map: HashMap<String, String>,
@@ -20,7 +20,7 @@ impl Default for ToolRegistry {
         Self {
             client: None,
             available_tools: Vec::new(),
-            builtin_tools: tools::builtin_tools(),
+            builtin_tools: agent_tools::builtin_tools(),
             server_statuses: HashMap::new(),
             diagnostics: HashMap::new(),
             tool_server_map: HashMap::new(),
@@ -50,7 +50,7 @@ impl ToolRegistry {
         self.available_tools = tools;
     }
 
-    pub fn builtin_tools(&self) -> &[tools::BuiltinTool] {
+    pub fn builtin_tools(&self) -> &[agent_tools::BuiltinTool] {
         &self.builtin_tools
     }
 

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::tools::BuiltinTool;
+use crate::agent_tools::BuiltinTool;
 
 #[derive(Debug, Deserialize)]
 struct RlmArgs {

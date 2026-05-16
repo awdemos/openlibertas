@@ -286,7 +286,7 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone)]
-pub enum ChatEvent {
+pub enum BackendEvent {
     Text(String),
     Reasoning(String),
     ToolCall(ToolCall),

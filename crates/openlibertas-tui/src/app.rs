@@ -15,7 +15,7 @@ use openlibertas_core::config::Config;
 use openlibertas_core::domain::ProviderId;
 use openlibertas_core::domain::Role;
 use openlibertas_core::domain::{Message, Model};
-use openlibertas_core::engine::{AgentStatus, ChatEngine};
+use openlibertas_core::engine::{AgentModeStatus, ChatEngine};
 use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::export::{self, ExportFormat};
 use openlibertas_core::prompt::PromptManager;
@@ -310,8 +310,8 @@ impl App {
             }
             SlashCommand::Quit => None,
             SlashCommand::Agents => {
-                if self.engine.agents_mut().status == AgentStatus::Disabled {
-                    self.engine.agents_mut().status = AgentStatus::Idle;
+                if self.engine.agents_mut().status == AgentModeStatus::Disabled {
+                    self.engine.agents_mut().status = AgentModeStatus::Idle;
                     return Some(format!(
                         "Agents enabled (Persona: {})",
                         self.engine.agents_mut().persona
@@ -391,10 +391,10 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     );
                     self.engine.set_agent_prompt(String::new());
                     if self.engine.agents().status
-                        == openlibertas_core::engine::AgentStatus::Disabled
+                        == openlibertas_core::engine::AgentModeStatus::Disabled
                     {
                         self.engine.agents_mut().status =
-                            openlibertas_core::engine::AgentStatus::Idle;
+                            openlibertas_core::engine::AgentModeStatus::Idle;
                     }
                     Some("RLM mode enabled. The model will use Python code execution.".to_string())
                 } else {
@@ -1055,10 +1055,10 @@ available tools to refine and polish your work."
         match self.agent_selected {
             0 => {
                 self.engine.agents_mut().status =
-                    if self.engine.agents_mut().status == AgentStatus::Disabled {
-                        AgentStatus::Idle
+                    if self.engine.agents_mut().status == AgentModeStatus::Disabled {
+                        AgentModeStatus::Idle
                     } else {
-                        AgentStatus::Disabled
+                        AgentModeStatus::Disabled
                     };
             }
             1 => {
@@ -1592,7 +1592,7 @@ mod tests {
     fn agent_starts_disabled() {
         let config = Config::default();
         let app = App::new(config);
-        assert_eq!(app.engine.agents().status, AgentStatus::Disabled);
+        assert_eq!(app.engine.agents().status, AgentModeStatus::Disabled);
         assert_eq!(app.engine.agents().max_iterations, 10);
         assert_eq!(app.engine.agents().current_iteration, 0);
     }
@@ -1601,13 +1601,13 @@ mod tests {
     fn agent_status_transitions() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents_mut().status = AgentStatus::Idle;
+        app.engine.agents_mut().status = AgentModeStatus::Idle;
         app.engine.start_agent_loop();
-        assert_eq!(app.engine.agents_mut().status, AgentStatus::Active);
+        assert_eq!(app.engine.agents_mut().status, AgentModeStatus::Active);
         assert_eq!(app.engine.agents().current_iteration, 0);
 
         app.engine.finish_agent_loop();
-        assert_eq!(app.engine.agents_mut().status, AgentStatus::Idle);
+        assert_eq!(app.engine.agents_mut().status, AgentModeStatus::Idle);
         assert_eq!(app.engine.agents().current_iteration, 0);
     }
 
@@ -1615,7 +1615,7 @@ mod tests {
     fn agent_iteration_tracking() {
         let config = Config::default();
         let mut app = App::new(config);
-        app.engine.agents_mut().status = AgentStatus::Idle;
+        app.engine.agents_mut().status = AgentModeStatus::Idle;
         app.engine.start_agent_loop();
         assert_eq!(app.engine.agents().current_iteration, 0);
 

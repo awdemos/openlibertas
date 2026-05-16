@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::backend::Backend;
-use crate::domain::{ChatEvent, Message, Role, ToolDefinition};
+use crate::backend::Provider;
+use crate::domain::{BackendEvent, Message, Role, ToolDefinition};
 use crate::engine::{AgentMode, ChatEngine};
 
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ pub enum WireMessage {
 pub type WireSender = mpsc::UnboundedSender<WireMessage>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AgentStatus {
+pub enum AgentTurnState {
     Idle,
     Running { turn_id: String },
     ProcessingTools { turn_id: String },
@@ -79,7 +79,7 @@ pub enum AgentError {
 pub trait Agent: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
-    fn status(&self) -> AgentStatus;
+    fn status(&self) -> AgentTurnState;
     async fn run_turn(
         &mut self,
         input: UserInput,
@@ -94,11 +94,11 @@ pub struct ChatAgent {
     id: String,
     name: String,
     engine: ChatEngine,
-    backend: Arc<dyn Backend>,
+    backend: Arc<dyn Provider>,
     model: String,
     max_tokens: u32,
     temperature: Option<f32>,
-    status: AgentStatus,
+    status: AgentTurnState,
     turn_id: Option<String>,
 }
 
@@ -107,12 +107,12 @@ impl ChatAgent {
         id: impl Into<String>,
         name: impl Into<String>,
         mut engine: ChatEngine,
-        backend: Arc<dyn Backend>,
+        backend: Arc<dyn Provider>,
         model: impl Into<String>,
         max_tokens: u32,
     ) -> Self {
-        if engine.agents().status == crate::engine::AgentStatus::Disabled {
-            engine.agents_mut().status = crate::engine::AgentStatus::Idle;
+        if engine.agents().status == crate::engine::AgentModeStatus::Disabled {
+            engine.agents_mut().status = crate::engine::AgentModeStatus::Idle;
         }
         Self {
             id: id.into(),
@@ -122,7 +122,7 @@ impl ChatAgent {
             model: model.into(),
             max_tokens,
             temperature: None,
-            status: AgentStatus::Idle,
+            status: AgentTurnState::Idle,
             turn_id: None,
         }
     }
@@ -151,7 +151,7 @@ impl Agent for ChatAgent {
         &self.name
     }
 
-    fn status(&self) -> AgentStatus {
+    fn status(&self) -> AgentTurnState {
         self.status.clone()
     }
 
@@ -168,7 +168,7 @@ impl Agent for ChatAgent {
                 .as_millis()
         );
         self.turn_id = Some(turn_id.clone());
-        self.status = AgentStatus::Running {
+        self.status = AgentTurnState::Running {
             turn_id: turn_id.clone(),
         };
 
@@ -211,38 +211,38 @@ impl Agent for ChatAgent {
 
             while let Some(event) = rx.recv().await {
                 match event {
-                    ChatEvent::Text(text) => {
+                    BackendEvent::Text(text) => {
                         self.engine.append_stream_chunk(&text);
                         let _ = wire.send(WireMessage::TextDelta(text));
                     }
-                    ChatEvent::Reasoning(text) => {
+                    BackendEvent::Reasoning(text) => {
                         self.engine.append_reasoning_chunk(&text);
                         let _ = wire.send(WireMessage::ReasoningDelta(text));
                     }
-                    ChatEvent::ToolCall(tool_call) => {
+                    BackendEvent::ToolCall(tool_call) => {
                         self.engine.add_tool_call(tool_call.clone());
                         let _ = wire.send(WireMessage::ToolCallStarted {
                             id: tool_call.id.clone(),
                             name: tool_call.function.name.clone(),
                         });
                     }
-                    ChatEvent::Done => {
+                    BackendEvent::Done => {
                         self.engine.finish_stream();
                         self.engine.sanitize_assistant_content();
                         done_received = true;
                         break;
                     }
-                    ChatEvent::Error(err) => {
+                    BackendEvent::Error(err) => {
                         stream_error = Some(err.clone());
                         self.engine.finish_stream();
                         let _ = wire.send(WireMessage::Error(err));
                         break;
                     }
-                    ChatEvent::Cancelled => {
+                    BackendEvent::Cancelled => {
                         self.engine.finish_stream();
                         self.engine.finish_agent_loop();
                         self.engine.tool_executor_mut().clear_pending_tool_calls();
-                        self.status = AgentStatus::Stopped;
+                        self.status = AgentTurnState::Stopped;
                         let _ = wire.send(WireMessage::Cancelled);
                         let _ = wire.send(WireMessage::TurnFinished {
                             turn_id: turn_id.clone(),
@@ -259,7 +259,7 @@ impl Agent for ChatAgent {
 
             if let Some(err) = stream_error {
                 self.engine.finish_agent_loop();
-                self.status = AgentStatus::Error(err.clone());
+                self.status = AgentTurnState::Error(err.clone());
                 let _ = wire.send(WireMessage::TurnFinished {
                     turn_id: turn_id.clone(),
                 });
@@ -275,7 +275,7 @@ impl Agent for ChatAgent {
                     "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
                     max
                 ));
-                self.status = AgentStatus::Error(format!(
+                self.status = AgentTurnState::Error(format!(
                     "Max iterations ({}) reached",
                     max
                 ));
@@ -286,7 +286,7 @@ impl Agent for ChatAgent {
             }
 
             if self.engine.tool_executor().has_pending_tool_calls() {
-                self.status = AgentStatus::ProcessingTools {
+                self.status = AgentTurnState::ProcessingTools {
                     turn_id: turn_id.clone(),
                 };
 
@@ -326,7 +326,7 @@ impl Agent for ChatAgent {
                     is_prompt: false,
                 });
                 self.engine.chat_mut().streaming = true;
-                self.status = AgentStatus::Running {
+                self.status = AgentTurnState::Running {
                     turn_id: turn_id.clone(),
                 };
             } else {
@@ -341,7 +341,7 @@ impl Agent for ChatAgent {
             .messages
             .len()
             .saturating_sub(message_count_before);
-        self.status = AgentStatus::Idle;
+        self.status = AgentTurnState::Idle;
         let _ = wire.send(WireMessage::TurnFinished {
             turn_id: turn_id.clone(),
         });
@@ -355,7 +355,7 @@ impl Agent for ChatAgent {
 
     async fn stop(&mut self) {
         self.engine.chat_mut().cancel_token.cancel();
-        self.status = AgentStatus::Stopped;
+        self.status = AgentTurnState::Stopped;
     }
 
     fn tools(&self) -> Vec<ToolDefinition> {
@@ -382,14 +382,14 @@ mod tests {
     use std::pin::Pin;
 
     use super::*;
-    use crate::backend::Backend;
+    use crate::backend::Provider;
     use crate::capability::ProviderCapabilities;
     use crate::domain::Model;
 
     struct MockAgent {
         id: String,
         name: String,
-        status: AgentStatus,
+status: AgentTurnState,
         persona: Option<String>,
     }
 
@@ -403,7 +403,7 @@ mod tests {
             &self.name
         }
 
-        fn status(&self) -> AgentStatus {
+        fn status(&self) -> AgentTurnState {
             self.status.clone()
         }
 
@@ -420,7 +420,7 @@ mod tests {
         }
 
         async fn stop(&mut self) {
-            self.status = AgentStatus::Stopped;
+            self.status = AgentTurnState::Stopped;
         }
 
         fn tools(&self) -> Vec<ToolDefinition> {
@@ -437,20 +437,20 @@ mod tests {
         let agent = MockAgent {
             id: "mock-1".to_string(),
             name: "Mock".to_string(),
-            status: AgentStatus::Idle,
+            status: AgentTurnState::Idle,
             persona: None,
         };
         assert_eq!(agent.id(), "mock-1");
         assert_eq!(agent.name(), "Mock");
-        assert_eq!(agent.status(), AgentStatus::Idle);
+        assert_eq!(agent.status(), AgentTurnState::Idle);
         assert!(agent.tools().is_empty());
     }
 
     struct MockBackend {
-        events: std::sync::Mutex<Vec<ChatEvent>>,
+        events: std::sync::Mutex<Vec<BackendEvent>>,
     }
 
-    impl Backend for MockBackend {
+    impl Provider for MockBackend {
         fn chat(
             &self,
             _model: String,
@@ -459,9 +459,9 @@ mod tests {
             _tools: Option<Vec<ToolDefinition>>,
             _cancel_token: tokio_util::sync::CancellationToken,
             _temperature: Option<f32>,
-        ) -> mpsc::UnboundedReceiver<ChatEvent> {
+        ) -> mpsc::UnboundedReceiver<BackendEvent> {
             let (tx, rx) = mpsc::unbounded_channel();
-            let events: Vec<ChatEvent> = self
+            let events: Vec<BackendEvent> = self
                 .events
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -503,7 +503,7 @@ mod tests {
         let agent = ChatAgent::new("agent-1", "Test Agent", engine, backend, "gpt-4", 2048);
         assert_eq!(agent.id(), "agent-1");
         assert_eq!(agent.name(), "Test Agent");
-        assert_eq!(agent.status(), AgentStatus::Idle);
+        assert_eq!(agent.status(), AgentTurnState::Idle);
     }
 
     #[test]
@@ -548,8 +548,8 @@ mod tests {
         let engine = ChatEngine::new();
         let backend = Arc::new(MockBackend {
             events: std::sync::Mutex::new(vec![
-                ChatEvent::Text("Hello".to_string()),
-                ChatEvent::Done,
+                BackendEvent::Text("Hello".to_string()),
+                BackendEvent::Done,
             ]),
         });
         let mut agent = ChatAgent::new("a", "A", engine, backend, "m", 1024);
@@ -564,7 +564,7 @@ mod tests {
         assert!(result.turn_id.starts_with("turn_"));
         assert_eq!(result.message_count, 2);
         assert_eq!(result.tool_calls_executed, 0);
-        assert_eq!(agent.status(), AgentStatus::Idle);
+        assert_eq!(agent.status(), AgentTurnState::Idle);
 
         let mut found_text = false;
         let mut found_start = false;
@@ -590,14 +590,14 @@ mod tests {
         });
         let mut agent = ChatAgent::new("a", "A", engine, backend, "m", 1024);
         agent.stop().await;
-        assert_eq!(agent.status(), AgentStatus::Stopped);
+        assert_eq!(agent.status(), AgentTurnState::Stopped);
     }
 
     #[tokio::test]
     async fn chat_agent_run_turn_with_error() {
         let engine = ChatEngine::new();
         let backend = Arc::new(MockBackend {
-            events: std::sync::Mutex::new(vec![ChatEvent::Error("boom".to_string())]),
+            events: std::sync::Mutex::new(vec![BackendEvent::Error("boom".to_string())]),
         });
         let mut agent = ChatAgent::new("a", "A", engine, backend, "m", 1024);
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -609,14 +609,14 @@ mod tests {
 
         let err = agent.run_turn(input, tx).await.unwrap_err();
         assert!(matches!(err, AgentError::BackendError(ref e) if e == "boom"));
-        assert!(matches!(agent.status(), AgentStatus::Error(_)));
+        assert!(matches!(agent.status(), AgentTurnState::Error(_)));
     }
 
     #[tokio::test]
     async fn chat_agent_run_turn_cancelled_event() {
         let engine = ChatEngine::new();
         let backend = Arc::new(MockBackend {
-            events: std::sync::Mutex::new(vec![ChatEvent::Cancelled]),
+            events: std::sync::Mutex::new(vec![BackendEvent::Cancelled]),
         });
         let mut agent = ChatAgent::new("a", "A", engine, backend, "m", 1024);
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -628,7 +628,7 @@ mod tests {
 
         let err = agent.run_turn(input, tx).await.unwrap_err();
         assert!(matches!(err, AgentError::Cancelled));
-        assert_eq!(agent.status(), AgentStatus::Stopped);
+        assert_eq!(agent.status(), AgentTurnState::Stopped);
     }
 
     #[tokio::test]
@@ -636,8 +636,8 @@ mod tests {
         let engine = ChatEngine::new();
         let backend = Arc::new(MockBackend {
             events: std::sync::Mutex::new(vec![
-                ChatEvent::Text("ok".to_string()),
-                ChatEvent::Done,
+                BackendEvent::Text("ok".to_string()),
+                BackendEvent::Done,
             ]),
         });
         let mut agent = ChatAgent::new("a", "A", engine, backend, "m", 1024);

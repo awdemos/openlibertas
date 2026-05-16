@@ -17,7 +17,7 @@ pub fn think(args: Value) -> Result<String> {
     ))
 }
 
-pub fn think_tool() -> crate::tools::BuiltinTool {
+pub fn think_tool() -> crate::agent_tools::BuiltinTool {
     crate::define_tool!(
         "think",
         "Use this tool to think through a problem step by step before taking action. \

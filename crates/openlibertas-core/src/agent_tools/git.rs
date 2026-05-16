@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::tools::BuiltinTool;
+use crate::agent_tools::BuiltinTool;
 
 const ALLOWED_GIT_COMMANDS: &[&str] = &[
     "status", "diff", "log", "branch", "show", "blame", "stash", "remote", "add", "commit", "push",
@@ -88,7 +88,7 @@ pub fn git(args: Value) -> Result<String> {
         cmd.current_dir(resolved);
     }
 
-    crate::tools::run_command(&mut cmd).map(|s| s.trim().to_string())
+    crate::agent_tools::run_command(&mut cmd).map(|s| s.trim().to_string())
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use crate::backend::Backend;
+use crate::backend::Provider;
 use crate::capability::ProviderCapabilities;
 use crate::domain::*;
 use crate::tool_format::ToolFormat;
@@ -237,7 +237,7 @@ impl OpenAiBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let mut extra_params = self.extra_params.clone().unwrap_or_default();
         if let Some(temp) = temperature {
             extra_params.insert("temperature".to_string(), serde_json::json!(temp));
@@ -321,7 +321,7 @@ impl OpenAiBackend {
                                 "Chat HTTP {} — retrying {}/{} in {:?}",
                                 status, retries, MAX_RETRIES, delay
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[HTTP {} — retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
                             )));
@@ -330,7 +330,7 @@ impl OpenAiBackend {
                         }
                         let body = r.text().await.unwrap_or_default();
                         error!("Chat HTTP error: {} — {}", status, body);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[HTTP {}: {}]",
                             status,
                             if body.is_empty() {
@@ -349,7 +349,7 @@ impl OpenAiBackend {
                                 "Chat connection error — retrying {}/{} in {:?}: {}",
                                 retries, MAX_RETRIES, delay, e
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Connection error — retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
                             )));
@@ -360,7 +360,7 @@ impl OpenAiBackend {
                             "Chat connection failed after {} retries: {}",
                             MAX_RETRIES, e
                         );
-                        let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
                 }
@@ -400,7 +400,7 @@ impl OpenAiBackend {
                         if !status.is_success() {
                             let body = r.text().await.unwrap_or_default();
                             error!("Ollama chat HTTP error: {} — {}", status, body);
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Ollama HTTP {}: {}]",
                                 status,
                                 if body.is_empty() {
@@ -416,7 +416,7 @@ impl OpenAiBackend {
                     }
                     Err(e) => {
                         error!("Ollama chat connection failed: {}", e);
-                        let _ = tx.send(ChatEvent::Error(format!("[Ollama error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {}]", e)));
                         return;
                     }
                 }
@@ -433,7 +433,7 @@ impl OpenAiBackend {
     async fn stream_openai(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -443,7 +443,7 @@ impl OpenAiBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -472,17 +472,17 @@ impl OpenAiBackend {
                                 if let Some(choice) = chunk.choices.first() {
                                     if let Some(content) = &choice.delta.content {
                                         if !content.is_empty() {
-                                            let _ = tx.send(ChatEvent::Text(content.clone()));
+                                            let _ = tx.send(BackendEvent::Text(content.clone()));
                                         }
                                     }
                                     if let Some(reasoning) = &choice.delta.reasoning_content {
                                         if !reasoning.is_empty() {
                                             let _ =
-                                                tx.send(ChatEvent::Reasoning(reasoning.clone()));
+                                                tx.send(BackendEvent::Reasoning(reasoning.clone()));
                                         }
                                     } else if let Some(thinking) = &choice.delta.thinking {
                                         if !thinking.is_empty() {
-                                            let _ = tx.send(ChatEvent::Reasoning(thinking.clone()));
+                                            let _ = tx.send(BackendEvent::Reasoning(thinking.clone()));
                                         }
                                     }
                                     if let Some(tool_calls) = &choice.delta.tool_calls {
@@ -527,11 +527,11 @@ impl OpenAiBackend {
                             tool_count
                         );
                         for (_, tool_call) in accumulated_tool_calls {
-                            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                            let _ = tx.send(BackendEvent::ToolCall(tool_call));
                         }
                     }
                     error!("Chat stream error: {}", e);
-                    let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
                     return;
                 }
             }
@@ -544,15 +544,15 @@ impl OpenAiBackend {
             info!("Chat complete");
         }
         for (_, tool_call) in accumulated_tool_calls {
-            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+            let _ = tx.send(BackendEvent::ToolCall(tool_call));
         }
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 
     async fn stream_ollama(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -561,7 +561,7 @@ impl OpenAiBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -592,7 +592,7 @@ impl OpenAiBackend {
                             }
                             if let Some(msg) = resp.message {
                                 if !msg.content.is_empty() {
-                                    let _ = tx.send(ChatEvent::Text(msg.content));
+                                    let _ = tx.send(BackendEvent::Text(msg.content));
                                 }
                                 if let Some(tool_calls) = msg.tool_calls {
                                     for tc in tool_calls {
@@ -614,7 +614,7 @@ impl OpenAiBackend {
                                                 arguments: args_str,
                                             },
                                         };
-                                        let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                                        let _ = tx.send(BackendEvent::ToolCall(tool_call));
                                     }
                                 }
                             }
@@ -624,18 +624,18 @@ impl OpenAiBackend {
                 }
                 Err(e) => {
                     error!("Ollama stream error: {}", e);
-                    let _ = tx.send(ChatEvent::Error(format!("[Ollama stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Ollama stream error: {}]", e)));
                     return;
                 }
             }
         }
 
         info!("Ollama chat complete");
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 }
 
-impl Backend for OpenAiBackend {
+impl Provider for OpenAiBackend {
     fn chat(
         &self,
         model: String,
@@ -644,7 +644,7 @@ impl Backend for OpenAiBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         self.chat(
             model,
             messages,

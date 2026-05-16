@@ -281,15 +281,15 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         ""
     };
     let agent_indicator = match app.engine.agents().status {
-        openlibertas_core::engine::AgentStatus::Disabled => String::new(),
-        openlibertas_core::engine::AgentStatus::Idle => {
+        openlibertas_core::engine::AgentModeStatus::Disabled => String::new(),
+        openlibertas_core::engine::AgentModeStatus::Idle => {
             format!(
                 " [Agents: ○ {} Ready{}]",
                 app.engine.agents().persona,
                 plan_indicator
             )
         }
-        openlibertas_core::engine::AgentStatus::Active => {
+        openlibertas_core::engine::AgentModeStatus::Active => {
             format!(
                 " [Agents: ● {}/{} {}{}]",
                 app.engine.agents().current_iteration,
@@ -806,7 +806,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let display_model =
-        if app.engine.agents().status == openlibertas_core::engine::AgentStatus::Disabled {
+        if app.engine.agents().status == openlibertas_core::engine::AgentModeStatus::Disabled {
             model_name.to_string()
         } else {
             format!("{}@{}", app.engine.agents().persona, model_name)
@@ -850,7 +850,7 @@ fn draw_input(frame: &mut Frame, app: &App, area: Rect) {
         "🎙 "
     } else if app.rlm_mode {
         "🐍 "
-    } else if app.engine.agents().status == openlibertas_core::engine::AgentStatus::Disabled {
+    } else if app.engine.agents().status == openlibertas_core::engine::AgentModeStatus::Disabled {
         "> "
     } else {
         "✨ "
@@ -2036,9 +2036,9 @@ fn draw_agents_panel(frame: &mut Frame, app: &App) {
         (
             "Status",
             (match app.engine.agents().status {
-                openlibertas_core::engine::AgentStatus::Disabled => "Disabled",
-                openlibertas_core::engine::AgentStatus::Idle => "Enabled",
-                openlibertas_core::engine::AgentStatus::Active => "Active",
+                openlibertas_core::engine::AgentModeStatus::Disabled => "Disabled",
+                openlibertas_core::engine::AgentModeStatus::Idle => "Enabled",
+                openlibertas_core::engine::AgentModeStatus::Active => "Active",
             })
             .to_string(),
         ),

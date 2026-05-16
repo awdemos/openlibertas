@@ -14,9 +14,9 @@ use axum::{
 };
 use futures_util::stream::Stream;
 use openlibertas_core::{
-    backend::registry::BackendRegistry,
+    backend::registry::ProviderRegistry,
     config::{Config, SecretString},
-    domain::{ChatEvent, Message, ProviderId, Role},
+    domain::{BackendEvent, Message, ProviderId, Role},
     store::ConversationStore,
 };
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 struct AppState {
-    registry: Arc<BackendRegistry>,
+    registry: Arc<ProviderRegistry>,
     config: Config,
     conversation: Arc<RwLock<Vec<Message>>>,
     current_model: Arc<RwLock<Option<String>>>,
@@ -256,9 +256,9 @@ async fn post_chat(
 
     while let Some(event) = stream.recv().await {
         match event {
-            ChatEvent::Text(text) => response_text.push_str(&text),
-            ChatEvent::Reasoning(_) => {}
-            ChatEvent::ToolCall(tc) => {
+            BackendEvent::Text(text) => response_text.push_str(&text),
+            BackendEvent::Reasoning(_) => {}
+            BackendEvent::ToolCall(tc) => {
                 tool_calls.push(serde_json::json!({
                     "id": tc.id,
                     "type": tc.call_type,
@@ -268,8 +268,8 @@ async fn post_chat(
                     }
                 }));
             }
-            ChatEvent::Done | ChatEvent::Cancelled => break,
-            ChatEvent::Error(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, e),
+            BackendEvent::Done | BackendEvent::Cancelled => break,
+            BackendEvent::Error(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, e),
         }
     }
 
@@ -382,16 +382,16 @@ async fn stream_chat(
 
         while let Some(event) = stream.recv().await {
             match event {
-                ChatEvent::Text(text) => {
+                BackendEvent::Text(text) => {
                     response_text.push_str(&text);
                     let text_json = serde_json::to_string(&text).unwrap_or_else(|_| format!("{:?}", text));
                     yield Ok(Event::default().data(format!("{{\"type\": \"text\", \"content\": {} }}", text_json)));
                 }
-                ChatEvent::Reasoning(text) => {
+                BackendEvent::Reasoning(text) => {
                     let text_json = serde_json::to_string(&text).unwrap_or_else(|_| format!("{:?}", text));
                     yield Ok(Event::default().data(format!("{{\"type\": \"reasoning\", \"content\": {} }}", text_json)));
                 }
-                ChatEvent::ToolCall(tc) => {
+                BackendEvent::ToolCall(tc) => {
                     let tc_json = serde_json::json!({
                         "id": tc.id,
                         "type": tc.call_type,
@@ -403,15 +403,15 @@ async fn stream_chat(
                     tool_calls.push(tc_json.clone());
                     yield Ok(Event::default().data(format!("{{\"type\": \"tool_call\", \"data\": {} }}", tc_json)));
                 }
-                ChatEvent::Done => {
+                BackendEvent::Done => {
                     yield Ok(Event::default().data("{\"type\": \"done\"}"));
                     break;
                 }
-                ChatEvent::Cancelled => {
+                BackendEvent::Cancelled => {
                     yield Ok(Event::default().data("{\"type\": \"cancelled\"}"));
                     break;
                 }
-                ChatEvent::Error(e) => {
+                BackendEvent::Error(e) => {
                     let err_json = serde_json::to_string(&e).unwrap_or_else(|_| format!("{:?}", e));
                     yield Ok(Event::default().data(format!("{{\"type\": \"error\", \"message\": {} }}", err_json)));
                     break;
@@ -673,7 +673,7 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Config::load().unwrap_or_default();
-    let registry = Arc::new(BackendRegistry::new(&config.providers));
+    let registry = Arc::new(ProviderRegistry::new(&config.providers));
     let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
 
     let default_provider = config

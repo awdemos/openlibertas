@@ -26,11 +26,11 @@ mod ui;
 
 use crate::event::{Event, EventStream};
 use app::{App, Overlay, Screen, SlashCommand};
-use openlibertas_core::backend::registry::BackendRegistry;
-use openlibertas_core::backend::Backend;
+use openlibertas_core::backend::registry::ProviderRegistry;
+use openlibertas_core::backend::Provider;
 use openlibertas_core::capability::ProviderCapabilities;
-use openlibertas_core::domain::{ChatEvent, Message, Model, ProviderId, Role, ToolDefinition};
-use openlibertas_core::engine::{AgentMode, AgentStatus, ChatEngine};
+use openlibertas_core::domain::{BackendEvent, Message, Model, ProviderId, Role, ToolDefinition};
+use openlibertas_core::engine::{AgentMode, AgentModeStatus, ChatEngine};
 use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::runtime::Runtime;
 use openlibertas_core::soul::{Agent, ChatAgent, UserInput};
@@ -56,15 +56,15 @@ fn spawn_voice_transcription(
     });
 }
 
-/// Backend wrapper that delegates chat to [`BackendRegistry::chat_with_fallback`].
+/// Provider wrapper that delegates chat to [`ProviderRegistry::chat_with_fallback`].
 #[derive(Clone)]
 struct RegistryBackend {
-    registry: BackendRegistry,
+    registry: ProviderRegistry,
     preferred_provider: ProviderId,
 }
 
 impl RegistryBackend {
-    fn new(registry: BackendRegistry, preferred_provider: ProviderId) -> Self {
+    fn new(registry: ProviderRegistry, preferred_provider: ProviderId) -> Self {
         Self {
             registry,
             preferred_provider,
@@ -72,7 +72,7 @@ impl RegistryBackend {
     }
 }
 
-impl Backend for RegistryBackend {
+impl Provider for RegistryBackend {
     fn chat(
         &self,
         model: String,
@@ -81,7 +81,7 @@ impl Backend for RegistryBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> tokio::sync::mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> tokio::sync::mpsc::UnboundedReceiver<BackendEvent> {
         self.registry.chat_with_fallback(
             &self.preferred_provider,
             model,
@@ -126,12 +126,12 @@ impl Backend for RegistryBackend {
 /// Wrapper that injects a shared cancellation token into every chat call.
 #[derive(Clone)]
 struct CancellableBackend {
-    inner: Arc<dyn Backend>,
+    inner: Arc<dyn Provider>,
     cancel_token: tokio_util::sync::CancellationToken,
 }
 
 impl CancellableBackend {
-    fn new(inner: Arc<dyn Backend>, cancel_token: tokio_util::sync::CancellationToken) -> Self {
+    fn new(inner: Arc<dyn Provider>, cancel_token: tokio_util::sync::CancellationToken) -> Self {
         Self {
             inner,
             cancel_token,
@@ -139,7 +139,7 @@ impl CancellableBackend {
     }
 }
 
-impl Backend for CancellableBackend {
+impl Provider for CancellableBackend {
     fn chat(
         &self,
         model: String,
@@ -148,7 +148,7 @@ impl Backend for CancellableBackend {
         tools: Option<Vec<ToolDefinition>>,
         _cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> tokio::sync::mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> tokio::sync::mpsc::UnboundedReceiver<BackendEvent> {
         self.inner.chat(
             model,
             messages,
@@ -182,7 +182,7 @@ impl Backend for CancellableBackend {
 
 fn spawn_agent_turn(
     app: &mut App,
-    registry: &BackendRegistry,
+    registry: &ProviderRegistry,
     event_stream: &EventStream,
     input_text: String,
 ) {
@@ -227,7 +227,7 @@ fn spawn_agent_turn(
     app.cancel_token = Some(cancel_token.clone());
 
     let registry_backend = RegistryBackend::new(registry.clone(), app.models.provider.clone());
-    let backend: Arc<dyn Backend> =
+    let backend: Arc<dyn Provider> =
         Arc::new(CancellableBackend::new(Arc::new(registry_backend), cancel_token));
 
     let model = app.models.current.clone().unwrap_or_default();
@@ -248,7 +248,7 @@ fn spawn_agent_turn(
     let input = UserInput {
         text: input_text,
         file_context: vec![],
-        mode: if app.engine.agents().status == AgentStatus::Active {
+        mode: if app.engine.agents().status == AgentModeStatus::Active {
             app.engine.plan_mode()
         } else {
             AgentMode::Auto
@@ -789,12 +789,12 @@ async fn main() -> Result<()> {
                             }
                             KeyCode::Tab if app.engine.input_mut().buffer.is_empty() => {
                                 if app.engine.agents_mut().status
-                                    == openlibertas_core::engine::AgentStatus::Disabled
+                                    == openlibertas_core::engine::AgentModeStatus::Disabled
                                 {
                                     let personas = app.agent_personas();
                                     if let Some((name, _)) = personas.first() {
                                         app.engine.agents_mut().status =
-                                            openlibertas_core::engine::AgentStatus::Idle;
+                                            openlibertas_core::engine::AgentModeStatus::Idle;
                                         app.engine.agents_mut().persona = name.clone();
                                         app.engine.add_system_message(format!(
                                         "Agents enabled with '{}' persona. Press Tab to cycle, Enter to chat with agent.",
@@ -854,7 +854,7 @@ async fn main() -> Result<()> {
                                 {
                                     if app.engine.chat_mut().streaming {
                                         if app.engine.agents_mut().status
-                                            == openlibertas_core::engine::AgentStatus::Active
+                                            == openlibertas_core::engine::AgentModeStatus::Active
                                         {
                                             if let Some(token) = app.cancel_token.take() {
                                                 token.cancel();
@@ -905,7 +905,7 @@ async fn main() -> Result<()> {
                                         }
                                     } else {
                                         if app.engine.agents_mut().status
-                                            == openlibertas_core::engine::AgentStatus::Idle
+                                            == openlibertas_core::engine::AgentModeStatus::Idle
                                         {
                                             app.engine.start_agent_loop();
                                         }
@@ -1223,7 +1223,7 @@ async fn main() -> Result<()> {
                     let input = app.engine.input_mut().buffer.trim().to_string();
                     app.engine.push_to_history(input.clone());
                     if app.engine.agents_mut().status
-                        == openlibertas_core::engine::AgentStatus::Idle
+                        == openlibertas_core::engine::AgentModeStatus::Idle
                     {
                         app.engine.start_agent_loop();
                     }

@@ -48,7 +48,7 @@ impl Serialize for SecretString {
 
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
-pub struct Provider {
+pub struct ProviderConfig {
     pub name: String,
     pub base_url: String,
     #[serde(default)]
@@ -64,7 +64,7 @@ pub struct Provider {
     pub extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-impl<'de> Deserialize<'de> for Provider {
+impl<'de> Deserialize<'de> for ProviderConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -117,7 +117,7 @@ impl<'de> Deserialize<'de> for Provider {
         }
         capabilities.tool_format = tool_format;
 
-        Ok(Provider {
+        Ok(ProviderConfig {
             name: helper.name,
             base_url: helper.base_url,
             api_key: helper.api_key,
@@ -130,7 +130,7 @@ impl<'de> Deserialize<'de> for Provider {
     }
 }
 
-impl Provider {
+impl ProviderConfig {
     pub fn local_default() -> Self {
         Self {
             name: "local".to_string(),
@@ -149,7 +149,7 @@ impl Provider {
 #[non_exhaustive]
 pub struct Config {
     #[serde(default)]
-    pub providers: Vec<Provider>,
+    pub providers: Vec<ProviderConfig>,
     pub model: Option<String>,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
@@ -179,7 +179,7 @@ fn default_models_dir() -> PathBuf {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            providers: vec![Provider::local_default()],
+            providers: vec![ProviderConfig::local_default()],
             model: None,
             max_tokens: default_max_tokens(),
             context_window: None,
@@ -226,7 +226,7 @@ impl Config {
 
         if config.providers.is_empty() {
             info!("No providers configured, adding local default");
-            config.providers.push(Provider::local_default());
+            config.providers.push(ProviderConfig::local_default());
         }
 
         if let Ok(url) = std::env::var("OPENLIBERTAS_URL") {
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn provider_local_default() {
-        let p = Provider::local_default();
+        let p = ProviderConfig::local_default();
         assert_eq!(p.name, "local");
         assert_eq!(p.base_url, DEFAULT_BASE_URL);
         assert_eq!(p.api_key.expose_secret(), DEFAULT_API_KEY);
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn provider_serialization_redacts_api_key() {
-        let p = Provider {
+        let p = ProviderConfig {
             name: "test".to_string(),
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new("sk-test".to_string()),
@@ -360,7 +360,7 @@ mod tests {
             "api_key should be redacted in serialization: {}",
             toml_str
         );
-        let deserialized: Provider = toml::from_str(&toml_str).unwrap();
+        let deserialized: ProviderConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(deserialized.name, p.name);
         assert_eq!(deserialized.base_url, p.base_url);
         assert!(!deserialized.enabled);
@@ -373,7 +373,7 @@ mod tests {
             name = "test"
             base_url = "http://test:8080/v1"
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::Native);
     }
 
@@ -384,7 +384,7 @@ mod tests {
             base_url = "http://test:8080/v1"
             supports_tools = false
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::None);
         assert!(!p.capabilities.tools);
     }
@@ -396,7 +396,7 @@ mod tests {
             base_url = "http://test:8080/v1"
             supports_tools = true
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::Native);
         assert!(p.capabilities.tools);
     }
@@ -409,7 +409,7 @@ mod tests {
             tool_format = "ContentJson"
             supports_tools = false
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.tool_format, ToolFormat::ContentJson);
         // Explicit tool_format drives capabilities.tools; ContentJson implies tools enabled.
         assert!(p.capabilities.tools);
@@ -419,7 +419,7 @@ mod tests {
     fn provider_with_extra_params_serializes() {
         let mut extra = serde_json::Map::new();
         extra.insert("temperature".to_string(), serde_json::json!(0.7));
-        let p = Provider {
+        let p = ProviderConfig {
             name: "test".to_string(),
             base_url: "http://test:8080/v1".to_string(),
             api_key: SecretString::new(DEFAULT_API_KEY.to_string()),
@@ -440,7 +440,7 @@ mod tests {
             base_url = "http://test:8080/v1"
             kind = "anthropic"
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.kind, ProviderKind::Anthropic);
         assert!(p.capabilities.tools);
         assert!(p.capabilities.streaming);
@@ -454,7 +454,7 @@ mod tests {
             name = "test"
             base_url = "http://test:8080/v1"
         "#;
-        let p: Provider = toml::from_str(toml_str).unwrap();
+        let p: ProviderConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(p.kind, ProviderKind::OpenAiCompatible);
         assert!(p.capabilities.tools);
         assert!(p.capabilities.json_mode);
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn config_serialization_roundtrip() {
         let config = Config {
-            providers: vec![Provider::local_default()],
+            providers: vec![ProviderConfig::local_default()],
             model: Some("test-model".to_string()),
             max_tokens: 4096,
             context_window: Some(8192),

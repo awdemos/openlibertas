@@ -8,7 +8,7 @@
 //! - Message assembly for the next turn
 
 use crate::domain::{Message, Role, ToolExecutionResult};
-use crate::engine::{AgentStatus, ChatEngine};
+use crate::engine::{AgentModeStatus, ChatEngine};
 use tracing::info;
 
 /// Action returned by the agent loop after processing a completed stream.
@@ -42,7 +42,7 @@ pub struct AgentLoop;
 impl AgentLoop {
     /// Run one iteration of the agent loop.
     ///
-    /// This should be called after `ChatEvent::Done` is received. It handles
+    /// This should be called after `BackendEvent::Done` is received. It handles
     /// finishing the stream, executing pending tools, persona switches,
     /// context compaction, and preparing messages for the next turn.
     pub async fn run(
@@ -133,7 +133,7 @@ impl AgentLoop {
             engine.tool_executor_mut().clear_pending_tool_calls();
             engine.tool_executor_mut().clear_tool_results();
 
-            if engine.agents().status == AgentStatus::Active {
+            if engine.agents().status == AgentModeStatus::Active {
                 let compacted = engine.chat_mut().compactor.compact(&tool_messages);
                 if compacted.len() < tool_messages.len() {
                     info!(

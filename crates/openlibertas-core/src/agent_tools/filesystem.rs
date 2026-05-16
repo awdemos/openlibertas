@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::tools::BuiltinTool;
+use crate::agent_tools::BuiltinTool;
 
 /// Verify that `path` stays within the current working directory.
 /// Rejects absolute paths and paths that traverse above the working directory.

@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::tools::BuiltinTool;
+use crate::agent_tools::BuiltinTool;
 
 const ALLOWED_TMUX_COMMANDS: &[&str] = &[
     "list-sessions",
@@ -88,7 +88,7 @@ pub fn tmux(args: Value) -> Result<String> {
         _ => {}
     }
 
-    crate::tools::run_command(&mut cmd).map(|s| s.trim().to_string())
+    crate::agent_tools::run_command(&mut cmd).map(|s| s.trim().to_string())
 }
 
 #[cfg(test)]

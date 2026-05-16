@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::backend::{Backend, MultiProviderBackend};
-use crate::config::Provider;
-use crate::domain::{ChatEvent, Message, ProviderId, ToolDefinition};
+use crate::backend::{MultiProvider, Provider};
+use crate::config::ProviderConfig;
+use crate::domain::{BackendEvent, Message, ProviderId, ToolDefinition};
 
 const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
 const CIRCUIT_BREAKER_TIMEOUT_SECS: u64 = 60;
@@ -27,19 +27,19 @@ struct ProviderHealth {
 /// - Enumeration of available providers
 /// - Circuit-breaker health tracking per provider
 #[derive(Clone)]
-pub struct BackendRegistry {
-    backends: HashMap<ProviderId, Arc<dyn Backend>>,
+pub struct ProviderRegistry {
+    backends: HashMap<ProviderId, Arc<dyn Provider>>,
     health: Arc<Mutex<HashMap<ProviderId, ProviderHealth>>>,
 }
 
-impl BackendRegistry {
-    pub fn new(providers: &[Provider]) -> Self {
-        let mut backends: HashMap<ProviderId, Arc<dyn Backend>> = HashMap::new();
+impl ProviderRegistry {
+    pub fn new(providers: &[ProviderConfig]) -> Self {
+        let mut backends: HashMap<ProviderId, Arc<dyn Provider>> = HashMap::new();
         let mut health = HashMap::new();
         for provider in providers {
             if provider.enabled {
                 let capabilities = provider.capabilities;
-                let backend: Arc<dyn Backend> = Arc::new(MultiProviderBackend::with_capabilities(
+                let backend: Arc<dyn Provider> = Arc::new(MultiProvider::with_capabilities(
                     provider.base_url.clone(),
                     provider.api_key.clone(),
                     provider.kind,
@@ -63,7 +63,7 @@ impl BackendRegistry {
         }
     }
 
-    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<dyn Backend>> {
+    pub fn get(&self, provider: &ProviderId) -> Option<&Arc<dyn Provider>> {
         self.backends.get(provider)
     }
 
@@ -91,7 +91,7 @@ impl BackendRegistry {
     ///
     /// Tries `preferred` name first (case-insensitive), then falls back
     /// to the default provider. Returns `None` if no backends exist.
-    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<dyn Backend>> {
+    pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<dyn Provider>> {
         if let Some(name) = preferred {
             let id = ProviderId::new(name);
             if let Some(backend) = self.backends.get(&id) {
@@ -101,7 +101,7 @@ impl BackendRegistry {
         self.default_backend()
     }
 
-    pub fn default_backend(&self) -> Option<&Arc<dyn Backend>> {
+    pub fn default_backend(&self) -> Option<&Arc<dyn Provider>> {
         self.backends.values().next()
     }
 
@@ -151,11 +151,11 @@ impl BackendRegistry {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let (tx, rx) = mpsc::unbounded_channel();
         let preferred = preferred_provider.clone();
 
-        let mut providers: Vec<(ProviderId, Arc<dyn Backend>)> = Vec::new();
+        let mut providers: Vec<(ProviderId, Arc<dyn Provider>)> = Vec::new();
         if let Some(backend) = self.backends.get(&preferred) {
             providers.push((preferred.clone(), backend.clone()));
         }
@@ -197,7 +197,7 @@ impl BackendRegistry {
                 }
 
                 if let Some(prev) = tried.last() {
-                    let _ = tx.send(ChatEvent::Text(format!(
+                    let _ = tx.send(BackendEvent::Text(format!(
                         "\n[Provider '{}' failed, trying '{}']\n",
                         prev, provider_id
                     )));
@@ -216,14 +216,14 @@ impl BackendRegistry {
                 let mut can_fallback = true;
                 while let Some(event) = stream_rx.recv().await {
                     match &event {
-                        ChatEvent::Text(_) | ChatEvent::Reasoning(_) | ChatEvent::ToolCall(_) => {
+                        BackendEvent::Text(_) | BackendEvent::Reasoning(_) | BackendEvent::ToolCall(_) => {
                             can_fallback = false;
                         }
-                        ChatEvent::Cancelled => {
+                        BackendEvent::Cancelled => {
                             let _ = tx.send(event);
                             return;
                         }
-                        ChatEvent::Error(_) => {
+                        BackendEvent::Error(_) => {
                             stream_failed = true;
                             if can_fallback {
                                 continue; // Swallow error, try next provider
@@ -264,11 +264,11 @@ impl BackendRegistry {
             }
 
             if tried.is_empty() {
-                let _ = tx.send(ChatEvent::Error(
+                let _ = tx.send(BackendEvent::Error(
                     "No healthy providers available.".to_string(),
                 ));
             } else {
-                let _ = tx.send(ChatEvent::Error(format!(
+                let _ = tx.send(BackendEvent::Error(format!(
                     "All providers failed. Tried: {}",
                     tried
                         .iter()
@@ -289,10 +289,10 @@ mod tests {
     use crate::config::SecretString;
     use crate::tool_format::ToolFormat;
 
-    fn test_providers() -> Vec<Provider> {
+    fn test_providers() -> Vec<ProviderConfig> {
         use crate::capability::ProviderKind;
         vec![
-            Provider {
+            ProviderConfig {
                 name: "local".to_string(),
                 base_url: "http://localhost:11434/v1".to_string(),
                 api_key: SecretString::new("sk-test".to_string()),
@@ -302,7 +302,7 @@ mod tests {
                 tool_format: ToolFormat::Native,
                 extra_params: None,
             },
-            Provider {
+            ProviderConfig {
                 name: "kimi".to_string(),
                 base_url: "https://api.kimi.com/v1".to_string(),
                 api_key: SecretString::new("sk-kimi".to_string()),
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn registry_creates_backends_for_enabled_providers() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert!(registry.has_backend(&ProviderId::new("local")));
         assert!(registry.has_backend(&ProviderId::new("kimi")));
     }
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn registry_get_returns_correct_backend() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert!(registry.get(&ProviderId::new("local")).is_some());
         assert!(registry.get(&ProviderId::new("unknown")).is_none());
     }
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn registry_skips_disabled_providers() {
         use crate::capability::ProviderKind;
-        let providers = vec![Provider {
+        let providers = vec![ProviderConfig {
             name: "disabled".to_string(),
             base_url: "http://example.com".to_string(),
             api_key: SecretString::new("sk-test".to_string()),
@@ -344,21 +344,21 @@ mod tests {
             tool_format: ToolFormat::None,
             extra_params: None,
         }];
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert!(!registry.has_backend(&ProviderId::new("disabled")));
     }
 
     #[test]
     fn default_backend_returns_first() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert!(registry.default_backend().is_some());
     }
 
     #[test]
     fn list_providers_returns_all_ids() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let ids = registry.list_providers();
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&&ProviderId::new("local")));
@@ -368,14 +368,14 @@ mod tests {
     #[test]
     fn provider_count_matches_registered() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert_eq!(registry.provider_count(), 2);
     }
 
     #[test]
     fn select_provider_finds_preferred() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let backend = registry.select_provider(Some("kimi"));
         assert!(backend.is_some());
     }
@@ -383,55 +383,55 @@ mod tests {
     #[test]
     fn select_provider_fallback_to_default() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let backend = registry.select_provider(Some("unknown"));
         assert!(backend.is_some());
     }
 
     #[test]
     fn select_provider_none_when_empty() {
-        let registry = BackendRegistry::new(&[]);
+        let registry = ProviderRegistry::new(&[]);
         assert!(registry.select_provider(None).is_none());
     }
 
     #[test]
     fn default_provider_id_returns_first_id() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let id = registry.default_provider_id();
         assert!(id.is_some());
     }
 
     #[test]
     fn default_provider_id_none_when_empty() {
-        let registry = BackendRegistry::new(&[]);
+        let registry = ProviderRegistry::new(&[]);
         assert!(registry.default_provider_id().is_none());
     }
 
     #[test]
     fn select_provider_case_insensitive() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         assert!(registry.select_provider(Some("KIMI")).is_some());
         assert!(registry.select_provider(Some("Local")).is_some());
     }
 
     #[test]
     fn provider_count_zero_when_empty() {
-        let registry = BackendRegistry::new(&[]);
+        let registry = ProviderRegistry::new(&[]);
         assert_eq!(registry.provider_count(), 0);
     }
 
     #[test]
     fn list_providers_empty_when_none() {
-        let registry = BackendRegistry::new(&[]);
+        let registry = ProviderRegistry::new(&[]);
         assert!(registry.list_providers().is_empty());
     }
 
     #[test]
     fn circuit_breaker_tracks_failures() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let local = ProviderId::new("local");
 
         assert!(registry.is_provider_healthy(&local));
@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn circuit_breaker_resets_on_success() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let local = ProviderId::new("local");
 
         registry.record_provider_result(&local, false);
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn circuit_breaker_starts_healthy() {
         let providers = test_providers();
-        let registry = BackendRegistry::new(&providers);
+        let registry = ProviderRegistry::new(&providers);
         let unknown = ProviderId::new("unknown");
         assert!(!registry.is_provider_healthy(&unknown));
     }

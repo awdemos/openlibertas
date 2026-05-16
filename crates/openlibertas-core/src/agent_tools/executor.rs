@@ -1,6 +1,6 @@
 use crate::domain::{now_timestamp, Message, Role, ToolCall, ToolExecutionResult};
 use crate::mcp::McpClient;
-use crate::tools;
+use crate::agent_tools;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -84,7 +84,7 @@ impl ToolExecutor {
                 extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
 
             if !yolo_mode
-                && (!tools::is_builtin(&tool_call.function.name)
+                && (!agent_tools::is_builtin(&tool_call.function.name)
                     || tool_needs_approval(&tool_call.function.name))
             {
                 results.push(ToolExecutionResult::Skipped {
@@ -100,11 +100,11 @@ impl ToolExecutor {
             let result =
                 match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
                     Ok(args) => {
-                        if tools::is_builtin(&tool_call.function.name) {
+                        if agent_tools::is_builtin(&tool_call.function.name) {
                             let tool_name = tool_call.function.name.clone();
                             let key_arg = key_arg.clone();
                             let builtin_result = tokio::task::spawn_blocking(move || {
-                                tools::execute_builtin(&tool_name, args)
+                                agent_tools::execute_builtin(&tool_name, args)
                             })
                             .await;
                             match builtin_result {

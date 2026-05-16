@@ -26,16 +26,14 @@ pub mod state;
 pub mod store;
 pub mod tool_format;
 pub mod tool_registry;
-pub mod tools;
+pub mod agent_tools;
 pub mod voice;
-pub mod wire;
-
 pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
-pub use backend::Backend;
+pub use backend::Provider;
 pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
-pub use config::{Config, Provider, SecretString};
+pub use config::{Config, ProviderConfig, SecretString};
 pub use domain::{
-    ChatEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
+    BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
 };
 pub use tool_format::ToolFormat;

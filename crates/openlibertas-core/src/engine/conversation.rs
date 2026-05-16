@@ -2,7 +2,7 @@ use crate::conversation::parse_file_context;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
-use crate::tools::ToolExecutor;
+use crate::agent_tools::ToolExecutor;
 use tracing::info;
 
 use super::ChatEngine;
@@ -14,7 +14,7 @@ impl ChatEngine {
 
         let mut system_messages = Vec::new();
 
-        if self.agents.status == super::AgentStatus::Active {
+        if self.agents.status == super::AgentModeStatus::Active {
             if let Some(prompt) = &self.agent_prompt {
                 system_messages.push(Message {
                     role: Role::System,
@@ -460,7 +460,7 @@ impl ChatEngine {
 #[cfg(test)]
 mod tests {
     use crate::domain::{Message, Role};
-    use crate::engine::{AgentStatus, ChatEngine};
+    use crate::engine::{AgentModeStatus, ChatEngine};
     use crate::tool_format::ToolFormat;
 
     #[test]
@@ -500,7 +500,7 @@ mod tests {
         let mut engine = ChatEngine::new()
             .with_system_prompt("You are helpful")
             .with_agent_prompt("You are an agent");
-        engine.agents.status = AgentStatus::Active;
+        engine.agents.status = AgentModeStatus::Active;
 
         let _messages = engine.push_user_message("Hello");
 

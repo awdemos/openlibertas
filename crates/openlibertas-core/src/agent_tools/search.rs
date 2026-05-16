@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::tools::BuiltinTool;
+use crate::agent_tools::BuiltinTool;
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {

@@ -46,7 +46,7 @@ impl BuiltinTool {
 #[macro_export]
 macro_rules! define_tool {
     ($name:expr, $description:expr, $parameters:expr, $handler:expr) => {
-        $crate::tools::BuiltinTool {
+        $crate::agent_tools::BuiltinTool {
             name: $name.to_string(),
             description: $description.to_string(),
             parameters: $parameters,

@@ -2,21 +2,21 @@ use super::ChatEngine;
 
 impl ChatEngine {
     pub fn start_agent_loop(&mut self) {
-        if self.agents.status == super::AgentStatus::Idle {
-            self.agents.status = super::AgentStatus::Active;
+        if self.agents.status == super::AgentModeStatus::Idle {
+            self.agents.status = super::AgentModeStatus::Active;
             self.agents.current_iteration = 0;
         }
     }
 
     pub fn finish_agent_loop(&mut self) {
-        if self.agents.status == super::AgentStatus::Active {
-            self.agents.status = super::AgentStatus::Idle;
+        if self.agents.status == super::AgentModeStatus::Active {
+            self.agents.status = super::AgentModeStatus::Idle;
             self.agents.current_iteration = 0;
         }
     }
 
     pub fn agent_iteration_exceeded(&self) -> bool {
-        self.agents.status == super::AgentStatus::Active
+        self.agents.status == super::AgentModeStatus::Active
             && self.agents.current_iteration >= self.agents.max_iterations
     }
 
@@ -51,22 +51,22 @@ impl ChatEngine {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::{AgentStatus, ChatEngine};
+    use crate::engine::{AgentModeStatus, ChatEngine};
 
     #[test]
     fn agent_loop_transitions() {
         let mut engine = ChatEngine::new();
-        engine.agents.status = AgentStatus::Idle;
+        engine.agents.status = AgentModeStatus::Idle;
         engine.start_agent_loop();
-        assert_eq!(engine.agents.status, AgentStatus::Active);
+        assert_eq!(engine.agents.status, AgentModeStatus::Active);
         engine.finish_agent_loop();
-        assert_eq!(engine.agents.status, AgentStatus::Idle);
+        assert_eq!(engine.agents.status, AgentModeStatus::Idle);
     }
 
     #[test]
     fn agent_loop_exceeded_check() {
         let mut engine = ChatEngine::new();
-        engine.agents.status = AgentStatus::Active;
+        engine.agents.status = AgentModeStatus::Active;
         engine.agents.max_iterations = 3;
         engine.agents.current_iteration = 3;
         assert!(engine.agent_iteration_exceeded());

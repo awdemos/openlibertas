@@ -5,14 +5,14 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::capability::ProviderCapabilities;
-use crate::domain::{ChatEvent, Message, Model, ToolDefinition};
+use crate::domain::{BackendEvent, Message, Model, ToolDefinition};
 
 pub mod multi_provider;
 pub mod registry;
 
-pub use multi_provider::MultiProviderBackend;
+pub use multi_provider::MultiProvider;
 
-pub trait Backend: Send + Sync {
+pub trait Provider: Send + Sync {
     fn chat(
         &self,
         model: String,
@@ -21,7 +21,7 @@ pub trait Backend: Send + Sync {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent>;
+    ) -> mpsc::UnboundedReceiver<BackendEvent>;
 
     fn fetch_models(&self) -> Pin<Box<dyn Future<Output = Result<Vec<Model>>> + Send + '_>>;
 

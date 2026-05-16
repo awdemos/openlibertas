@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use crate::backend::Backend;
+use crate::backend::Provider;
 use crate::capability::{ProviderCapabilities, ProviderKind};
 use crate::domain::*;
 use crate::tool_format::ToolFormat;
@@ -393,11 +393,11 @@ struct GeminiModelItem {
 }
 
 // ============================================================================
-// MultiProviderBackend
+// MultiProvider
 // ============================================================================
 
 #[derive(Clone)]
-pub struct MultiProviderBackend {
+pub struct MultiProvider {
     client: Client,
     base_url: String,
     api_key: crate::config::SecretString,
@@ -407,7 +407,7 @@ pub struct MultiProviderBackend {
     extra_params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-impl MultiProviderBackend {
+impl MultiProvider {
     pub fn with_capabilities(
         base_url: String,
         api_key: crate::config::SecretString,
@@ -442,7 +442,7 @@ impl MultiProviderBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         match self.provider_kind {
             ProviderKind::Anthropic => {
                 self.chat_anthropic(model, messages, max_tokens, tools, cancel_token, temperature)
@@ -468,7 +468,7 @@ impl MultiProviderBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let mut extra_params = self.extra_params.clone().unwrap_or_default();
         if let Some(temp) = temperature {
             extra_params.insert("temperature".to_string(), serde_json::json!(temp));
@@ -551,7 +551,7 @@ impl MultiProviderBackend {
                                 "Chat HTTP {} -- retrying {}/{} in {:?}",
                                 status, retries, MAX_RETRIES, delay
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[HTTP {} -- retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
                             )));
@@ -560,7 +560,7 @@ impl MultiProviderBackend {
                         }
                         let body = r.text().await.unwrap_or_default();
                         error!("Chat HTTP error: {} -- {}", status, body);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[HTTP {}: {}]",
                             status,
                             if body.is_empty() {
@@ -579,7 +579,7 @@ impl MultiProviderBackend {
                                 "Chat connection error -- retrying {}/{} in {:?}: {}",
                                 retries, MAX_RETRIES, delay, e
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Connection error -- retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
                             )));
@@ -590,7 +590,7 @@ impl MultiProviderBackend {
                             "Chat connection failed after {} retries: {}",
                             MAX_RETRIES, e
                         );
-                        let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
                 }
@@ -630,7 +630,7 @@ impl MultiProviderBackend {
                         if !status.is_success() {
                             let body = r.text().await.unwrap_or_default();
                             error!("Ollama chat HTTP error: {} -- {}", status, body);
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Ollama HTTP {}: {}]",
                                 status,
                                 if body.is_empty() {
@@ -646,7 +646,7 @@ impl MultiProviderBackend {
                     }
                     Err(e) => {
                         error!("Ollama chat connection failed: {}", e);
-                        let _ = tx.send(ChatEvent::Error(format!("[Ollama error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Ollama error: {}]", e)));
                         return;
                     }
                 }
@@ -672,7 +672,7 @@ impl MultiProviderBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let (system, anthropic_messages) = convert_messages_anthropic(messages);
 
         let tools_for_req = if self.capabilities.tool_format.sends_native_tools() {
@@ -745,7 +745,7 @@ impl MultiProviderBackend {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to serialize Anthropic request: {}", e);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[Serialization error: {}]",
                             e
                         )));
@@ -780,7 +780,7 @@ impl MultiProviderBackend {
                                 "Anthropic HTTP {} -- retrying {}/{} in {:?}",
                                 status, retries, MAX_RETRIES, delay
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[HTTP {} -- retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
                             )));
@@ -789,7 +789,7 @@ impl MultiProviderBackend {
                         }
                         let body = r.text().await.unwrap_or_default();
                         error!("Anthropic chat HTTP error: {} -- {}", status, body);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[HTTP {}: {}]",
                             status,
                             if body.is_empty() {
@@ -808,7 +808,7 @@ impl MultiProviderBackend {
                                 "Anthropic connection error -- retrying {}/{} in {:?}: {}",
                                 retries, MAX_RETRIES, delay, e
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Connection error -- retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
                             )));
@@ -819,7 +819,7 @@ impl MultiProviderBackend {
                             "Anthropic chat connection failed after {} retries: {}",
                             MAX_RETRIES, e
                         );
-                        let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
                 }
@@ -841,7 +841,7 @@ impl MultiProviderBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         let (system, gemini_contents) = convert_messages_gemini(messages);
 
         let tools_for_req = if self.capabilities.tool_format.sends_native_tools() {
@@ -916,7 +916,7 @@ impl MultiProviderBackend {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to serialize Gemini request: {}", e);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[Serialization error: {}]",
                             e
                         )));
@@ -955,7 +955,7 @@ impl MultiProviderBackend {
                                 "Gemini HTTP {} -- retrying {}/{} in {:?}",
                                 status, retries, MAX_RETRIES, delay
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[HTTP {} -- retrying {}/{} in {:?}]",
                                 status, retries, MAX_RETRIES, delay
                             )));
@@ -964,7 +964,7 @@ impl MultiProviderBackend {
                         }
                         let body = r.text().await.unwrap_or_default();
                         error!("Gemini chat HTTP error: {} -- {}", status, body);
-                        let _ = tx.send(ChatEvent::Error(format!(
+                        let _ = tx.send(BackendEvent::Error(format!(
                             "[HTTP {}: {}]",
                             status,
                             if body.is_empty() {
@@ -983,7 +983,7 @@ impl MultiProviderBackend {
                                 "Gemini connection error -- retrying {}/{} in {:?}: {}",
                                 retries, MAX_RETRIES, delay, e
                             );
-                            let _ = tx.send(ChatEvent::Error(format!(
+                            let _ = tx.send(BackendEvent::Error(format!(
                                 "[Connection error -- retrying {}/{} in {:?}: {}]",
                                 retries, MAX_RETRIES, delay, e
                             )));
@@ -994,7 +994,7 @@ impl MultiProviderBackend {
                             "Gemini chat connection failed after {} retries: {}",
                             MAX_RETRIES, e
                         );
-                        let _ = tx.send(ChatEvent::Error(format!("[Error: {}]", e)));
+                        let _ = tx.send(BackendEvent::Error(format!("[Error: {}]", e)));
                         return;
                     }
                 }
@@ -1011,7 +1011,7 @@ impl MultiProviderBackend {
     async fn stream_openai(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -1021,7 +1021,7 @@ impl MultiProviderBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -1050,17 +1050,17 @@ impl MultiProviderBackend {
                                 if let Some(choice) = chunk.choices.first() {
                                     if let Some(content) = &choice.delta.content {
                                         if !content.is_empty() {
-                                            let _ = tx.send(ChatEvent::Text(content.clone()));
+                                            let _ = tx.send(BackendEvent::Text(content.clone()));
                                         }
                                     }
                                     if let Some(reasoning) = &choice.delta.reasoning_content {
                                         if !reasoning.is_empty() {
                                             let _ =
-                                                tx.send(ChatEvent::Reasoning(reasoning.clone()));
+                                                tx.send(BackendEvent::Reasoning(reasoning.clone()));
                                         }
                                     } else if let Some(thinking) = &choice.delta.thinking {
                                         if !thinking.is_empty() {
-                                            let _ = tx.send(ChatEvent::Reasoning(thinking.clone()));
+                                            let _ = tx.send(BackendEvent::Reasoning(thinking.clone()));
                                         }
                                     }
                                     if let Some(tool_calls) = &choice.delta.tool_calls {
@@ -1105,11 +1105,11 @@ impl MultiProviderBackend {
                             tool_count
                         );
                         for (_, tool_call) in accumulated_tool_calls {
-                            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                            let _ = tx.send(BackendEvent::ToolCall(tool_call));
                         }
                     }
                     error!("Chat stream error: {}", e);
-                    let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
                     return;
                 }
             }
@@ -1122,15 +1122,15 @@ impl MultiProviderBackend {
             info!("Chat complete");
         }
         for (_, tool_call) in accumulated_tool_calls {
-            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+            let _ = tx.send(BackendEvent::ToolCall(tool_call));
         }
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 
     async fn stream_ollama(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -1139,7 +1139,7 @@ impl MultiProviderBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -1170,7 +1170,7 @@ impl MultiProviderBackend {
                             }
                             if let Some(msg) = resp.message {
                                 if !msg.content.is_empty() {
-                                    let _ = tx.send(ChatEvent::Text(msg.content));
+                                    let _ = tx.send(BackendEvent::Text(msg.content));
                                 }
                                 if let Some(tool_calls) = msg.tool_calls {
                                     for tc in tool_calls {
@@ -1192,7 +1192,7 @@ impl MultiProviderBackend {
                                                 arguments: args_str,
                                             },
                                         };
-                                        let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                                        let _ = tx.send(BackendEvent::ToolCall(tool_call));
                                     }
                                 }
                             }
@@ -1202,20 +1202,20 @@ impl MultiProviderBackend {
                 }
                 Err(e) => {
                     error!("Ollama stream error: {}", e);
-                    let _ = tx.send(ChatEvent::Error(format!("[Ollama stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Ollama stream error: {}]", e)));
                     return;
                 }
             }
         }
 
         info!("Ollama chat complete");
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 
     async fn stream_anthropic(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -1232,7 +1232,7 @@ impl MultiProviderBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -1273,7 +1273,7 @@ impl MultiProviderBackend {
                                                     Some("text_delta") => {
                                                         if let Some(text) = delta.text {
                                                             if !text.is_empty() {
-                                                                let _ = tx.send(ChatEvent::Text(text));
+                                                                let _ = tx.send(BackendEvent::Text(text));
                                                             }
                                                         }
                                                     }
@@ -1292,7 +1292,7 @@ impl MultiProviderBackend {
                                                     Some("thinking_delta") => {
                                                         if let Some(text) = delta.text {
                                                             if !text.is_empty() {
-                                                                let _ = tx.send(ChatEvent::Reasoning(text));
+                                                                let _ = tx.send(BackendEvent::Reasoning(text));
                                                             }
                                                         }
                                                     }
@@ -1323,7 +1323,7 @@ impl MultiProviderBackend {
                                                     err.error_type, err.message
                                                 );
                                                 error!("{}", msg);
-                                                let _ = tx.send(ChatEvent::Error(msg));
+                                                let _ = tx.send(BackendEvent::Error(msg));
                                                 return;
                                             }
                                         }
@@ -1355,10 +1355,10 @@ impl MultiProviderBackend {
                                     },
                                 },
                             };
-                            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                            let _ = tx.send(BackendEvent::ToolCall(tool_call));
                         }
                     }
-                    let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
                     return;
                 }
             }
@@ -1385,17 +1385,17 @@ impl MultiProviderBackend {
                         },
                     },
                 };
-                let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                let _ = tx.send(BackendEvent::ToolCall(tool_call));
             }
         }
 
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 
     async fn stream_gemini(
         resp: reqwest::Response,
         cancel_token: tokio_util::sync::CancellationToken,
-        tx: mpsc::UnboundedSender<ChatEvent>,
+        tx: mpsc::UnboundedSender<BackendEvent>,
     ) {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
@@ -1407,7 +1407,7 @@ impl MultiProviderBackend {
             let chunk = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tx.send(ChatEvent::Cancelled);
+                    let _ = tx.send(BackendEvent::Cancelled);
                     return;
                 }
                 chunk = stream.next() => {
@@ -1443,7 +1443,7 @@ impl MultiProviderBackend {
                                             error.code, error.message
                                         );
                                         error!("{}", msg);
-                                        let _ = tx.send(ChatEvent::Error(msg));
+                                        let _ = tx.send(BackendEvent::Error(msg));
                                         return;
                                     }
 
@@ -1452,7 +1452,7 @@ impl MultiProviderBackend {
                                             match part {
                                                 GeminiPartResponse::Text { text } => {
                                                     if !text.is_empty() {
-                                                        let _ = tx.send(ChatEvent::Text(text));
+                                                        let _ = tx.send(BackendEvent::Text(text));
                                                     }
                                                 }
                                                 GeminiPartResponse::FunctionCall {
@@ -1501,9 +1501,9 @@ impl MultiProviderBackend {
                                 arguments: args_str,
                             },
                         };
-                        let _ = tx.send(ChatEvent::ToolCall(tool_call));
+                        let _ = tx.send(BackendEvent::ToolCall(tool_call));
                     }
-                    let _ = tx.send(ChatEvent::Error(format!("[Stream error: {}]", e)));
+                    let _ = tx.send(BackendEvent::Error(format!("[Stream error: {}]", e)));
                     return;
                 }
             }
@@ -1526,10 +1526,10 @@ impl MultiProviderBackend {
                     arguments: args_str,
                 },
             };
-            let _ = tx.send(ChatEvent::ToolCall(tool_call));
+            let _ = tx.send(BackendEvent::ToolCall(tool_call));
         }
 
-        let _ = tx.send(ChatEvent::Done);
+        let _ = tx.send(BackendEvent::Done);
     }
 
     // ========================================================================
@@ -1725,10 +1725,10 @@ impl MultiProviderBackend {
 }
 
 // ============================================================================
-// Backend trait implementation
+// Provider trait implementation
 // ============================================================================
 
-impl Backend for MultiProviderBackend {
+impl Provider for MultiProvider {
     fn chat(
         &self,
         model: String,
@@ -1737,7 +1737,7 @@ impl Backend for MultiProviderBackend {
         tools: Option<Vec<ToolDefinition>>,
         cancel_token: tokio_util::sync::CancellationToken,
         temperature: Option<f32>,
-    ) -> mpsc::UnboundedReceiver<ChatEvent> {
+    ) -> mpsc::UnboundedReceiver<BackendEvent> {
         self.chat(
             model,
             messages,
@@ -2706,7 +2706,7 @@ mod tests {
 
     #[test]
     fn multi_provider_backend_has_provider_kind() {
-        let backend = MultiProviderBackend::with_capabilities(
+        let backend = MultiProvider::with_capabilities(
             "http://test".to_string(),
             crate::config::SecretString::new("sk-test".to_string()),
             ProviderKind::Anthropic,
@@ -2721,7 +2721,7 @@ mod tests {
         let mut caps = ProviderCapabilities::default();
         caps.tools = true;
         caps.streaming = true;
-        let backend = MultiProviderBackend::with_capabilities(
+        let backend = MultiProvider::with_capabilities(
             "http://test".to_string(),
             crate::config::SecretString::new("sk-test".to_string()),
             ProviderKind::Gemini,

@@ -15,12 +15,12 @@ use crate::mcp::McpClient;
 use std::sync::Arc;
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
-use crate::tools::{MessageAssembler, ToolExecutor};
+use crate::agent_tools::{MessageAssembler, ToolExecutor};
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum AgentStatus {
+pub enum AgentModeStatus {
     #[default]
     Disabled,
     Idle,
@@ -41,7 +41,7 @@ impl Default for AgentMode {
 
 #[derive(Debug, PartialEq)]
 pub struct AgentState {
-    pub status: AgentStatus,
+    pub status: AgentModeStatus,
     pub max_iterations: usize,
     pub current_iteration: usize,
     pub persona: String,
@@ -52,7 +52,7 @@ pub struct AgentState {
 impl Default for AgentState {
     fn default() -> Self {
         Self {
-            status: AgentStatus::Disabled,
+            status: AgentModeStatus::Disabled,
             max_iterations: 10,
             current_iteration: 0,
             persona: "Orchestrator".to_string(),
@@ -281,14 +281,14 @@ impl ChatEngine {
     }
 
     pub fn assemble_tool_result_messages(&self) -> Vec<Message> {
-        let agent_prompt = if self.agents.status == AgentStatus::Active {
+        let agent_prompt = if self.agents.status == AgentModeStatus::Active {
             self.agent_prompt.as_deref()
         } else {
             None
         };
         self.message_assembler.assemble(
             &self.chat.messages,
-            Some("active").filter(|_| self.agents.status == AgentStatus::Active),
+            Some("active").filter(|_| self.agents.status == AgentModeStatus::Active),
             agent_prompt,
             self.tool_executor.pending_tool_calls(),
             self.tool_executor.tool_results(),
