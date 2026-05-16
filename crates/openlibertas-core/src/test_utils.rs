@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use crate::backend::Provider;
 use crate::capability::ProviderCapabilities;
 use crate::config::SecretString;
-use crate::domain::{BackendEvent, Message, Model, ProviderId, Role, ToolDefinition};
+use crate::domain::{BackendEvent, Message, Model, Role, ToolDefinition};
 
 /// Create a temporary directory suitable for `SessionStore` tests.
 ///
@@ -88,9 +88,7 @@ impl Provider for MockProvider {
         Box::pin(async { Ok(vec![]) })
     }
 
-    fn health_check(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + '_>> {
+    fn health_check(&self) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + '_>> {
         Box::pin(async { Ok(()) })
     }
 

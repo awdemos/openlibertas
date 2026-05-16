@@ -1,8 +1,6 @@
 //! Integration tests for domain types: message building, context compaction, and token estimation.
 
-use openlibertas_core::domain::{
-    estimate_messages_tokens, Message, Model, ProviderId, Role,
-};
+use openlibertas_core::domain::{estimate_messages_tokens, Message, Model, ProviderId, Role};
 use openlibertas_core::session::ContextCompactor;
 
 fn msg(role: Role, content: &str) -> Message {
@@ -39,7 +37,10 @@ fn estimate_messages_tokens_sums_correctly() {
         msg(Role::User, "foo"),
     ];
     let total = estimate_messages_tokens(&messages);
-    assert_eq!(total, messages.iter().map(|m| m.estimate_tokens()).sum::<usize>());
+    assert_eq!(
+        total,
+        messages.iter().map(|m| m.estimate_tokens()).sum::<usize>()
+    );
 }
 
 #[test]
@@ -68,7 +69,16 @@ fn message_with_tool_calls_has_higher_estimate() {
 fn context_compactor_does_nothing_when_under_threshold() {
     let mut compactor = ContextCompactor::with_context_window(10000);
     let messages: Vec<Message> = (0..10)
-        .map(|i| msg(if i % 2 == 0 { Role::User } else { Role::Assistant }, "x"))
+        .map(|i| {
+            msg(
+                if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                "x",
+            )
+        })
         .collect();
 
     let result = compactor.compact(&messages);
@@ -88,7 +98,9 @@ fn context_compactor_preserves_system_messages() {
     ];
 
     let result = compactor.compact(&messages);
-    assert!(result.iter().any(|m| m.role == Role::System && m.content == "You are helpful"));
+    assert!(result
+        .iter()
+        .any(|m| m.role == Role::System && m.content == "You are helpful"));
 }
 
 #[test]
@@ -102,7 +114,9 @@ fn context_compactor_adds_summary_when_dropping() {
     ];
 
     let result = compactor.compact(&messages);
-    let summary = result.iter().find(|m| m.role == Role::System && m.content.contains("compacted"));
+    let summary = result
+        .iter()
+        .find(|m| m.role == Role::System && m.content.contains("compacted"));
     assert!(summary.is_some(), "summary message should be present");
 }
 

@@ -177,7 +177,7 @@ impl App {
             pending_voice_generation: None,
             mouse_enabled: false,
             avatar_enabled: false,
-            avatars: vec![AnimatedAvatar::new("default", &IDLE_FRAMES)],
+            avatars: vec![AnimatedAvatar::new("default", IDLE_FRAMES)],
             avatar_menu_selected: 0,
             last_click_time: None,
             last_click_pos: None,
@@ -1303,7 +1303,7 @@ available tools to refine and polish your work."
     }
 
     pub fn handle_wire_message(&mut self, msg: &openlibertas_core::soul::WireMessage) {
-        use openlibertas_core::domain::{Message, Role, now_timestamp};
+        use openlibertas_core::domain::{now_timestamp, Message, Role};
         use openlibertas_core::soul::WireMessage;
 
         match msg {
@@ -1319,14 +1319,15 @@ available tools to refine and polish your work."
                 self.engine.append_reasoning_chunk(text);
             }
             WireMessage::ToolCallStarted { id, name } => {
-                self.engine.add_tool_call(openlibertas_core::domain::ToolCall {
-                    id: id.clone(),
-                    call_type: "function".to_string(),
-                    function: openlibertas_core::domain::FunctionCall {
-                        name: name.clone(),
-                        arguments: "{}".to_string(),
-                    },
-                });
+                self.engine
+                    .add_tool_call(openlibertas_core::domain::ToolCall {
+                        id: id.clone(),
+                        call_type: "function".to_string(),
+                        function: openlibertas_core::domain::FunctionCall {
+                            name: name.clone(),
+                            arguments: "{}".to_string(),
+                        },
+                    });
             }
             WireMessage::ToolExecuting { .. } => {}
             WireMessage::ToolResult { id, output } => {
@@ -1360,7 +1361,7 @@ available tools to refine and polish your work."
     }
 
     fn ensure_last_message_is_assistant(&mut self) {
-        use openlibertas_core::domain::{Message, Role, now_timestamp};
+        use openlibertas_core::domain::{now_timestamp, Message, Role};
 
         if self.engine.chat().messages.last().map(|m| m.role) != Some(Role::Assistant) {
             if let Some(idx) = self
@@ -1636,5 +1637,4 @@ mod tests {
         app.cycle_agent_persona();
         assert_ne!(app.engine.agents().persona, initial);
     }
-
 }

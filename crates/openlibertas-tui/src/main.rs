@@ -102,9 +102,7 @@ impl Provider for RegistryBackend {
         }
     }
 
-    fn health_check(
-        &self,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+    fn health_check(&self) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
         match self.registry.default_provider() {
             Some(provider) => provider.health_check(),
             None => Box::pin(async { Ok(()) }),
@@ -165,9 +163,7 @@ impl Provider for CancellableBackend {
         self.inner.fetch_models()
     }
 
-    fn health_check(
-        &self,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
+    fn health_check(&self) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
         self.inner.health_check()
     }
 
@@ -215,20 +211,32 @@ fn spawn_agent_turn(
     agent_engine.chat_mut().messages = ui_messages_before;
 
     if let Some(client) = app.engine.tools().client() {
-        agent_engine.tool_executor_mut().set_client(Some(client.clone()));
+        agent_engine
+            .tool_executor_mut()
+            .set_client(Some(client.clone()));
         agent_engine.tools_mut().set_client(Some(client.clone()));
-        agent_engine.tools_mut().set_available_tools(app.engine.tools().available_tools().to_vec());
-        agent_engine.tools_mut().set_server_statuses(app.engine.tools().server_statuses().clone());
-        agent_engine.tools_mut().set_tool_server_map(app.engine.tools().tool_server_map().clone());
-        agent_engine.tools_mut().set_diagnostics(app.engine.tools().diagnostics().clone());
+        agent_engine
+            .tools_mut()
+            .set_available_tools(app.engine.tools().available_tools().to_vec());
+        agent_engine
+            .tools_mut()
+            .set_server_statuses(app.engine.tools().server_statuses().clone());
+        agent_engine
+            .tools_mut()
+            .set_tool_server_map(app.engine.tools().tool_server_map().clone());
+        agent_engine
+            .tools_mut()
+            .set_diagnostics(app.engine.tools().diagnostics().clone());
     }
 
     let cancel_token = tokio_util::sync::CancellationToken::new();
     app.cancel_token = Some(cancel_token.clone());
 
     let registry_backend = RegistryBackend::new(registry.clone(), app.models.provider.clone());
-    let provider: Arc<dyn Provider> =
-        Arc::new(CancellableBackend::new(Arc::new(registry_backend), cancel_token));
+    let provider: Arc<dyn Provider> = Arc::new(CancellableBackend::new(
+        Arc::new(registry_backend),
+        cancel_token,
+    ));
 
     let model = app.models.current.clone().unwrap_or_default();
     let max_tokens = app.config.max_tokens;
@@ -355,6 +363,7 @@ async fn main() -> Result<()> {
 
     loop {
         app.engine.advance_spinner();
+        app.clear_expired_error_banner();
 
         if app.voice.is_enabled()
             && matches!(
@@ -1108,11 +1117,9 @@ async fn main() -> Result<()> {
                             },
                             KeyCode::PageUp => app.engine.scroll_page_up(),
                             KeyCode::PageDown => app.engine.scroll_page_down(),
-                            KeyCode::Delete => {
-                                if app.overlay == Overlay::Sessions {
-                                    if let Some(msg) = app.delete_selected_session() {
-                                        app.engine.add_system_message(msg);
-                                    }
+                            KeyCode::Delete if app.overlay == Overlay::Sessions => {
+                                if let Some(msg) = app.delete_selected_session() {
+                                    app.engine.add_system_message(msg);
                                 }
                             }
                             _ => {}
@@ -1120,15 +1127,15 @@ async fn main() -> Result<()> {
                     }
                 }
                 Event::ModelsLoaded(Ok(models)) => {
-                    let filtered_models: Vec<Model> = if runtime.config.filter_require_voice_and_tools
-                    {
-                        models
-                            .into_iter()
-                            .filter(|m| m.supports_tools && m.supports_voice)
-                            .collect()
-                    } else {
-                        models
-                    };
+                    let filtered_models: Vec<Model> =
+                        if runtime.config.filter_require_voice_and_tools {
+                            models
+                                .into_iter()
+                                .filter(|m| m.supports_tools && m.supports_voice)
+                                .collect()
+                        } else {
+                            models
+                        };
                     app.models.models.extend(filtered_models.clone());
                     app.loading = false;
                     app.connection_status = app::ConnectionStatus::Connected;
@@ -1227,12 +1234,7 @@ async fn main() -> Result<()> {
                     {
                         app.engine.start_agent_loop();
                     }
-                    spawn_agent_turn(
-                        &mut app,
-                        &runtime.backend_registry,
-                        &event_stream,
-                        input,
-                    );
+                    spawn_agent_turn(&mut app, &runtime.backend_registry, &event_stream, input);
                 }
                 Event::VoiceError(err, generation) => {
                     // Discard stale errors from cancelled or superseded recordings
@@ -1326,10 +1328,8 @@ async fn main() -> Result<()> {
                                     Some(m.content[start + 6..start + end].trim().to_string())
                                 });
                             if let Some(answer) = final_answer {
-                                app.engine.add_system_message(format!(
-                                    "[RLM] Final answer: {}",
-                                    answer
-                                ));
+                                app.engine
+                                    .add_system_message(format!("[RLM] Final answer: {}", answer));
                                 app.rlm_mode = false;
                                 app.set_provider(app.models.provider.clone());
                             }
@@ -1337,8 +1337,7 @@ async fn main() -> Result<()> {
 
                         if app.voice.is_enabled() {
                             if let Some(last_msg) = app.engine.chat_mut().messages.last() {
-                                if last_msg.role == Role::Assistant
-                                    && !last_msg.content.is_empty()
+                                if last_msg.role == Role::Assistant && !last_msg.content.is_empty()
                                 {
                                     let text = last_msg.content.clone();
                                     if let Some(text_to_speak) = app.voice.queue_speech(text) {

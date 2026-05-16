@@ -6,16 +6,16 @@
 //! - `InputState` — buffer, cursor, history, autocomplete, selection
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
+use crate::agent_tools::{MessageAssembler, ToolExecutor};
 use crate::completion::{CompletionEngine, CompletionItem};
-use crate::session::ContextCompactor;
 use crate::domain::{Message, Role, ToolDefinition};
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
 use crate::mcp::McpClient;
-use std::sync::Arc;
+use crate::session::ContextCompactor;
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
-use crate::agent_tools::{MessageAssembler, ToolExecutor};
+use std::sync::Arc;
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -27,16 +27,11 @@ pub enum AgentModeStatus {
     Active,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum AgentMode {
+    #[default]
     Auto,
     Plan,
-}
-
-impl Default for AgentMode {
-    fn default() -> Self {
-        AgentMode::Auto
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,7 +57,7 @@ impl Default for AgentState {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct InputState {
     pub buffer: String,
     pub cursor_pos: usize,
@@ -80,24 +75,6 @@ pub struct InputState {
     pub completion_items: Vec<CompletionItem>,
     /// Whether the completion popup is currently visible
     pub completion_active: bool,
-}
-
-impl Default for InputState {
-    fn default() -> Self {
-        Self {
-            buffer: String::new(),
-            cursor_pos: 0,
-            history: Vec::new(),
-            history_index: None,
-            history_stash: String::new(),
-            autocomplete_index: 0,
-            show_autocomplete: false,
-            selection_anchor: None,
-            scroll_offset: 0,
-            completion_items: Vec::new(),
-            completion_active: false,
-        }
-    }
 }
 
 pub struct ChatState {
@@ -153,7 +130,7 @@ impl Default for ChatEngine {
             agents: AgentState::default(),
             tool_registry: ToolRegistry::default(),
             tool_executor: ToolExecutor::default(),
-            message_assembler: MessageAssembler::default(),
+            message_assembler: MessageAssembler,
             system_prompt: None,
             agent_prompt: None,
             env_context: None,
@@ -412,8 +389,8 @@ fn count_wrapped_lines(content: &str, width: usize) -> usize {
 
 mod agent;
 mod completion;
-mod session;
 mod input;
+mod session;
 
 #[cfg(test)]
 mod tests {

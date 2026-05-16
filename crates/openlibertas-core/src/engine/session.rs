@@ -1,8 +1,8 @@
-use crate::session::parse_file_context;
+use crate::agent_tools::ToolExecutor;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
+use crate::session::parse_file_context;
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;
-use crate::agent_tools::ToolExecutor;
 use tracing::info;
 
 use super::ChatEngine;
@@ -81,9 +81,10 @@ impl ChatEngine {
 
         if !system_messages.is_empty() {
             let already_present = system_messages.iter().enumerate().all(|(i, sys_msg)| {
-                self.chat.messages.get(i).map_or(false, |m| {
-                    m.role == Role::System && m.content == sys_msg.content
-                })
+                self.chat
+                    .messages
+                    .get(i)
+                    .is_some_and(|m| m.role == Role::System && m.content == sys_msg.content)
             });
 
             if !already_present {
@@ -163,7 +164,6 @@ impl ChatEngine {
             match self.tool_format {
                 ToolFormat::Native | ToolFormat::None => {
                     // No content parsing needed for native or no-tool formats.
-                    return;
                 }
                 ToolFormat::ContentJson => {
                     let content = &last.content;

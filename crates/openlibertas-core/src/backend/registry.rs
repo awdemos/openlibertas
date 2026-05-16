@@ -216,7 +216,9 @@ impl ProviderRegistry {
                 let mut can_fallback = true;
                 while let Some(event) = stream_rx.recv().await {
                     match &event {
-                        BackendEvent::Text(_) | BackendEvent::Reasoning(_) | BackendEvent::ToolCall(_) => {
+                        BackendEvent::Text(_)
+                        | BackendEvent::Reasoning(_)
+                        | BackendEvent::ToolCall(_) => {
                             can_fallback = false;
                         }
                         BackendEvent::Cancelled => {

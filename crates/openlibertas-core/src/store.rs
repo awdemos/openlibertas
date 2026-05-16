@@ -151,8 +151,7 @@ impl SessionStore {
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
         let final_path = self.session_path(id);
 
-        let json = serde_json::to_string_pretty(&session)
-            .context("Failed to serialize session")?;
+        let json = serde_json::to_string_pretty(&session).context("Failed to serialize session")?;
         fs::write(&temp_path, json)
             .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
         fs::rename(&temp_path, &final_path)
@@ -189,8 +188,8 @@ impl SessionStore {
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
         let final_path = self.session_path(id);
 
-        let json = serde_json::to_string_pretty(&session)
-            .context("Failed to serialize branch session")?;
+        let json =
+            serde_json::to_string_pretty(&session).context("Failed to serialize branch session")?;
         fs::write(&temp_path, json)
             .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
         fs::rename(&temp_path, &final_path)
@@ -491,7 +490,9 @@ mod tests {
                         reasoning_content: None,
                         is_prompt: false,
                     }];
-                    store_ref.save(&format!("thread-{}", i), None, &messages).unwrap();
+                    store_ref
+                        .save(&format!("thread-{}", i), None, &messages)
+                        .unwrap();
                 });
             }
         });
@@ -566,10 +567,16 @@ mod tests {
             }];
             let tmp_dir = tempfile::tempdir().unwrap();
             let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
-            store.save(&format!("empty-{}", content), None, &messages).unwrap();
+            store
+                .save(&format!("empty-{}", content), None, &messages)
+                .unwrap();
 
             let meta = store.list_with_meta().unwrap();
-            assert!(meta[0].title.is_none(), "title should be None for '{}'", content);
+            assert!(
+                meta[0].title.is_none(),
+                "title should be None for '{}'",
+                content
+            );
         }
     }
 

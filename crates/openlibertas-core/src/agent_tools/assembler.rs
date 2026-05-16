@@ -1,5 +1,5 @@
-use crate::session::build_tool_result_messages;
 use crate::domain::{Message, Role, ToolCall};
+use crate::session::build_tool_result_messages;
 
 #[derive(Debug)]
 pub struct MessageAssembler;

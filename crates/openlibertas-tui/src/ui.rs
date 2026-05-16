@@ -477,7 +477,7 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .filter(|(_, msg)| !(msg.role == Role::System && msg.is_prompt))
         .map(|(idx, _)| idx)
-        .last();
+        .next_back();
 
     let messages_text: Vec<Line> = app
         .engine

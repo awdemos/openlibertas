@@ -41,10 +41,7 @@ fn store_save_and_load_roundtrip() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SessionStore::new(tmp.path().to_path_buf()).unwrap();
 
-    let messages = vec![
-        user_msg("hello"),
-        assistant_msg("hi there"),
-    ];
+    let messages = vec![user_msg("hello"), assistant_msg("hi there")];
 
     store.save("session-1", Some("model-x"), &messages).unwrap();
     let loaded = store.load("session-1").unwrap();
@@ -104,8 +101,12 @@ fn store_save_overwrites_existing() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SessionStore::new(tmp.path().to_path_buf()).unwrap();
 
-    store.save("overwrite", Some("v1"), &[user_msg("first")]).unwrap();
-    store.save("overwrite", Some("v2"), &[user_msg("second")]).unwrap();
+    store
+        .save("overwrite", Some("v1"), &[user_msg("first")])
+        .unwrap();
+    store
+        .save("overwrite", Some("v2"), &[user_msg("second")])
+        .unwrap();
 
     let loaded = store.load("overwrite").unwrap();
     assert_eq!(loaded.len(), 1);
@@ -118,7 +119,13 @@ fn store_save_branch_isolation() {
     let store = SessionStore::new(tmp.path().to_path_buf()).unwrap();
 
     store
-        .save_branch("branch-1", Some("m"), &[user_msg("branch msg")], Some("parent"), Some(2))
+        .save_branch(
+            "branch-1",
+            Some("m"),
+            &[user_msg("branch msg")],
+            Some("parent"),
+            Some(2),
+        )
         .unwrap();
 
     let loaded = store.load("branch-1").unwrap();

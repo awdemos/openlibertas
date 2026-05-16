@@ -87,9 +87,7 @@ impl Runtime {
                 Arc::new(HistoryStore::new(history_path))
             });
 
-        let mcp_client = McpClient::from_opencode_config()
-            .ok()
-            .map(Arc::new);
+        let mcp_client = McpClient::from_opencode_config().ok().map(Arc::new);
 
         let env_context = EnvContext::detect().to_prompt_section();
 
@@ -102,7 +100,6 @@ impl Runtime {
             env_context,
         })
     }
-
 }
 
 impl Default for Runtime {
@@ -288,13 +285,16 @@ mod tests {
             .expect("build should succeed");
 
         let cloned = runtime.clone();
-        assert_eq!(cloned.config.providers.len(), runtime.config.providers.len());
+        assert_eq!(
+            cloned.config.providers.len(),
+            runtime.config.providers.len()
+        );
         assert!(Arc::ptr_eq(&cloned.config, &runtime.config));
     }
 
     #[test]
     fn runtime_error_from_io_error() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test");
+        let io_err = std::io::Error::other("test");
         let runtime_err: RuntimeError = io_err.into();
         assert!(matches!(runtime_err, RuntimeError::StoreError(_)));
     }

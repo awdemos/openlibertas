@@ -94,7 +94,7 @@ pub struct ChatAgent {
     id: String,
     name: String,
     engine: ChatEngine,
-        provider: Arc<dyn Provider>,
+    provider: Arc<dyn Provider>,
     model: String,
     max_tokens: u32,
     temperature: Option<f32>,
@@ -107,7 +107,7 @@ impl ChatAgent {
         id: impl Into<String>,
         name: impl Into<String>,
         mut engine: ChatEngine,
-    provider: Arc<dyn Provider>,
+        provider: Arc<dyn Provider>,
         model: impl Into<String>,
         max_tokens: u32,
     ) -> Self {
@@ -177,8 +177,7 @@ impl Agent for ChatAgent {
         });
 
         self.engine.agents_mut().mode = input.mode;
-        self.engine.chat_mut().cancel_token =
-            tokio_util::sync::CancellationToken::new();
+        self.engine.chat_mut().cancel_token = tokio_util::sync::CancellationToken::new();
         self.engine.start_agent_loop();
 
         let mut text = input.text;
@@ -275,10 +274,7 @@ impl Agent for ChatAgent {
                     "[Agent stopped after {} iterations. Provide more specific instructions if needed.]",
                     max
                 ));
-                self.status = AgentTurnState::Error(format!(
-                    "Max iterations ({}) reached",
-                    max
-                ));
+                self.status = AgentTurnState::Error(format!("Max iterations ({}) reached", max));
                 let _ = wire.send(WireMessage::TurnFinished {
                     turn_id: turn_id.clone(),
                 });
@@ -384,12 +380,12 @@ mod tests {
     use super::*;
     use crate::backend::Provider;
     use crate::capability::ProviderCapabilities;
-    use crate::domain::{FunctionCall, Model, ToolCall};
+    use crate::domain::Model;
 
     struct MockAgent {
         id: String,
         name: String,
-status: AgentTurnState,
+        status: AgentTurnState,
         persona: Option<String>,
     }
 
@@ -474,14 +470,11 @@ status: AgentTurnState,
 
         fn fetch_models(
             &self,
-        ) -> Pin<Box<dyn Future<Output = anyhow::Result<Vec<Model>>> + Send + '_>>
-        {
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<Vec<Model>>> + Send + '_>> {
             Box::pin(async { Ok(vec![]) })
         }
 
-        fn health_check(
-            &self,
-        ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + '_>> {
+        fn health_check(&self) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + '_>> {
             Box::pin(async { Ok(()) })
         }
 
@@ -660,7 +653,10 @@ status: AgentTurnState,
             .find(|m| m.role == Role::User);
         assert!(last_user.is_some());
         let content = &last_user.unwrap().content;
-        assert!(content.contains("src/main.rs"), "file context should be present in message");
+        assert!(
+            content.contains("src/main.rs"),
+            "file context should be present in message"
+        );
 
         while rx.try_recv().is_ok() {}
     }
@@ -694,9 +690,7 @@ status: AgentTurnState,
         let running = AgentTurnState::Running {
             turn_id: "t1".to_string(),
         };
-        assert!(
-            matches!(running, AgentTurnState::Running { turn_id } if turn_id == "t1")
-        );
+        assert!(matches!(running, AgentTurnState::Running { turn_id } if turn_id == "t1"));
 
         let processing = AgentTurnState::ProcessingTools {
             turn_id: "t1".to_string(),
@@ -709,23 +703,39 @@ status: AgentTurnState,
         assert_eq!(stopped, AgentTurnState::Stopped);
 
         let error = AgentTurnState::Error("boom".to_string());
-        assert!(
-            matches!(error, AgentTurnState::Error(ref e) if e == "boom")
-        );
+        assert!(matches!(error, AgentTurnState::Error(ref e) if e == "boom"));
     }
 
     #[test]
     fn wire_message_variants() {
         let msgs = vec![
-            WireMessage::TurnStarted { turn_id: "t1".to_string() },
+            WireMessage::TurnStarted {
+                turn_id: "t1".to_string(),
+            },
             WireMessage::TextDelta("hi".to_string()),
             WireMessage::ReasoningDelta("thinking".to_string()),
-            WireMessage::ToolCallStarted { id: "c1".to_string(), name: "read_file".to_string() },
-            WireMessage::ToolCallDelta { id: "c1".to_string(), arguments: "{}".to_string() },
-            WireMessage::ToolCallDone { id: "c1".to_string() },
-            WireMessage::ToolExecuting { id: "c1".to_string(), name: "read_file".to_string() },
-            WireMessage::ToolResult { id: "c1".to_string(), output: "ok".to_string() },
-            WireMessage::TurnFinished { turn_id: "t1".to_string() },
+            WireMessage::ToolCallStarted {
+                id: "c1".to_string(),
+                name: "read_file".to_string(),
+            },
+            WireMessage::ToolCallDelta {
+                id: "c1".to_string(),
+                arguments: "{}".to_string(),
+            },
+            WireMessage::ToolCallDone {
+                id: "c1".to_string(),
+            },
+            WireMessage::ToolExecuting {
+                id: "c1".to_string(),
+                name: "read_file".to_string(),
+            },
+            WireMessage::ToolResult {
+                id: "c1".to_string(),
+                output: "ok".to_string(),
+            },
+            WireMessage::TurnFinished {
+                turn_id: "t1".to_string(),
+            },
             WireMessage::Error("fail".to_string()),
             WireMessage::Cancelled,
         ];
@@ -734,7 +744,7 @@ status: AgentTurnState,
 
     #[test]
     fn content_block_variants() {
-        let blocks = vec![
+        let blocks = [
             ContentBlock::Text("hello".to_string()),
             ContentBlock::Reasoning("thinking".to_string()),
             ContentBlock::ToolCall {

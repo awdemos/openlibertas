@@ -1,7 +1,7 @@
 //! Integration tests for configuration loading, env-var substitution, and serialization.
 
-use openlibertas_core::config::{resolve_env_ref, Config, ProviderConfig, SecretString};
 use openlibertas_core::capability::ProviderKind;
+use openlibertas_core::config::{resolve_env_ref, Config, ProviderConfig};
 use openlibertas_core::tool_format::ToolFormat;
 use std::io::Write;
 
@@ -79,10 +79,13 @@ api_key = "sk-local"
     assert_eq!(deserialized.model, Some("test-model".to_string()));
     assert_eq!(deserialized.max_tokens, 8192);
     assert_eq!(deserialized.context_window, Some(32768));
-    assert_eq!(deserialized.auto_save, false);
-    assert_eq!(deserialized.filter_require_voice_and_tools, true);
+    assert!(!deserialized.auto_save);
+    assert!(deserialized.filter_require_voice_and_tools);
     assert_eq!(deserialized.input_device, Some("Mic".to_string()));
-    assert_eq!(deserialized.models_dir, std::path::PathBuf::from("/tmp/models"));
+    assert_eq!(
+        deserialized.models_dir,
+        std::path::PathBuf::from("/tmp/models")
+    );
 }
 
 #[test]
@@ -112,7 +115,7 @@ fn config_default_values_are_sensible() {
     let config = Config::default();
     assert!(!config.providers.is_empty());
     assert_eq!(config.max_tokens, 2048);
-    assert!(config.models_dir.as_os_str().len() > 0);
+    assert!(!config.models_dir.as_os_str().is_empty());
     assert!(!config.filter_require_voice_and_tools);
 }
 

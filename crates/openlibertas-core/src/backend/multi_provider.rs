@@ -292,7 +292,9 @@ struct GeminiContent {
 #[derive(Debug, Serialize, Clone)]
 #[serde(untagged)]
 enum GeminiPart {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     FunctionCall {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCall,
@@ -361,7 +363,9 @@ struct GeminiContentResponse {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 enum GeminiPartResponse {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     FunctionCall {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCallResponse,
@@ -444,15 +448,30 @@ impl MultiProvider {
         temperature: Option<f32>,
     ) -> mpsc::UnboundedReceiver<BackendEvent> {
         match self.provider_kind {
-            ProviderKind::Anthropic => {
-                self.chat_anthropic(model, messages, max_tokens, tools, cancel_token, temperature)
-            }
-            ProviderKind::Gemini => {
-                self.chat_gemini(model, messages, max_tokens, tools, cancel_token, temperature)
-            }
-            ProviderKind::OpenAiCompatible | ProviderKind::Ollama => {
-                self.chat_openai(model, messages, max_tokens, tools, cancel_token, temperature)
-            }
+            ProviderKind::Anthropic => self.chat_anthropic(
+                model,
+                messages,
+                max_tokens,
+                tools,
+                cancel_token,
+                temperature,
+            ),
+            ProviderKind::Gemini => self.chat_gemini(
+                model,
+                messages,
+                max_tokens,
+                tools,
+                cancel_token,
+                temperature,
+            ),
+            ProviderKind::OpenAiCompatible | ProviderKind::Ollama => self.chat_openai(
+                model,
+                messages,
+                max_tokens,
+                tools,
+                cancel_token,
+                temperature,
+            ),
         }
     }
 
@@ -691,7 +710,14 @@ impl MultiProvider {
 
         // Build extra params, filtering out keys that are set explicitly.
         let mut extra = self.extra_params.clone().unwrap_or_default();
-        for key in &["model", "messages", "stream", "max_tokens", "tools", "system"] {
+        for key in &[
+            "model",
+            "messages",
+            "stream",
+            "max_tokens",
+            "tools",
+            "system",
+        ] {
             extra.remove(*key);
         }
         if temperature.is_some() {
@@ -745,10 +771,8 @@ impl MultiProvider {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to serialize Anthropic request: {}", e);
-                        let _ = tx.send(BackendEvent::Error(format!(
-                            "[Serialization error: {}]",
-                            e
-                        )));
+                        let _ =
+                            tx.send(BackendEvent::Error(format!("[Serialization error: {}]", e)));
                         return;
                     }
                 };
@@ -862,7 +886,13 @@ impl MultiProvider {
         };
 
         let mut extra = self.extra_params.clone().unwrap_or_default();
-        for key in &["model", "contents", "systemInstruction", "generationConfig", "tools"] {
+        for key in &[
+            "model",
+            "contents",
+            "systemInstruction",
+            "generationConfig",
+            "tools",
+        ] {
             extra.remove(*key);
         }
         if temperature.is_some() {
@@ -879,7 +909,11 @@ impl MultiProvider {
             tools: tools_for_req,
         };
 
-        let tools_count = req.tools.as_ref().map(|t| t[0].function_declarations.len()).unwrap_or(0);
+        let tools_count = req
+            .tools
+            .as_ref()
+            .map(|t| t[0].function_declarations.len())
+            .unwrap_or(0);
         info!(
             "Gemini chat request: model={}, messages={}, max_tokens={}, tools={} ({} definitions)",
             model,
@@ -916,10 +950,8 @@ impl MultiProvider {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to serialize Gemini request: {}", e);
-                        let _ = tx.send(BackendEvent::Error(format!(
-                            "[Serialization error: {}]",
-                            e
-                        )));
+                        let _ =
+                            tx.send(BackendEvent::Error(format!("[Serialization error: {}]", e)));
                         return;
                     }
                 };
@@ -1060,7 +1092,8 @@ impl MultiProvider {
                                         }
                                     } else if let Some(thinking) = &choice.delta.thinking {
                                         if !thinking.is_empty() {
-                                            let _ = tx.send(BackendEvent::Reasoning(thinking.clone()));
+                                            let _ =
+                                                tx.send(BackendEvent::Reasoning(thinking.clone()));
                                         }
                                     }
                                     if let Some(tool_calls) = &choice.delta.tool_calls {
@@ -1265,73 +1298,84 @@ impl MultiProvider {
                             }
 
                             match serde_json::from_str::<AnthropicStreamEvent>(data) {
-                                Ok(event) => {
-                                    match event.event_type.as_str() {
-                                        "content_block_delta" => {
-                                            if let Some(delta) = event.delta {
-                                                match delta.delta_type.as_deref() {
-                                                    Some("text_delta") => {
-                                                        if let Some(text) = delta.text {
-                                                            if !text.is_empty() {
-                                                                let _ = tx.send(BackendEvent::Text(text));
-                                                            }
+                                Ok(event) => match event.event_type.as_str() {
+                                    "content_block_delta" => {
+                                        if let Some(delta) = event.delta {
+                                            match delta.delta_type.as_deref() {
+                                                Some("text_delta") => {
+                                                    if let Some(text) = delta.text {
+                                                        if !text.is_empty() {
+                                                            let _ =
+                                                                tx.send(BackendEvent::Text(text));
                                                         }
                                                     }
-                                                    Some("input_json_delta") => {
-                                                        if let Some(partial) = delta.partial_json {
-                                                            let entry = accumulated_tool_calls
-                                                                .entry(event.index)
-                                                                .or_insert_with(|| AccumulatedToolCall {
+                                                }
+                                                Some("input_json_delta") => {
+                                                    if let Some(partial) = delta.partial_json {
+                                                        let entry = accumulated_tool_calls
+                                                            .entry(event.index)
+                                                            .or_insert_with(|| {
+                                                                AccumulatedToolCall {
                                                                     id: String::new(),
                                                                     name: String::new(),
                                                                     partial_json: String::new(),
-                                                                });
-                                                            entry.partial_json.push_str(&partial);
-                                                        }
+                                                                }
+                                                            });
+                                                        entry.partial_json.push_str(&partial);
                                                     }
-                                                    Some("thinking_delta") => {
-                                                        if let Some(text) = delta.text {
-                                                            if !text.is_empty() {
-                                                                let _ = tx.send(BackendEvent::Reasoning(text));
-                                                            }
-                                                        }
-                                                    }
-                                                    _ => {}
                                                 }
+                                                Some("thinking_delta") => {
+                                                    if let Some(text) = delta.text {
+                                                        if !text.is_empty() {
+                                                            let _ = tx.send(
+                                                                BackendEvent::Reasoning(text),
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                                _ => {}
                                             }
                                         }
-                                        "content_block_start" => {
-                                            if let Some(AnthropicContentBlock::ToolUse { id, name, .. }) = event.content_block {
-                                                let entry = accumulated_tool_calls
-                                                    .entry(event.index)
-                                                    .or_insert_with(|| AccumulatedToolCall {
-                                                        id: String::new(),
-                                                        name: String::new(),
-                                                        partial_json: String::new(),
-                                                    });
-                                                entry.id = id;
-                                                entry.name = name;
-                                            }
-                                        }
-                                        "message_stop" => {
-                                            break;
-                                        }
-                                        "error" => {
-                                            if let Some(err) = event.error {
-                                                let msg = format!(
-                                                    "Anthropic API error ({}): {}",
-                                                    err.error_type, err.message
-                                                );
-                                                error!("{}", msg);
-                                                let _ = tx.send(BackendEvent::Error(msg));
-                                                return;
-                                            }
-                                        }
-                                        _ => {}
                                     }
-                                }
+                                    "content_block_start" => {
+                                        if let Some(AnthropicContentBlock::ToolUse {
+                                            id,
+                                            name,
+                                            ..
+                                        }) = event.content_block
+                                        {
+                                            let entry = accumulated_tool_calls
+                                                .entry(event.index)
+                                                .or_insert_with(|| AccumulatedToolCall {
+                                                    id: String::new(),
+                                                    name: String::new(),
+                                                    partial_json: String::new(),
+                                                });
+                                            entry.id = id;
+                                            entry.name = name;
+                                        }
+                                    }
+                                    "message_stop" => {
+                                        break;
+                                    }
+                                    "error" => {
+                                        if let Some(err) = event.error {
+                                            let msg = format!(
+                                                "Anthropic API error ({}): {}",
+                                                err.error_type, err.message
+                                            );
+                                            error!("{}", msg);
+                                            let _ = tx.send(BackendEvent::Error(msg));
+                                            return;
+                                        }
+                                    }
+                                    _ => {}
+                                },
                                 Err(e) => {
-                                    debug!("Failed to parse Anthropic SSE event: {} -- data: {}", e, data);
+                                    debug!(
+                                        "Failed to parse Anthropic SSE event: {} -- data: {}",
+                                        e, data
+                                    );
                                 }
                             }
                         }
@@ -1460,8 +1504,7 @@ impl MultiProvider {
                                                 } => {
                                                     let id = format!(
                                                         "gemini_{}_{}",
-                                                        function_call.name,
-                                                        tool_call_index
+                                                        function_call.name, tool_call_index
                                                     );
                                                     accumulated_tool_calls.insert(
                                                         tool_call_index,
@@ -1703,7 +1746,11 @@ impl MultiProvider {
             .models
             .into_iter()
             .map(|m| {
-                let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_string();
+                let id = m
+                    .name
+                    .strip_prefix("models/")
+                    .unwrap_or(&m.name)
+                    .to_string();
                 Model {
                     id,
                     provider: ProviderId::new(""),
@@ -1750,8 +1797,7 @@ impl Provider for MultiProvider {
 
     fn fetch_models(
         &self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>>
-    {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
         Box::pin(self.fetch_models())
     }
 
@@ -1774,9 +1820,7 @@ impl Provider for MultiProvider {
 // Anthropic message conversion
 // ============================================================================
 
-fn convert_messages_anthropic(
-    messages: Vec<Message>,
-) -> (Option<String>, Vec<AnthropicMessage>) {
+fn convert_messages_anthropic(messages: Vec<Message>) -> (Option<String>, Vec<AnthropicMessage>) {
     let system_parts: Vec<String> = messages
         .iter()
         .filter(|m| m.role == Role::System)
@@ -1818,14 +1862,14 @@ fn convert_messages_anthropic(
                 if has_tool_calls {
                     let mut blocks = Vec::new();
                     if !msg.content.is_empty() {
-                        blocks.push(AnthropicContentBlock::Text {
-                            text: msg.content,
-                        });
+                        blocks.push(AnthropicContentBlock::Text { text: msg.content });
                     }
                     if let Some(tool_calls) = msg.tool_calls {
                         for tc in tool_calls {
                             let input = serde_json::from_str(&tc.function.arguments)
-                                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                                .unwrap_or_else(|_| {
+                                    serde_json::Value::Object(serde_json::Map::new())
+                                });
                             blocks.push(AnthropicContentBlock::ToolUse {
                                 id: tc.id,
                                 name: tc.function.name,
@@ -1883,9 +1927,7 @@ fn convert_messages_anthropic(
 // Gemini message conversion
 // ============================================================================
 
-fn convert_messages_gemini(
-    messages: Vec<Message>,
-) -> (Option<GeminiContent>, Vec<GeminiContent>) {
+fn convert_messages_gemini(messages: Vec<Message>) -> (Option<GeminiContent>, Vec<GeminiContent>) {
     let system_parts: Vec<String> = messages
         .iter()
         .filter(|m| m.role == Role::System)
@@ -1937,8 +1979,10 @@ fn convert_messages_gemini(
                 if has_tool_calls {
                     if let Some(tool_calls) = msg.tool_calls {
                         for tc in tool_calls {
-                            let args = serde_json::from_str(&tc.function.arguments)
-                                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                            let args =
+                                serde_json::from_str(&tc.function.arguments).unwrap_or_else(|_| {
+                                    serde_json::Value::Object(serde_json::Map::new())
+                                });
                             parts.push(GeminiPart::FunctionCall {
                                 function_call: GeminiFunctionCall {
                                     name: tc.function.name,
@@ -2257,7 +2301,9 @@ mod tests {
         ];
         let (_, converted) = convert_messages_anthropic(messages);
         assert_eq!(converted.len(), 1);
-        assert!(matches!(converted[0].content, AnthropicContent::Text(ref t) if t == "First\nSecond"));
+        assert!(
+            matches!(converted[0].content, AnthropicContent::Text(ref t) if t == "First\nSecond")
+        );
     }
 
     #[test]
@@ -2688,7 +2734,8 @@ mod tests {
 
     #[test]
     fn gemini_models_response_deserializes() {
-        let json = r#"{"models":[{"name":"models/gemini-1.5-pro"},{"name":"models/gemini-1.5-flash"}]}"#;
+        let json =
+            r#"{"models":[{"name":"models/gemini-1.5-pro"},{"name":"models/gemini-1.5-flash"}]}"#;
         let resp: GeminiModelsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.models.len(), 2);
         assert_eq!(resp.models[0].name, "models/gemini-1.5-pro");
@@ -2696,7 +2743,8 @@ mod tests {
 
     #[test]
     fn gemini_error_response_parses() {
-        let data = r#"{"error":{"code":400,"message":"Invalid request","status":"INVALID_ARGUMENT"}}"#;
+        let data =
+            r#"{"error":{"code":400,"message":"Invalid request","status":"INVALID_ARGUMENT"}}"#;
         let resp: GeminiStreamResponse = serde_json::from_str(data).unwrap();
         assert!(resp.error.is_some());
         let err = resp.error.unwrap();

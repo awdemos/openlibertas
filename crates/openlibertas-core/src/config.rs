@@ -15,7 +15,10 @@ const DEFAULT_MAX_TOKENS: u32 = 2048;
 /// its value if set. If the env var is not set, logs a warning and returns an
 /// empty string. If the value does not match the syntax, returns it unchanged.
 pub fn resolve_env_ref(value: &str) -> String {
-    if let Some(inner) = value.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
+    if let Some(inner) = value
+        .strip_prefix("{env:")
+        .and_then(|s| s.strip_suffix('}'))
+    {
         let var_name = inner.trim();
         if var_name.is_empty() {
             warn!("Empty environment variable name in '{}'", value);

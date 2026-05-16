@@ -5,13 +5,13 @@
 #![cfg_attr(not(test), warn(clippy::panic))]
 
 pub mod agent_loop;
+pub mod agent_tools;
 pub mod backend;
 pub mod capability;
 pub mod commands;
 pub mod completion;
 pub mod config;
 pub mod domain;
-pub mod session;
 pub mod engine;
 pub mod env_context;
 pub mod export;
@@ -21,12 +21,12 @@ pub mod model_scanner;
 pub mod prompt;
 pub mod runtime;
 pub mod search;
+pub mod session;
 pub mod soul;
 pub mod state;
 pub mod store;
 pub mod tool_format;
 pub mod tool_registry;
-pub mod agent_tools;
 pub mod voice;
 
 #[cfg(test)]

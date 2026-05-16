@@ -1,24 +1,14 @@
+use crate::agent_tools;
 use crate::domain::{now_timestamp, Message, Role, ToolCall, ToolExecutionResult};
 use crate::mcp::McpClient;
-use crate::agent_tools;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ToolExecutor {
     client: Option<Arc<McpClient>>,
     pending_tool_calls: Vec<ToolCall>,
     tool_results: Vec<String>,
-}
-
-impl Default for ToolExecutor {
-    fn default() -> Self {
-        Self {
-            client: None,
-            pending_tool_calls: Vec::new(),
-            tool_results: Vec::new(),
-        }
-    }
 }
 
 impl ToolExecutor {
