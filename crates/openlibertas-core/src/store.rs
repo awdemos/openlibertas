@@ -8,7 +8,7 @@ use crate::domain::Role;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct Conversation {
+pub struct Session {
     pub id: String,
     pub title: Option<String>,
     pub model: Option<String>,
@@ -39,11 +39,11 @@ pub struct SessionMeta {
 }
 
 #[derive(Clone)]
-pub struct ConversationStore {
+pub struct SessionStore {
     data_dir: PathBuf,
 }
 
-impl ConversationStore {
+impl SessionStore {
     pub fn new(data_dir: PathBuf) -> Result<Self> {
         fs::create_dir_all(&data_dir)
             .with_context(|| format!("Failed to create data directory: {:?}", data_dir))?;
@@ -116,11 +116,11 @@ impl ConversationStore {
     }
 
     pub fn save(&self, id: &str, model: Option<&str>, messages: &[Message]) -> Result<()> {
-        let path = self.conversation_path(id);
+        let path = self.session_path(id);
         let existing = if path.exists() {
             fs::read_to_string(&path)
                 .ok()
-                .and_then(|s| serde_json::from_str::<Conversation>(&s).ok())
+                .and_then(|s| serde_json::from_str::<Session>(&s).ok())
         } else {
             None
         };
@@ -130,7 +130,7 @@ impl ConversationStore {
             .unwrap_or_default();
         let title = Self::derive_title(messages);
 
-        let conversation = Conversation {
+        let session = Session {
             id: id.to_string(),
             title,
             model: model.map(|s| s.to_string()),
@@ -149,10 +149,10 @@ impl ConversationStore {
         };
 
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
-        let final_path = self.conversation_path(id);
+        let final_path = self.session_path(id);
 
-        let json = serde_json::to_string_pretty(&conversation)
-            .context("Failed to serialize conversation")?;
+        let json = serde_json::to_string_pretty(&session)
+            .context("Failed to serialize session")?;
         fs::write(&temp_path, json)
             .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
         fs::rename(&temp_path, &final_path)
@@ -174,7 +174,7 @@ impl ConversationStore {
             .unwrap_or_default();
         let title = Self::derive_title(messages);
 
-        let conversation = Conversation {
+        let session = Session {
             id: id.to_string(),
             title,
             model: model.map(|s| s.to_string()),
@@ -187,10 +187,10 @@ impl ConversationStore {
         };
 
         let temp_path = self.data_dir.join(format!("{}.tmp", id));
-        let final_path = self.conversation_path(id);
+        let final_path = self.session_path(id);
 
-        let json = serde_json::to_string_pretty(&conversation)
-            .context("Failed to serialize branch conversation")?;
+        let json = serde_json::to_string_pretty(&session)
+            .context("Failed to serialize branch session")?;
         fs::write(&temp_path, json)
             .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
         fs::rename(&temp_path, &final_path)
@@ -200,32 +200,32 @@ impl ConversationStore {
     }
 
     pub fn add_branch(&self, parent_id: &str, branch_id: &str) -> Result<()> {
-        let path = self.conversation_path(parent_id);
+        let path = self.session_path(parent_id);
         if !path.exists() {
             return Ok(());
         }
         let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read parent conversation: {:?}", path))?;
-        let mut conversation: Conversation = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse parent conversation: {:?}", path))?;
+            .with_context(|| format!("Failed to read parent session: {:?}", path))?;
+        let mut session: Session = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse parent session: {:?}", path))?;
 
-        if !conversation.branches.contains(&branch_id.to_string()) {
-            conversation.branches.push(branch_id.to_string());
-            let json = serde_json::to_string_pretty(&conversation)
-                .context("Failed to serialize parent conversation")?;
+        if !session.branches.contains(&branch_id.to_string()) {
+            session.branches.push(branch_id.to_string());
+            let json = serde_json::to_string_pretty(&session)
+                .context("Failed to serialize parent session")?;
             fs::write(&path, json)
-                .with_context(|| format!("Failed to write parent conversation: {:?}", path))?;
+                .with_context(|| format!("Failed to write parent session: {:?}", path))?;
         }
         Ok(())
     }
 
     pub fn load(&self, id: &str) -> Result<Vec<Message>> {
-        let path = self.conversation_path(id);
+        let path = self.session_path(id);
         let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read conversation: {:?}", path))?;
-        let conversation: Conversation = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse conversation: {:?}", path))?;
-        Ok(conversation.messages)
+            .with_context(|| format!("Failed to read session: {:?}", path))?;
+        let session: Session = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse session: {:?}", path))?;
+        Ok(session.messages)
     }
 
     pub fn list_with_meta(&self) -> Result<Vec<SessionMeta>> {
@@ -239,7 +239,7 @@ impl ConversationStore {
                 if let Some(stem) = path.file_stem() {
                     let id = stem.to_string_lossy().to_string();
                     if let Ok(contents) = fs::read_to_string(&path) {
-                        if let Ok(conv) = serde_json::from_str::<Conversation>(&contents) {
+                        if let Ok(conv) = serde_json::from_str::<Session>(&contents) {
                             let message_count = conv.messages.len();
                             let preview = conv
                                 .messages
@@ -286,15 +286,15 @@ impl ConversationStore {
     }
 
     pub fn delete(&self, id: &str) -> Result<()> {
-        let path = self.conversation_path(id);
+        let path = self.session_path(id);
         if path.exists() {
             fs::remove_file(&path)
-                .with_context(|| format!("Failed to delete conversation: {:?}", path))?;
+                .with_context(|| format!("Failed to delete session: {:?}", path))?;
         }
         Ok(())
     }
 
-    pub fn conversation_path(&self, id: &str) -> PathBuf {
+    pub fn session_path(&self, id: &str) -> PathBuf {
         self.data_dir.join(format!("{}.json", id))
     }
 }
@@ -332,14 +332,14 @@ mod tests {
 
     #[test]
     fn generate_name_includes_model_and_timestamp() {
-        let name = ConversationStore::generate_name("qwen2.5-coder");
+        let name = SessionStore::generate_name("qwen2.5-coder");
         assert!(name.starts_with("qwen2-5-coder-"));
         assert!(name.contains("2025") || name.contains("2026"));
     }
 
     #[test]
     fn generate_name_sanitizes_special_chars() {
-        let name = ConversationStore::generate_name("model/name@v1");
+        let name = SessionStore::generate_name("model/name@v1");
         assert!(!name.contains('/'));
         assert!(!name.contains('@'));
     }
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn save_and_load_roundtrip() {
         let tmp_dir = tempfile::tempdir().unwrap();
-        let store = ConversationStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
 
         let messages = vec![Message {
             role: Role::User,
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn list_returns_sorted_sessions() {
         let tmp_dir = tempfile::tempdir().unwrap();
-        let store = ConversationStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
 
         let messages = vec![Message {
             role: Role::User,
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn delete_removes_session() {
         let tmp_dir = tempfile::tempdir().unwrap();
-        let store = ConversationStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
 
         let messages = vec![Message {
             role: Role::User,
@@ -409,9 +409,181 @@ mod tests {
         }];
 
         store.save("to-delete", None, &messages).unwrap();
-        assert!(store.conversation_path("to-delete").exists());
+        assert!(store.session_path("to-delete").exists());
 
         store.delete("to-delete").unwrap();
-        assert!(!store.conversation_path("to-delete").exists());
+        assert!(!store.session_path("to-delete").exists());
+    }
+
+    #[test]
+    fn list_empty_store_returns_empty() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        let sessions = store.list_with_meta().unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn load_missing_session_fails() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        assert!(store.load("never-saved").is_err());
+    }
+
+    #[test]
+    fn list_skips_malformed_json() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+
+        let messages = vec![Message {
+            role: Role::User,
+            content: "valid".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        }];
+        store.save("valid", None, &messages).unwrap();
+        std::fs::write(tmp_dir.path().join("invalid.json"), "not json").unwrap();
+
+        let sessions = store.list_with_meta().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "valid");
+    }
+
+    #[test]
+    fn list_skips_non_json_files() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+
+        let messages = vec![Message {
+            role: Role::User,
+            content: "ok".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        }];
+        store.save("session", None, &messages).unwrap();
+        std::fs::write(tmp_dir.path().join("notes.txt"), "hello").unwrap();
+
+        let sessions = store.list_with_meta().unwrap();
+        assert_eq!(sessions.len(), 1);
+    }
+
+    #[test]
+    fn concurrent_saves_are_safe() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+
+        std::thread::scope(|s| {
+            for i in 0..5 {
+                let store_ref = &store;
+                s.spawn(move || {
+                    let messages = vec![Message {
+                        role: Role::User,
+                        content: format!("msg {}", i),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        timestamp: None,
+                        reasoning_content: None,
+                        is_prompt: false,
+                    }];
+                    store_ref.save(&format!("thread-{}", i), None, &messages).unwrap();
+                });
+            }
+        });
+
+        let sessions = store.list().unwrap();
+        assert_eq!(sessions.len(), 5);
+    }
+
+    #[test]
+    fn derive_title_from_first_user_message() {
+        let messages = vec![
+            Message {
+                role: Role::System,
+                content: "sys".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            },
+            Message {
+                role: Role::User,
+                content: "My question here".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            },
+        ];
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        store.save("titled", None, &messages).unwrap();
+
+        let meta = store.list_with_meta().unwrap();
+        assert_eq!(meta[0].title, Some("My question here".to_string()));
+    }
+
+    #[test]
+    fn derive_title_truncates_long_content() {
+        let long_content = "a".repeat(100);
+        let messages = vec![Message {
+            role: Role::User,
+            content: long_content.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        }];
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+        store.save("long-title", None, &messages).unwrap();
+
+        let meta = store.list_with_meta().unwrap();
+        let title = meta[0].title.as_ref().unwrap();
+        assert!(title.len() < long_content.len());
+        assert!(title.ends_with("..."));
+    }
+
+    #[test]
+    fn derive_title_returns_none_for_empty_or_untitled() {
+        for content in ["", "untitled", "UNTITLED"] {
+            let messages = vec![Message {
+                role: Role::User,
+                content: content.to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+                reasoning_content: None,
+                is_prompt: false,
+            }];
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let store = SessionStore::new(tmp_dir.path().to_path_buf()).unwrap();
+            store.save(&format!("empty-{}", content), None, &messages).unwrap();
+
+            let meta = store.list_with_meta().unwrap();
+            assert!(meta[0].title.is_none(), "title should be None for '{}'", content);
+        }
+    }
+
+    #[test]
+    fn format_relative_time_parses_recent() {
+        let now = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        assert_eq!(format_relative_time(&now), "just now");
+    }
+
+    #[test]
+    fn format_relative_time_fallback_for_invalid() {
+        let result = format_relative_time("not-a-date");
+        assert_eq!(result, "not-a-date");
     }
 }

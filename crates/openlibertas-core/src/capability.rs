@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tool_format::ToolFormat;
 
-/// Capability flags for a provider backend.
+/// Capability flags for a provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     pub tools: bool,

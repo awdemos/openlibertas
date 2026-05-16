@@ -10,7 +10,7 @@ struct SwitchPersonaArgs {
     isolate: Option<bool>,
 }
 
-/// Switch to a different agent persona mid-conversation.
+/// Switch to a different agent persona mid-session.
 /// This allows the active agent to delegate work to a specialist.
 pub fn switch_persona(args: Value) -> Result<String> {
     let args: SwitchPersonaArgs = serde_json::from_value(args)?;
@@ -30,7 +30,7 @@ pub fn switch_persona_tool() -> BuiltinTool {
         For example, switch to 'Seeker' for codebase exploration, 'Sage' for code review, \
         'Strategist' for planning, or 'Artisan' for deep implementation. \
         CRITICAL: Do NOT call this tool repeatedly. Switch once, then proceed with the task. \
-        After switching, the new persona will continue the conversation with the appropriate context.",
+        After switching, the new persona will continue the session with the appropriate context.",
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -44,7 +44,7 @@ pub fn switch_persona_tool() -> BuiltinTool {
                 },
                 "isolate": {
                     "type": "boolean",
-                    "description": "If true, start a fresh conversation context for the new persona. The new agent will not see previous tool calls and results, avoiding confusion. Recommended when switching to a completely different task."
+                    "description": "If true, start a fresh session context for the new persona. The new agent will not see previous tool calls and results, avoiding confusion. Recommended when switching to a completely different task."
                 }
             },
             "required": ["persona", "reason"]
@@ -57,7 +57,7 @@ pub fn switch_persona_tool() -> BuiltinTool {
 /// Results are returned to the parent agent for synthesis.
 pub fn spawn_subagent(_args: Value) -> Result<String> {
     // This is a marker tool — the actual sub-agent spawning is handled
-    // at the engine/app level where we have access to the backend and state.
+    // at the engine/app level where we have access to the provider and state.
     // The tool result will contain the task description, and the app will
     // detect this special tool and spawn the sub-agent.
     Ok("Sub-agent spawn request received. The sub-agent will execute in parallel and results will be provided when complete.".to_string())
@@ -84,7 +84,7 @@ pub fn spawn_subagent_tool() -> BuiltinTool {
                 },
                 "context": {
                     "type": "string",
-                    "description": "Optional context from the parent agent. Include relevant conversation history, files, or decisions the sub-agent needs to know."
+                    "description": "Optional context from the parent agent. Include relevant session history, files, or decisions the sub-agent needs to know."
                 }
             },
             "required": ["persona", "task"]

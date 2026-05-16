@@ -1,4 +1,4 @@
-use crate::conversation::build_tool_result_messages;
+use crate::session::build_tool_result_messages;
 use crate::domain::{Message, Role, ToolCall};
 
 #[derive(Debug)]

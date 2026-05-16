@@ -17,7 +17,7 @@ use openlibertas_core::{
     backend::registry::ProviderRegistry,
     config::{Config, SecretString},
     domain::{BackendEvent, Message, ProviderId, Role},
-    store::ConversationStore,
+    store::SessionStore,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -28,10 +28,10 @@ use tokio_util::sync::CancellationToken;
 struct AppState {
     registry: Arc<ProviderRegistry>,
     config: Config,
-    conversation: Arc<RwLock<Vec<Message>>>,
+    session: Arc<RwLock<Vec<Message>>>,
     current_model: Arc<RwLock<Option<String>>>,
     current_provider: Arc<RwLock<ProviderId>>,
-    store: Option<ConversationStore>,
+    store: Option<SessionStore>,
     http_client: reqwest::Client,
     api_key: Option<SecretString>,
 }
@@ -151,7 +151,7 @@ async fn health_check() -> impl IntoResponse {
 }
 
 async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
-    let messages = state.conversation.read().await;
+    let messages = state.session.read().await;
     let model = state.current_model.read().await.clone();
     let provider = state.current_provider.read().await.clone();
 
@@ -164,7 +164,7 @@ async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn get_history(State(state): State<AppState>) -> impl IntoResponse {
-    let messages = state.conversation.read().await;
+    let messages = state.session.read().await;
     let views: Vec<MessageView> = messages
         .iter()
         .map(|m| MessageView {
@@ -190,8 +190,8 @@ async fn get_history(State(state): State<AppState>) -> impl IntoResponse {
     ok(HistoryResponse { messages: views })
 }
 
-async fn clear_conversation(State(state): State<AppState>) -> impl IntoResponse {
-    let mut messages = state.conversation.write().await;
+async fn clear_session(State(state): State<AppState>) -> impl IntoResponse {
+    let mut messages = state.session.write().await;
     messages.clear();
     ok(serde_json::json!({ "cleared": true }))
 }
@@ -206,14 +206,14 @@ async fn post_chat(
         .map(|p| ProviderId::new(&p))
         .unwrap_or(default_provider);
 
-    let backend = match state
+    let provider = match state
         .registry
         .get(&provider_id)
-        .or_else(|| state.registry.default_backend())
+        .or_else(|| state.registry.default_provider())
         .cloned()
     {
         Some(b) => b,
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "No backend available"),
+        None => return err(StatusCode::SERVICE_UNAVAILABLE, "No provider available"),
     };
 
     let current_model = state.current_model.read().await.clone();
@@ -223,7 +223,7 @@ async fn post_chat(
         .unwrap_or_else(|| "default".to_string());
 
     {
-        let mut messages = state.conversation.write().await;
+        let mut messages = state.session.write().await;
         messages.push(Message {
             role: Role::User,
             content: req.message.clone(),
@@ -237,12 +237,12 @@ async fn post_chat(
     }
 
     let messages = {
-        let msgs = state.conversation.read().await.clone();
+        let msgs = state.session.read().await.clone();
         msgs
     };
 
     let cancel_token = CancellationToken::new();
-    let mut stream = backend.chat(
+    let mut stream = provider.chat(
         model,
         messages,
         state.config.max_tokens,
@@ -274,7 +274,7 @@ async fn post_chat(
     }
 
     {
-        let mut messages = state.conversation.write().await;
+        let mut messages = state.session.write().await;
         let tool_calls_data = if tool_calls.is_empty() {
             None
         } else {
@@ -326,10 +326,10 @@ async fn stream_chat(
         .map(|p| ProviderId::new(&p))
         .unwrap_or(default_provider);
 
-    let backend_opt = state
+    let provider_opt = state
         .registry
         .get(&provider_id)
-        .or_else(|| state.registry.default_backend())
+        .or_else(|| state.registry.default_provider())
         .cloned();
 
     let current_model = state.current_model.read().await.clone();
@@ -339,7 +339,7 @@ async fn stream_chat(
         .unwrap_or_else(|| "default".to_string());
 
     {
-        let mut messages = state.conversation.write().await;
+        let mut messages = state.session.write().await;
         messages.push(Message {
             role: Role::User,
             content: req.message.clone(),
@@ -353,22 +353,22 @@ async fn stream_chat(
     }
 
     let messages = {
-        let msgs = state.conversation.read().await.clone();
+        let msgs = state.session.read().await.clone();
         msgs
     };
 
     let state_clone = state.clone();
     let sse_stream = async_stream::stream! {
-        let backend = match backend_opt {
+        let provider = match provider_opt {
             Some(b) => b,
             None => {
-                yield Ok(Event::default().data("{\"error\": \"No backend available\"}"));
+                yield Ok(Event::default().data("{\"error\": \"No provider available\"}"));
                 return;
             }
         };
 
         let cancel_token = CancellationToken::new();
-        let mut stream = backend.chat(
+    let mut stream = provider.chat(
             model,
             messages,
             state_clone.config.max_tokens,
@@ -419,7 +419,7 @@ async fn stream_chat(
             }
         }
 
-        let mut messages = state_clone.conversation.write().await;
+        let mut messages = state_clone.session.write().await;
         let tool_calls_data = if tool_calls.is_empty() {
             None
         } else {
@@ -472,7 +472,7 @@ async fn save_session(
         }
     };
 
-    let messages = state.conversation.read().await.clone();
+    let messages = state.session.read().await.clone();
     let model = state.current_model.read().await.clone();
 
     match store.save(&req.name, model.as_deref(), &messages) {
@@ -500,8 +500,8 @@ async fn load_session(
 
     match store.load(&req.name) {
         Ok(messages) => {
-            let mut conv = state.conversation.write().await;
-            *conv = messages;
+            let mut session = state.session.write().await;
+            *session = messages;
             ok(serde_json::json!({ "loaded": true }))
         }
         Err(e) => err(StatusCode::NOT_FOUND, format!("Session not found: {}", e)),
@@ -674,7 +674,7 @@ async fn main() -> Result<()> {
 
     let config = Config::load().unwrap_or_default();
     let registry = Arc::new(ProviderRegistry::new(&config.providers));
-    let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
+    let store = Config::data_dir().and_then(|d| SessionStore::new(d).ok());
 
     let default_provider = config
         .providers
@@ -687,7 +687,7 @@ async fn main() -> Result<()> {
     let state = AppState {
         registry,
         config,
-        conversation: Arc::new(RwLock::new(Vec::new())),
+        session: Arc::new(RwLock::new(Vec::new())),
         current_model: Arc::new(RwLock::new(None)),
         current_provider: Arc::new(RwLock::new(default_provider)),
         store,
@@ -702,7 +702,7 @@ async fn main() -> Result<()> {
             Router::new()
                 .route("/status", get(get_status))
                 .route("/history", get(get_history))
-                .route("/clear", post(clear_conversation))
+                .route("/clear", post(clear_session))
                 .route("/chat", post(post_chat))
                 .route("/chat/stream", post(stream_chat))
                 .route("/sessions", get(list_sessions))

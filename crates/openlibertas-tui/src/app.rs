@@ -20,7 +20,7 @@ use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::export::{self, ExportFormat};
 use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
-use openlibertas_core::store::ConversationStore;
+use openlibertas_core::store::SessionStore;
 use openlibertas_core::voice::VoiceManager;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -75,7 +75,7 @@ pub struct App {
     pub models: ModelState,
     pub overlay: Overlay,
     pub(crate) search: SearchState,
-    pub store: Option<ConversationStore>,
+    pub store: Option<SessionStore>,
     pub(crate) engine: ChatEngine,
     prompt_manager: PromptManager,
     pub palette_commands: Vec<(String, String)>,
@@ -113,7 +113,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> Self {
-        let store = Config::data_dir().and_then(|d| ConversationStore::new(d).ok());
+        let store = Config::data_dir().and_then(|d| SessionStore::new(d).ok());
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
         let voice_input_device = config.input_device.clone();
@@ -306,7 +306,7 @@ impl App {
                 self.current_session_id = None;
                 self.current_session_parent_id = None;
                 self.current_session_branch_point = None;
-                Some("Conversation cleared".to_string())
+                Some("Session cleared".to_string())
             }
             SlashCommand::Quit => None,
             SlashCommand::Agents => {
@@ -473,7 +473,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 if let Some(ref store) = self.store {
                     let id = if name.is_empty() {
                         let model = self.models.current.as_deref().unwrap_or("unknown");
-                        ConversationStore::generate_name(model)
+                        SessionStore::generate_name(model)
                     } else {
                         name
                     };
@@ -553,7 +553,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     filename
                 };
                 let format = ExportFormat::from_extension(&fname);
-                let content = self.export_conversation(format);
+                let content = self.export_session(format);
                 match std::fs::write(&fname, content) {
                     Ok(_) => Some(format!("Exported to '{}'", fname)),
                     Err(e) => Some(format!("Failed to export: {}", e)),
@@ -639,7 +639,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     let mut parent_id = self.current_session_id.clone().unwrap_or_default();
                     if parent_id.is_empty() {
                         let model = self.models.current.as_deref().unwrap_or("unknown");
-                        let auto_id = ConversationStore::generate_name(model);
+                        let auto_id = SessionStore::generate_name(model);
                         if let Err(e) = store.save(
                             &auto_id,
                             self.models.current.as_deref(),
@@ -664,7 +664,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
 
                     let branch_messages: Vec<_> = messages[..=branch_point].to_vec();
                     let model = self.models.current.as_deref().unwrap_or("unknown");
-                    let branch_id = format!("{}-branch", ConversationStore::generate_name(model));
+                    let branch_id = format!("{}-branch", SessionStore::generate_name(model));
 
                     match store.save_branch(
                         &branch_id,
@@ -790,7 +790,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
     }
 
     pub fn load_context_files(&mut self) -> Vec<String> {
-        let loaded = openlibertas_core::conversation::read_context_files();
+        let loaded = openlibertas_core::session::read_context_files();
         for (filename, content) in &loaded {
             self.engine.chat_mut().messages.push(Message {
                 role: Role::System,
@@ -835,7 +835,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 Err(e) => Some(format!("Auto-save failed: {}", e)),
             }
         } else {
-            Some("Auto-save failed: no conversation store".to_string())
+            Some("Auto-save failed: no session store".to_string())
         }
     }
 
@@ -916,7 +916,7 @@ available tools to refine and polish your work."
         self.engine.agents_mut().persona.clone()
     }
 
-    pub fn export_conversation(&self, format: ExportFormat) -> String {
+    pub fn export_session(&self, format: ExportFormat) -> String {
         export::export_messages(
             &self.engine.chat().messages,
             self.models.current.as_deref(),

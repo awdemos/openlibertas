@@ -10,6 +10,32 @@ const DEFAULT_BASE_URL: &str = "http://127.0.0.1:11436/v1";
 const DEFAULT_API_KEY: &str = "sk-local";
 const DEFAULT_MAX_TOKENS: u32 = 2048;
 
+/// Resolve an environment variable reference in the form `{env:VAR_NAME}`.
+/// If the value matches the `{env:...}` syntax, looks up the env var and returns
+/// its value if set. If the env var is not set, logs a warning and returns an
+/// empty string. If the value does not match the syntax, returns it unchanged.
+pub fn resolve_env_ref(value: &str) -> String {
+    if let Some(inner) = value.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
+        let var_name = inner.trim();
+        if var_name.is_empty() {
+            warn!("Empty environment variable name in '{}'", value);
+            return String::new();
+        }
+        match std::env::var(var_name) {
+            Ok(v) => v,
+            Err(_) => {
+                warn!(
+                    "Environment variable '{}' not set for api_key reference '{}'",
+                    var_name, value
+                );
+                String::new()
+            }
+        }
+    } else {
+        value.to_string()
+    }
+}
+
 /// A string that redacts its contents in Debug, Display, and serde::Serialize.
 /// Use `expose_secret()` to access the plaintext value for authentication.
 #[derive(Clone, Deserialize, PartialEq, Default)]
@@ -227,6 +253,16 @@ impl Config {
         if config.providers.is_empty() {
             info!("No providers configured, adding local default");
             config.providers.push(ProviderConfig::local_default());
+        }
+
+        for provider in &mut config.providers {
+            let resolved = resolve_env_ref(provider.api_key.expose_secret());
+            provider.api_key = SecretString::new(resolved);
+        }
+
+        if let Some(ref key) = config.elevenlabs_api_key {
+            let resolved = resolve_env_ref(key.expose_secret());
+            config.elevenlabs_api_key = Some(SecretString::new(resolved));
         }
 
         if let Ok(url) = std::env::var("OPENLIBERTAS_URL") {
@@ -520,5 +556,40 @@ mod tests {
     #[test]
     fn config_data_dir_returns_some() {
         assert!(Config::data_dir().is_some());
+    }
+
+    #[test]
+    fn resolve_env_ref_substitutes_env_var() {
+        std::env::set_var("OPENLIBERTAS_TEST_KEY", "sk-test-value");
+        let result = resolve_env_ref("{env:OPENLIBERTAS_TEST_KEY}");
+        assert_eq!(result, "sk-test-value");
+        std::env::remove_var("OPENLIBERTAS_TEST_KEY");
+    }
+
+    #[test]
+    fn resolve_env_ref_returns_literal_when_no_match() {
+        let result = resolve_env_ref("sk-plain-key");
+        assert_eq!(result, "sk-plain-key");
+    }
+
+    #[test]
+    fn resolve_env_ref_returns_empty_when_var_missing() {
+        std::env::remove_var("OPENLIBERTAS_TEST_MISSING");
+        let result = resolve_env_ref("{env:OPENLIBERTAS_TEST_MISSING}");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn resolve_env_ref_returns_empty_on_empty_var_name() {
+        let result = resolve_env_ref("{env:}");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn resolve_env_ref_handles_value_with_braces() {
+        std::env::set_var("OPENLIBERTAS_BRACES", "val}ue");
+        let result = resolve_env_ref("{env:OPENLIBERTAS_BRACES}");
+        assert_eq!(result, "val}ue");
+        std::env::remove_var("OPENLIBERTAS_BRACES");
     }
 }

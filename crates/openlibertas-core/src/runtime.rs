@@ -11,14 +11,14 @@ use crate::config::Config;
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
 use crate::mcp::McpClient;
-use crate::store::ConversationStore;
+use crate::store::SessionStore;
 
 /// Errors that can occur during runtime construction or agent creation.
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     #[error("config error: {0}")]
     ConfigError(String),
-    #[error("backend error: {0}")]
+    #[error("provider error: {0}")]
     BackendError(String),
     #[error("store error: {0}")]
     StoreError(String),
@@ -45,7 +45,7 @@ impl From<std::io::Error> for RuntimeError {
 pub struct Runtime {
     pub config: Arc<Config>,
     pub backend_registry: Arc<ProviderRegistry>,
-    pub conversation_store: Arc<ConversationStore>,
+    pub session_store: Arc<SessionStore>,
     pub history_store: Option<Arc<HistoryStore>>,
     pub mcp_client: Option<Arc<McpClient>>,
     pub env_context: String,
@@ -55,8 +55,8 @@ impl Runtime {
     /// Construct a new [`Runtime`] with default settings.
     ///
     /// - Loads config from the standard config path (falling back to defaults).
-    /// - Builds the backend registry from configured providers.
-    /// - Initializes the conversation store at `~/.config/openlibertas/sessions/`.
+    /// - Builds the provider registry from configured providers.
+    /// - Initializes the session store at `~/.config/openlibertas/sessions/`.
     /// - Initializes the history store if the config directory is available.
     /// - Initializes the MCP client from the opencode config if available.
     /// - Captures the current environment context.
@@ -76,9 +76,9 @@ impl Runtime {
             })?
             .join("sessions");
 
-        let conversation_store =
-            ConversationStore::new(sessions_dir).map_err(|e| RuntimeError::StoreError(e.to_string()))?;
-        let conversation_store = Arc::new(conversation_store);
+        let session_store =
+            SessionStore::new(sessions_dir).map_err(|e| RuntimeError::StoreError(e.to_string()))?;
+        let session_store = Arc::new(session_store);
 
         let history_store = Config::config_path()
             .and_then(|p| p.parent().map(PathBuf::from))
@@ -96,7 +96,7 @@ impl Runtime {
         Ok(Self {
             config,
             backend_registry,
-            conversation_store,
+            session_store,
             history_store,
             mcp_client,
             env_context,
@@ -107,17 +107,17 @@ impl Runtime {
 
 impl Default for Runtime {
     fn default() -> Self {
-        // Infallible default: use an in-memory conversation store and default config.
+        // Infallible default: use an in-memory session store and default config.
         let config = Arc::new(Config::default());
         let backend_registry = Arc::new(ProviderRegistry::new(&config.providers));
-        let conversation_store = Arc::new(
-            ConversationStore::new(std::env::temp_dir().join("openlibertas-sessions"))
+        let session_store = Arc::new(
+            SessionStore::new(std::env::temp_dir().join("openlibertas-sessions"))
                 .expect("temp dir should always be writable"),
         );
         Self {
             config,
             backend_registry,
-            conversation_store,
+            session_store,
             history_store: None,
             mcp_client: None,
             env_context: EnvContext::detect().to_prompt_section(),
@@ -131,7 +131,7 @@ impl Default for Runtime {
 pub struct RuntimeBuilder {
     config: Option<Arc<Config>>,
     backend_registry: Option<Arc<ProviderRegistry>>,
-    conversation_store: Option<Arc<ConversationStore>>,
+    session_store: Option<Arc<SessionStore>>,
     history_store: Option<Option<Arc<HistoryStore>>>,
     mcp_client: Option<Option<Arc<McpClient>>>,
     env_context: Option<String>,
@@ -142,7 +142,7 @@ impl RuntimeBuilder {
         Self {
             config: None,
             backend_registry: None,
-            conversation_store: None,
+            session_store: None,
             history_store: None,
             mcp_client: None,
             env_context: None,
@@ -159,8 +159,8 @@ impl RuntimeBuilder {
         self
     }
 
-    pub fn conversation_store(mut self, store: Arc<ConversationStore>) -> Self {
-        self.conversation_store = Some(store);
+    pub fn session_store(mut self, store: Arc<SessionStore>) -> Self {
+        self.session_store = Some(store);
         self
     }
 
@@ -187,7 +187,7 @@ impl RuntimeBuilder {
             .backend_registry
             .unwrap_or_else(|| Arc::new(ProviderRegistry::new(&config.providers)));
 
-        let conversation_store = match self.conversation_store {
+        let session_store = match self.session_store {
             Some(store) => store,
             None => {
                 let sessions_dir = Config::config_path()
@@ -202,7 +202,7 @@ impl RuntimeBuilder {
                     })?
                     .join("sessions");
                 Arc::new(
-                    ConversationStore::new(sessions_dir)
+                    SessionStore::new(sessions_dir)
                         .map_err(|e| RuntimeError::StoreError(e.to_string()))?,
                 )
             }
@@ -230,7 +230,7 @@ impl RuntimeBuilder {
         Ok(Runtime {
             config,
             backend_registry,
-            conversation_store,
+            session_store,
             history_store,
             mcp_client,
             env_context,
@@ -270,20 +270,20 @@ mod tests {
     #[test]
     fn runtime_builder_with_custom_store() {
         let tmp = tempdir().unwrap();
-        let store = Arc::new(ConversationStore::new(tmp.path().to_path_buf()).unwrap());
+        let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()).unwrap());
         let runtime = RuntimeBuilder::new()
-            .conversation_store(store)
+            .session_store(store)
             .build()
             .expect("build should succeed");
-        assert!(runtime.conversation_store.list().is_ok());
+        assert!(runtime.session_store.list().is_ok());
     }
 
     #[test]
     fn runtime_clone_is_cheap() {
         let tmp = tempdir().unwrap();
-        let store = Arc::new(ConversationStore::new(tmp.path().to_path_buf()).unwrap());
+        let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()).unwrap());
         let runtime = RuntimeBuilder::new()
-            .conversation_store(store)
+            .session_store(store)
             .build()
             .expect("build should succeed");
 

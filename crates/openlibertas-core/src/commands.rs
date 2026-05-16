@@ -1,5 +1,5 @@
 use crate::domain::{Message, Model, ProviderId};
-use crate::store::ConversationStore;
+use crate::store::SessionStore;
 use anyhow::Context;
 
 /// All available slash commands organized by category
@@ -69,13 +69,13 @@ pub fn command_category(cmd: &str) -> &'static str {
 pub fn command_description(cmd: &str) -> &'static str {
     match cmd {
         "/help" => "Show help panel",
-        "/model" => "Switch model (or open picker)",
+        "/model" | "/models" => "Switch model (or open picker)",
         "/avatar" => "Toggle avatar display",
         "/avatar-menu" => "Open avatar configuration menu",
         "/theme" => "Change color theme",
         "/temp" => "Set LLM temperature (0.0-2.0)",
         "/new" => "Start new session",
-        "/clear" => "Clear conversation history",
+        "/clear" => "Clear session history",
         "/save" => "Save session to disk",
         "/load" => "Load session from disk",
         "/sessions" => "List saved sessions",
@@ -83,14 +83,14 @@ pub fn command_description(cmd: &str) -> &'static str {
         "/export" => "Export to markdown/json/txt",
         "/undo" => "Undo last turn",
         "/title" => "Rename current session",
-        "/branch" => "Branch conversation from message index",
-        "/search" => "Search in conversation",
+        "/branch" => "Branch session from message index",
+        "/search" => "Search in session",
         "/edit" => "Edit a message by index",
         "/remove" => "Remove a message by index",
         "/agents" => "Open agent configuration",
         "/yolo" => "Toggle auto-approval for tools",
         "/plan" => "Toggle plan mode (read-only research)",
-        "/compact" => "Compact conversation context",
+        "/compact" => "Compact session context",
         "/rlm" => "Toggle RLM (recursive language model) mode",
         "/mcp" => "Show MCP server status",
         "/tools" => "Toggle tools panel",
@@ -401,18 +401,18 @@ pub struct LoadedSession {
 }
 
 /// Load a session including model information
-pub fn load_session(store: &ConversationStore, name: &str) -> anyhow::Result<LoadedSession> {
-    let path = store.conversation_path(name);
+pub fn load_session(store: &SessionStore, name: &str) -> anyhow::Result<LoadedSession> {
+    let path = store.session_path(name);
     let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read conversation: {}", name))?;
-    let conversation: crate::store::Conversation = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse conversation: {}", name))?;
+        .with_context(|| format!("Failed to read session: {}", name))?;
+    let session: crate::store::Session = serde_json::from_str(&contents)
+        .with_context(|| format!("Failed to parse session: {}", name))?;
 
     Ok(LoadedSession {
-        messages: conversation.messages,
-        model: conversation.model,
-        parent_id: conversation.parent_id,
-        branch_point: conversation.branch_point,
+        messages: session.messages,
+        model: session.model,
+        parent_id: session.parent_id,
+        branch_point: session.branch_point,
     })
 }
 
@@ -591,5 +591,168 @@ mod tests {
         }];
         let suggestions = get_model_suggestions(&models, "");
         assert_eq!(suggestions.len(), 1);
+    }
+
+    #[test]
+    fn parse_temp_command_with_value() {
+        let cmd = SlashCommand::parse("/temp 0.5");
+        assert_eq!(cmd, Some(SlashCommand::Temperature(0.5)));
+    }
+
+    #[test]
+    fn parse_temp_command_defaults_to_07() {
+        let cmd = SlashCommand::parse("/temp");
+        assert_eq!(cmd, Some(SlashCommand::Temperature(0.7)));
+    }
+
+    #[test]
+    fn parse_temp_command_invalid_returns_none() {
+        let cmd = SlashCommand::parse("/temp abc");
+        assert!(cmd.is_none());
+    }
+
+    #[test]
+    fn parse_edit_command_with_index() {
+        let cmd = SlashCommand::parse("/edit 5");
+        assert_eq!(cmd, Some(SlashCommand::Edit(5)));
+    }
+
+    #[test]
+    fn parse_edit_command_defaults_to_zero() {
+        let cmd = SlashCommand::parse("/edit");
+        assert_eq!(cmd, Some(SlashCommand::Edit(0)));
+    }
+
+    #[test]
+    fn parse_branch_command_with_index() {
+        let cmd = SlashCommand::parse("/branch 3");
+        assert_eq!(cmd, Some(SlashCommand::Branch(Some(3))));
+    }
+
+    #[test]
+    fn parse_branch_command_defaults_to_none() {
+        let cmd = SlashCommand::parse("/branch");
+        assert_eq!(cmd, Some(SlashCommand::Branch(None)));
+    }
+
+    #[test]
+    fn parse_load_command_with_name() {
+        let cmd = SlashCommand::parse("/load my-session");
+        assert_eq!(cmd, Some(SlashCommand::Load("my-session".to_string())));
+    }
+
+    #[test]
+    fn parse_delete_command_with_name() {
+        let cmd = SlashCommand::parse("/delete old-session");
+        assert_eq!(cmd, Some(SlashCommand::Delete("old-session".to_string())));
+    }
+
+    #[test]
+    fn parse_export_command_with_path() {
+        let cmd = SlashCommand::parse("/export /tmp/chat.md");
+        assert_eq!(cmd, Some(SlashCommand::Export("/tmp/chat.md".to_string())));
+    }
+
+    #[test]
+    fn parse_title_command_with_name() {
+        let cmd = SlashCommand::parse("/title My Chat");
+        assert_eq!(cmd, Some(SlashCommand::Title("My Chat".to_string())));
+    }
+
+    #[test]
+    fn parse_search_command_with_query() {
+        let cmd = SlashCommand::parse("/search hello world");
+        assert_eq!(cmd, Some(SlashCommand::Search("hello world".to_string())));
+    }
+
+    #[test]
+    fn parse_avatar_with_name() {
+        let cmd = SlashCommand::parse("/avatar robot");
+        assert_eq!(cmd, Some(SlashCommand::Avatar(Some("robot".to_string()))));
+    }
+
+    #[test]
+    fn parse_avatar_without_name() {
+        let cmd = SlashCommand::parse("/avatar");
+        assert_eq!(cmd, Some(SlashCommand::Avatar(None)));
+    }
+
+    #[test]
+    fn parse_voice_device_with_name() {
+        let cmd = SlashCommand::parse("/voice_device Bose");
+        assert_eq!(cmd, Some(SlashCommand::VoiceDevice("Bose".to_string())));
+    }
+
+    #[test]
+    fn parse_voice_device_without_name() {
+        let cmd = SlashCommand::parse("/voice_device");
+        assert_eq!(cmd, Some(SlashCommand::VoiceDevice(String::new())));
+    }
+
+    #[test]
+    fn autocomplete_exact_match_excluded() {
+        let suggestions = SlashCommand::autocomplete("/save");
+        assert!(!suggestions.contains(&"/save"));
+    }
+
+    #[test]
+    fn autocomplete_empty_prefix_returns_all() {
+        let suggestions = SlashCommand::autocomplete("/");
+        assert!(suggestions.len() > 5);
+    }
+
+    #[test]
+    fn command_category_groups_correctly() {
+        assert_eq!(command_category("/help"), "Info");
+        assert_eq!(command_category("/model"), "Config");
+        assert_eq!(command_category("/save"), "Session");
+        assert_eq!(command_category("/search"), "Chat");
+        assert_eq!(command_category("/agents"), "Agent");
+        assert_eq!(command_category("/mcp"), "Tools");
+        assert_eq!(command_category("/voice"), "Voice");
+        assert_eq!(command_category("/quit"), "System");
+        assert_eq!(command_category("/unknown"), "Other");
+    }
+
+    #[test]
+    fn command_description_not_empty_for_known() {
+        for cmd in SLASH_COMMANDS.iter() {
+            assert!(
+                !command_description(cmd).is_empty(),
+                "{} should have a description",
+                cmd
+            );
+        }
+    }
+
+    #[test]
+    fn find_model_ambiguous_substring_returns_none() {
+        let models = vec![
+            Model {
+                id: "gpt-4-turbo".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
+            Model {
+                id: "gpt-4-mini".to_string(),
+                provider: ProviderId::new("openai"),
+                supports_tools: true,
+                supports_voice: false,
+                local: false,
+            },
+        ];
+        // "gpt-4" matches both, so result should be None.
+        let result = find_model(&models, "gpt-4");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_help_message_includes_categories() {
+        let help = build_help_message();
+        assert!(help.contains("Slash Commands"));
+        assert!(help.contains("/help"));
+        assert!(help.contains("/quit"));
     }
 }

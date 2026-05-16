@@ -1669,7 +1669,7 @@ fn draw_sessions_panel(frame: &mut Frame, app: &App) {
 
     if sessions.is_empty() {
         let msg = if app.session_search.is_empty() {
-            "No saved sessions.\nUse /save to save the current conversation."
+            "No saved sessions.\nUse /save to save the current session."
         } else {
             "No sessions match your search."
         };
@@ -2298,7 +2298,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
             "Session",
             vec![
                 ("/new", "Start new session"),
-                ("/clear", "Clear conversation"),
+                ("/clear", "Clear session"),
                 ("/save [name]", "Save session to disk"),
                 ("/load [name]", "Load session from disk"),
                 ("/sessions", "List saved sessions"),
@@ -2311,7 +2311,7 @@ fn draw_help_panel(frame: &mut Frame, app: &App) {
         (
             "Chat Commands",
             vec![
-                ("/search [query]", "Search in conversation"),
+                ("/search [query]", "Search in session"),
                 ("/edit <n>", "Edit a message by index"),
                 ("/remove <n>", "Remove a message by index"),
             ],

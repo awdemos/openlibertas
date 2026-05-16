@@ -1,4 +1,4 @@
-//! OpenLibertas core library: backend, config, commands, domain, tools, voice, MCP.
+//! OpenLibertas core library: provider, config, commands, domain, agent_tools, voice, MCP.
 
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 #![cfg_attr(not(test), warn(clippy::expect_used))]
@@ -10,8 +10,8 @@ pub mod capability;
 pub mod commands;
 pub mod completion;
 pub mod config;
-pub mod conversation;
 pub mod domain;
+pub mod session;
 pub mod engine;
 pub mod env_context;
 pub mod export;
@@ -28,6 +28,9 @@ pub mod tool_format;
 pub mod tool_registry;
 pub mod agent_tools;
 pub mod voice;
+
+#[cfg(test)]
+pub mod test_utils;
 pub use agent_loop::{AgentLoop, LoopAction, PersonaResolver};
 pub use backend::Provider;
 pub use capability::{ProviderCapabilities, ProviderKind};

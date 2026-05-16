@@ -1,4 +1,4 @@
-use crate::conversation::parse_file_context;
+use crate::session::parse_file_context;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
 use crate::tool_format::ToolFormat;
 use crate::tool_registry::ToolRegistry;

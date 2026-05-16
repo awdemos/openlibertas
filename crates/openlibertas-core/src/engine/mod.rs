@@ -7,7 +7,7 @@
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
 use crate::completion::{CompletionEngine, CompletionItem};
-use crate::conversation::ContextCompactor;
+use crate::session::ContextCompactor;
 use crate::domain::{Message, Role, ToolDefinition};
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
@@ -412,7 +412,7 @@ fn count_wrapped_lines(content: &str, width: usize) -> usize {
 
 mod agent;
 mod completion;
-mod conversation;
+mod session;
 mod input;
 
 #[cfg(test)]
@@ -469,5 +469,88 @@ mod tests {
         assert!(engine.system_prompt.is_some());
         assert!(engine.agent_prompt.is_some());
         assert!(engine.env_context.is_some());
+    }
+
+    #[test]
+    fn agent_state_defaults() {
+        let state = AgentState::default();
+        assert_eq!(state.status, AgentModeStatus::Disabled);
+        assert_eq!(state.max_iterations, 10);
+        assert_eq!(state.current_iteration, 0);
+        assert_eq!(state.persona, "Orchestrator");
+        assert!(!state.yolo_mode);
+    }
+
+    #[test]
+    fn input_state_defaults() {
+        let state = InputState::default();
+        assert!(state.buffer.is_empty());
+        assert_eq!(state.cursor_pos, 0);
+        assert!(state.history.is_empty());
+        assert_eq!(state.history_index, None);
+        assert!(!state.show_autocomplete);
+    }
+
+    #[test]
+    fn chat_state_default_context_window() {
+        let state = ChatState::default();
+        assert!(state.messages.is_empty());
+        assert!(!state.streaming);
+        assert!(state.auto_scroll);
+        assert_eq!(state.scroll, 0);
+    }
+
+    #[test]
+    fn chat_state_with_custom_context_window() {
+        let state = ChatState::with_context_window(16384);
+        assert!(state.messages.is_empty());
+        assert!(!state.streaming);
+    }
+
+    #[test]
+    fn spinner_wraps_around() {
+        let mut engine = ChatEngine::new();
+        engine.chat.streaming = true;
+        for _ in 0..SPINNER_FRAMES.len() + 3 {
+            engine.advance_spinner();
+        }
+        assert_eq!(engine.chat.spinner_frame, 3);
+    }
+
+    #[test]
+    fn count_wrapped_lines_empty_string() {
+        assert_eq!(count_wrapped_lines("", 10), 1);
+    }
+
+    #[test]
+    fn count_wrapped_lines_zero_width() {
+        assert_eq!(count_wrapped_lines("hello", 0), 1);
+    }
+
+    #[test]
+    fn count_wrapped_lines_multiple_paragraphs() {
+        let text = "first paragraph\n\nsecond paragraph";
+        assert_eq!(count_wrapped_lines(text, 20), 3);
+    }
+
+    #[test]
+    fn message_at_y_returns_none_for_empty_chat() {
+        let engine = ChatEngine::new();
+        assert!(engine.message_at_y(0, 80).is_none());
+    }
+
+    #[test]
+    fn message_at_y_finds_first_message() {
+        let mut engine = ChatEngine::new();
+        engine.chat.messages.push(Message {
+            role: Role::User,
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+            reasoning_content: None,
+            is_prompt: false,
+        });
+        assert_eq!(engine.message_at_y(0, 80), Some(0));
     }
 }

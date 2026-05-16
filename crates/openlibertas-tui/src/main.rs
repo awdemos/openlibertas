@@ -96,8 +96,8 @@ impl Provider for RegistryBackend {
     fn fetch_models(
         &self,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<Model>>> + Send + '_>> {
-        match self.registry.default_backend() {
-            Some(backend) => backend.fetch_models(),
+        match self.registry.default_provider() {
+            Some(provider) => provider.fetch_models(),
             None => Box::pin(async { Ok(vec![]) }),
         }
     }
@@ -105,8 +105,8 @@ impl Provider for RegistryBackend {
     fn health_check(
         &self,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
-        match self.registry.default_backend() {
-            Some(backend) => backend.health_check(),
+        match self.registry.default_provider() {
+            Some(provider) => provider.health_check(),
             None => Box::pin(async { Ok(()) }),
         }
     }
@@ -116,8 +116,8 @@ impl Provider for RegistryBackend {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        match self.registry.default_backend() {
-            Some(backend) => backend.capabilities(),
+        match self.registry.default_provider() {
+            Some(provider) => provider.capabilities(),
             None => ProviderCapabilities::default(),
         }
     }
@@ -188,7 +188,7 @@ fn spawn_agent_turn(
 ) {
     let ui_messages_before = app.engine.chat().messages.clone();
 
-    let content = openlibertas_core::conversation::parse_file_context(&input_text);
+    let content = openlibertas_core::session::parse_file_context(&input_text);
     let _ = app.engine.push_user_message(content);
     let _ = app.autosave();
 
@@ -227,7 +227,7 @@ fn spawn_agent_turn(
     app.cancel_token = Some(cancel_token.clone());
 
     let registry_backend = RegistryBackend::new(registry.clone(), app.models.provider.clone());
-    let backend: Arc<dyn Provider> =
+    let provider: Arc<dyn Provider> =
         Arc::new(CancellableBackend::new(Arc::new(registry_backend), cancel_token));
 
     let model = app.models.current.clone().unwrap_or_default();
@@ -237,7 +237,7 @@ fn spawn_agent_turn(
         "default",
         "Chat Agent",
         agent_engine,
-        backend,
+        provider,
         model,
         max_tokens,
     );
@@ -271,7 +271,7 @@ async fn main() -> Result<()> {
     let runtime = Runtime::new()?;
     let mut state = State::load();
     let mut app = App::new(runtime.config.as_ref().clone());
-    app.store = Some((*runtime.conversation_store).clone());
+    app.store = Some((*runtime.session_store).clone());
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -289,10 +289,10 @@ async fn main() -> Result<()> {
         }
         let sender = event_stream.sender();
         let provider_id = ProviderId::new(&provider.name);
-        if let Some(backend) = runtime.backend_registry.get(&provider_id) {
-            let backend = backend.clone();
+        if let Some(provider) = runtime.backend_registry.get(&provider_id) {
+            let provider = provider.clone();
             tokio::spawn(async move {
-                match backend.fetch_models().await {
+                match provider.fetch_models().await {
                     Ok(mut models) => {
                         for model in &mut models {
                             model.provider = provider_id.clone();
@@ -319,13 +319,13 @@ async fn main() -> Result<()> {
 
     app.load_context_files();
 
-    if let Some(backend_check) = runtime.backend_registry.default_backend().cloned() {
+    if let Some(provider_check) = runtime.backend_registry.default_provider().cloned() {
         let health_sender = event_stream.sender();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             loop {
                 interval.tick().await;
-                match backend_check.fetch_models().await {
+                match provider_check.fetch_models().await {
                     Ok(_) => {
                         let _ = health_sender.send(Event::BackendHealthCheck(Ok(())));
                     }

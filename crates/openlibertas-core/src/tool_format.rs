@@ -20,7 +20,7 @@ impl ToolFormat {
         self == ToolFormat::Native
     }
 
-    /// Returns `true` if the backend expects tool calls in the native API format.
+    /// Returns `true` if the provider expects tool calls in the native API format.
     pub fn expects_native_format(self) -> bool {
         self == ToolFormat::Native
     }

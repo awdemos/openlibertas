@@ -28,26 +28,26 @@ struct ProviderHealth {
 /// - Circuit-breaker health tracking per provider
 #[derive(Clone)]
 pub struct ProviderRegistry {
-    backends: HashMap<ProviderId, Arc<dyn Provider>>,
+    providers: HashMap<ProviderId, Arc<dyn Provider>>,
     health: Arc<Mutex<HashMap<ProviderId, ProviderHealth>>>,
 }
 
 impl ProviderRegistry {
-    pub fn new(providers: &[ProviderConfig]) -> Self {
-        let mut backends: HashMap<ProviderId, Arc<dyn Provider>> = HashMap::new();
+    pub fn new(configs: &[ProviderConfig]) -> Self {
+        let mut providers: HashMap<ProviderId, Arc<dyn Provider>> = HashMap::new();
         let mut health = HashMap::new();
-        for provider in providers {
-            if provider.enabled {
-                let capabilities = provider.capabilities;
-                let backend: Arc<dyn Provider> = Arc::new(MultiProvider::with_capabilities(
-                    provider.base_url.clone(),
-                    provider.api_key.clone(),
-                    provider.kind,
+        for config in configs {
+            if config.enabled {
+                let capabilities = config.capabilities;
+                let provider: Arc<dyn Provider> = Arc::new(MultiProvider::with_capabilities(
+                    config.base_url.clone(),
+                    config.api_key.clone(),
+                    config.kind,
                     capabilities,
-                    provider.extra_params.clone(),
+                    config.extra_params.clone(),
                 ));
-                let id = ProviderId::new(&provider.name);
-                backends.insert(id.clone(), backend);
+                let id = ProviderId::new(&config.name);
+                providers.insert(id.clone(), provider);
                 health.insert(
                     id,
                     ProviderHealth {
@@ -58,51 +58,51 @@ impl ProviderRegistry {
             }
         }
         Self {
-            backends,
+            providers,
             health: Arc::new(Mutex::new(health)),
         }
     }
 
     pub fn get(&self, provider: &ProviderId) -> Option<&Arc<dyn Provider>> {
-        self.backends.get(provider)
+        self.providers.get(provider)
     }
 
-    pub fn has_backend(&self, provider: &ProviderId) -> bool {
-        self.backends.contains_key(provider)
+    pub fn has_provider(&self, provider: &ProviderId) -> bool {
+        self.providers.contains_key(provider)
     }
 
     /// List all registered provider IDs.
     pub fn list_providers(&self) -> Vec<&ProviderId> {
-        self.backends.keys().collect()
+        self.providers.keys().collect()
     }
 
     /// Number of registered providers.
     pub fn provider_count(&self) -> usize {
-        self.backends.len()
+        self.providers.len()
     }
 
-    /// Return the provider ID for the default backend.
-    /// Returns `None` if no backends are registered.
+    /// Return the provider ID for the default provider.
+    /// Returns `None` if no providers are registered.
     pub fn default_provider_id(&self) -> Option<&ProviderId> {
-        self.backends.keys().next()
+        self.providers.keys().next()
     }
 
-    /// Select a backend by preference, falling back to the default.
+    /// Select a provider by preference, falling back to the default.
     ///
     /// Tries `preferred` name first (case-insensitive), then falls back
-    /// to the default provider. Returns `None` if no backends exist.
+    /// to the default provider. Returns `None` if no providers exist.
     pub fn select_provider(&self, preferred: Option<&str>) -> Option<&Arc<dyn Provider>> {
         if let Some(name) = preferred {
             let id = ProviderId::new(name);
-            if let Some(backend) = self.backends.get(&id) {
-                return Some(backend);
+            if let Some(provider) = self.providers.get(&id) {
+                return Some(provider);
             }
         }
-        self.default_backend()
+        self.default_provider()
     }
 
-    pub fn default_backend(&self) -> Option<&Arc<dyn Provider>> {
-        self.backends.values().next()
+    pub fn default_provider(&self) -> Option<&Arc<dyn Provider>> {
+        self.providers.values().next()
     }
 
     /// Check if a provider is healthy (not circuit-broken).
@@ -156,12 +156,12 @@ impl ProviderRegistry {
         let preferred = preferred_provider.clone();
 
         let mut providers: Vec<(ProviderId, Arc<dyn Provider>)> = Vec::new();
-        if let Some(backend) = self.backends.get(&preferred) {
-            providers.push((preferred.clone(), backend.clone()));
+        if let Some(provider) = self.providers.get(&preferred) {
+            providers.push((preferred.clone(), provider.clone()));
         }
-        for (id, backend) in &self.backends {
+        for (id, provider) in &self.providers {
             if *id != preferred {
-                providers.push((id.clone(), backend.clone()));
+                providers.push((id.clone(), provider.clone()));
             }
         }
 
@@ -170,7 +170,7 @@ impl ProviderRegistry {
         tokio::spawn(async move {
             let mut tried: Vec<ProviderId> = Vec::new();
 
-            for (provider_id, backend) in providers {
+            for (provider_id, provider) in providers {
                 let is_healthy = {
                     if let Ok(h) = health.lock() {
                         if let Some(record) = h.get(&provider_id) {
@@ -203,7 +203,7 @@ impl ProviderRegistry {
                     )));
                 }
 
-                let mut stream_rx = backend.chat(
+                let mut stream_rx = provider.chat(
                     model.clone(),
                     messages.clone(),
                     max_tokens,
@@ -319,8 +319,8 @@ mod tests {
     fn registry_creates_backends_for_enabled_providers() {
         let providers = test_providers();
         let registry = ProviderRegistry::new(&providers);
-        assert!(registry.has_backend(&ProviderId::new("local")));
-        assert!(registry.has_backend(&ProviderId::new("kimi")));
+        assert!(registry.has_provider(&ProviderId::new("local")));
+        assert!(registry.has_provider(&ProviderId::new("kimi")));
     }
 
     #[test]
@@ -345,14 +345,14 @@ mod tests {
             extra_params: None,
         }];
         let registry = ProviderRegistry::new(&providers);
-        assert!(!registry.has_backend(&ProviderId::new("disabled")));
+        assert!(!registry.has_provider(&ProviderId::new("disabled")));
     }
 
     #[test]
-    fn default_backend_returns_first() {
+    fn default_provider_returns_first() {
         let providers = test_providers();
         let registry = ProviderRegistry::new(&providers);
-        assert!(registry.default_backend().is_some());
+        assert!(registry.default_provider().is_some());
     }
 
     #[test]
@@ -376,16 +376,16 @@ mod tests {
     fn select_provider_finds_preferred() {
         let providers = test_providers();
         let registry = ProviderRegistry::new(&providers);
-        let backend = registry.select_provider(Some("kimi"));
-        assert!(backend.is_some());
+        let provider = registry.select_provider(Some("kimi"));
+        assert!(provider.is_some());
     }
 
     #[test]
     fn select_provider_fallback_to_default() {
         let providers = test_providers();
         let registry = ProviderRegistry::new(&providers);
-        let backend = registry.select_provider(Some("unknown"));
-        assert!(backend.is_some());
+        let provider = registry.select_provider(Some("unknown"));
+        assert!(provider.is_some());
     }
 
     #[test]

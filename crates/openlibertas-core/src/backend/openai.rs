@@ -815,4 +815,158 @@ mod tests {
         assert!(!json.contains("max_tokens"));
         assert!(!json.contains("tools"));
     }
+
+    #[test]
+    fn openai_backend_construction_with_capabilities() {
+        let backend = OpenAiBackend::with_capabilities(
+            "http://localhost:8080/v1".to_string(),
+            crate::config::SecretString::new("sk-test".to_string()),
+            crate::capability::ProviderCapabilities {
+                tools: false,
+                streaming: true,
+                json_mode: false,
+                reasoning: false,
+                tool_format: crate::tool_format::ToolFormat::None,
+            },
+            None,
+        );
+        assert_eq!(backend.capabilities().tools, false);
+        assert_eq!(backend.capabilities().streaming, true);
+    }
+
+    #[tokio::test]
+    async fn openai_backend_fetch_models_hits_mock_server() {
+        // Spin up a tiny HTTP server that returns an OpenAI-compatible models response.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await.unwrap();
+            let response = r#"HTTP/1.1 200 OK
+Content-Length: 52
+
+{"data":[{"id":"mock-model"}]}"#;
+            let _ = socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let backend = OpenAiBackend::new(
+            format!("http://127.0.0.1:{}/v1", port),
+            crate::config::SecretString::new("sk-test".to_string()),
+        );
+
+        let models = backend.fetch_models().await.unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "mock-model");
+    }
+
+    #[tokio::test]
+    async fn openai_backend_fetch_models_ollama_fallback() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await.unwrap();
+            // The first request is to /v1/models which we reject with 404,
+            // then it falls back to /api/tags.
+            let request = String::from_utf8_lossy(&buf);
+            let response = if request.contains("/v1/models") {
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+            } else {
+                r#"HTTP/1.1 200 OK
+Content-Length: 48
+
+{"models":[{"name":"ollama-model"}]}"#
+            };
+            let _ = socket.write_all(response.as_bytes()).await.unwrap();
+
+            // Accept the second request on the same connection (HTTP/1.1 keep-alive).
+            let (mut socket2, _) = listener.accept().await.unwrap();
+            let mut buf2 = [0u8; 1024];
+            let _ = socket2.read(&mut buf2).await.unwrap();
+            let response2 = r#"HTTP/1.1 200 OK
+Content-Length: 48
+
+{"models":[{"name":"ollama-model"}]}"#;
+            let _ = socket2.write_all(response2.as_bytes()).await.unwrap();
+        });
+
+        let backend = OpenAiBackend::new(
+            format!("http://127.0.0.1:{}/v1", port),
+            crate::config::SecretString::new("sk-test".to_string()),
+        );
+
+        let models = backend.fetch_models().await.unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "ollama-model");
+    }
+
+    #[tokio::test]
+    async fn openai_backend_health_check_returns_ok_when_models_succeed() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await.unwrap();
+            let response = r#"HTTP/1.1 200 OK
+Content-Length: 28
+
+{"data":[{"id":"test"}]}"#;
+            let _ = socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let backend = OpenAiBackend::new(
+            format!("http://127.0.0.1:{}/v1", port),
+            crate::config::SecretString::new("sk-test".to_string()),
+        );
+
+        backend.health_check().await.unwrap();
+    }
+
+    #[test]
+    fn sse_chunk_parses_reasoning_content() {
+        let json = r#"{"choices":[{"delta":{"reasoning_content":"thinking"}}]}"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            chunk.choices[0].delta.reasoning_content,
+            Some("thinking".to_string())
+        );
+    }
+
+    #[test]
+    fn sse_chunk_parses_thinking_field() {
+        let json = r#"{"choices":[{"delta":{"thinking":"deep thought"}}]}"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            chunk.choices[0].delta.thinking,
+            Some("deep thought".to_string())
+        );
+    }
+
+    #[test]
+    fn sse_chunk_empty_content_is_ignored() {
+        let json = r#"{"choices":[{"delta":{"content":""}}]}"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices[0].delta.content, Some("".to_string()));
+    }
+
+    #[test]
+    fn ollama_chat_response_deserializes() {
+        let json = r#"{"message":{"content":"hello"},"done":false}"#;
+        let resp: OllamaChatResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.done);
+        assert_eq!(resp.message.unwrap().content, "hello");
+    }
+
+    #[test]
+    fn ollama_tool_call_deserializes() {
+        let json = r#"{"function":{"name":"search","arguments":{"q":"rust"}}}"#;
+        let tc: OllamaToolCall = serde_json::from_str(json).unwrap();
+        assert_eq!(tc.function.name, "search");
+    }
 }

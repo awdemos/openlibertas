@@ -9,7 +9,9 @@ A saved chat interaction between the user and an AI. Persisted to disk as JSON. 
 
 - **User commands:** `/save`, `/load`, `/sessions`, `/delete`
 - **UI text:** "Session saved", "Load session"
-- **Note:** The core struct `Conversation` will be renamed to `Session` in a future refactor. Until then, "session" is the canonical user-facing term; `Conversation` is the technical type.
+- **Technical type:** `Session` (renamed from `Conversation`)
+- **Store:** `SessionStore` (renamed from `ConversationStore`)
+- **Module paths:** Still use `crate::conversation` for backward compatibility
 
 ---
 
