@@ -20,7 +20,6 @@ pub struct InputDeviceInfo {
     pub sample_format: String,
 }
 
-/// List all available audio input devices.
 pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceError> {
     let host = cpal::default_host();
     let default_device = host.default_input_device();
@@ -89,7 +88,6 @@ pub fn list_input_devices() -> Result<Vec<InputDeviceInfo>, crate::voice::VoiceE
     Ok(devices)
 }
 
-/// Get the name of the default input device.
 pub fn default_input_device_name() -> Result<String, crate::voice::VoiceError> {
     let host = cpal::default_host();
     let name = host
@@ -115,7 +113,6 @@ pub struct AudioStats {
     pub is_silence: bool,
 }
 
-/// Compute audio statistics for a recording.
 pub fn compute_stats(samples: &[f32], sample_rate: u32, channels: u16) -> AudioStats {
     if samples.is_empty() {
         return AudioStats {
@@ -160,7 +157,6 @@ pub fn compute_stats(samples: &[f32], sample_rate: u32, channels: u16) -> AudioS
     }
 }
 
-/// Recording result containing audio data and format info.
 pub struct Recording {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
@@ -168,7 +164,6 @@ pub struct Recording {
 }
 
 impl Recording {
-    /// Duration of the recording in milliseconds.
     pub fn duration_ms(&self) -> u64 {
         if self.sample_rate == 0 || self.channels == 0 {
             return 0;
@@ -181,7 +176,6 @@ impl Recording {
         total_samples / samples_per_ms
     }
 
-    /// Maximum amplitude in the recording (0.0 to 1.0).
     pub fn max_amplitude(&self) -> f32 {
         self.samples
             .iter()
@@ -190,7 +184,6 @@ impl Recording {
     }
 }
 
-/// Records audio from the default input device.
 pub struct AudioRecorder {
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: u32,
@@ -229,7 +222,6 @@ impl AudioRecorder {
         self.channels
     }
 
-    /// Clear the internal buffer to ensure a fresh recording.
     pub fn clear_buffer(&mut self) {
         if let Ok(mut buf) = self.buffer.lock() {
             buf.clear();
@@ -351,7 +343,6 @@ impl AudioRecorder {
         Ok(stream)
     }
 
-    /// Stop recording and return the captured audio with format info.
     pub fn stop(&self) -> Result<Recording, crate::voice::VoiceError> {
         let samples = self
             .buffer
@@ -384,7 +375,6 @@ impl Default for AudioRecorder {
     }
 }
 
-/// Plays back audio from a byte buffer (MP3 or WAV).
 pub struct AudioPlayer {
     _stream: rodio::OutputStream,
     _stream_handle: rodio::OutputStreamHandle,
@@ -392,7 +382,6 @@ pub struct AudioPlayer {
 }
 
 impl AudioPlayer {
-    /// Create a new audio player with a shared output stream.
     pub fn new() -> Result<Self, crate::voice::VoiceError> {
         let (_stream, stream_handle) = rodio::OutputStream::try_default().map_err(|e| {
             error!("No audio output device: {}", e);
@@ -410,7 +399,6 @@ impl AudioPlayer {
         })
     }
 
-    /// Play audio bytes, replacing any currently playing audio.
     pub fn play(&self, audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
         let len = audio_bytes.len();
         self.sink.stop();
@@ -424,17 +412,14 @@ impl AudioPlayer {
         Ok(())
     }
 
-    /// Check if audio is currently playing.
     pub fn is_playing(&self) -> bool {
         !self.sink.empty()
     }
 
-    /// Stop current playback.
     pub fn stop(&self) {
         self.sink.stop();
     }
 
-    /// Play audio bytes and block until playback completes.
     pub fn play_blocking(audio_bytes: Vec<u8>) -> Result<(), crate::voice::VoiceError> {
         let player = Self::new()?;
         player.play(audio_bytes)?;
@@ -445,7 +430,6 @@ impl AudioPlayer {
     }
 }
 
-/// Check if audio is effectively silent (all samples near zero).
 pub fn is_silence(samples: &[f32], threshold: f32) -> bool {
     if samples.is_empty() {
         return true;
@@ -490,7 +474,6 @@ pub fn normalize_audio(samples: &mut [f32], target_peak: f32) {
     }
 }
 
-/// Encode a buffer of f32 PCM samples into WAV format bytes.
 pub fn encode_wav(recording: &Recording) -> Result<Vec<u8>, crate::voice::VoiceError> {
     let mut cursor = Cursor::new(Vec::new());
     let spec = hound::WavSpec {

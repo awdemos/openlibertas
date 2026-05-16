@@ -1,19 +1,11 @@
-/// Represents the current state of the voice chat system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceState {
-    /// Voice mode is disabled.
     Idle,
-    /// Voice mode is enabled, waiting for user input.
     Ready,
-    /// Actively recording audio from the microphone.
     Recording,
-    /// Sending recorded audio to STT service.
     ProcessingStt,
-    /// Sending LLM response text to TTS service.
     ProcessingTts,
-    /// Playing back TTS audio.
     Playing,
-    /// An error occurred in the voice pipeline.
     Error,
 }
 
