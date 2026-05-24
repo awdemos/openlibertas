@@ -34,6 +34,7 @@ use openlibertas_core::domain::{BackendEvent, Message, Model, ProviderId, Role, 
 use openlibertas_core::engine::{AgentMode, AgentModeStatus, ChatEngine};
 use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::runtime::Runtime;
+use openlibertas_core::session::SessionManager;
 use openlibertas_core::soul::{Agent, ChatAgent, UserInput};
 use openlibertas_core::state::State;
 use terminal::TerminalGuard;
@@ -57,10 +58,7 @@ fn spawn_voice_transcription(
     });
 }
 
-fn stop_voice_recording(
-    app: &mut App,
-    sender: tokio::sync::mpsc::UnboundedSender<Event>,
-) {
+fn stop_voice_recording(app: &mut App, sender: tokio::sync::mpsc::UnboundedSender<Event>) {
     app.voice_status = None;
     match app.voice.stop_recording() {
         Ok((generation, audio_bytes)) => {
@@ -114,11 +112,8 @@ impl Provider for RegistryBackend {
         } else {
             request
         };
-        self.registry.chat_with_fallback(
-            &self.preferred_provider,
-            request,
-            cancel_token,
-        )
+        self.registry
+            .chat_with_fallback(&self.preferred_provider, request, cancel_token)
     }
 
     fn fetch_models(
@@ -307,7 +302,7 @@ async fn main() -> Result<()> {
     let runtime = Runtime::new()?;
     let mut state = State::load();
     let mut app = App::new(runtime.config.as_ref().clone());
-    app.store = Some((*runtime.session_store).clone());
+    app.session_manager = Some(SessionManager::new((*runtime.session_store).clone()));
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -1205,7 +1200,8 @@ async fn main() -> Result<()> {
                     }
 
                     app.voice_status = None;
-                    app.voice.set_state(openlibertas_core::voice::VoiceState::Ready);
+                    app.voice
+                        .set_state(openlibertas_core::voice::VoiceState::Ready);
                     app.engine.input_mut().buffer = text.to_string();
                     app.engine.input_mut().cursor_pos = app.engine.input_mut().buffer.len();
                     app.engine.input_mut().selection_anchor = None;

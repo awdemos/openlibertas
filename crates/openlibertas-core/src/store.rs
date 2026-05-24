@@ -7,6 +7,8 @@ use crate::domain::Message;
 use crate::domain::Role;
 use crate::export::{self, ExportFormat};
 
+pub use crate::session::SessionManager;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Session {
@@ -92,11 +94,14 @@ impl SessionStore {
         }
         md.push_str(&format!("**Date:** {now}\n\n"));
         md.push_str("---\n\n");
-        md.push_str(&export::export_messages(messages, model, ExportFormat::Markdown));
+        md.push_str(&export::export_messages(
+            messages,
+            model,
+            ExportFormat::Markdown,
+        ));
 
         let path = self.data_dir.join(id);
-        fs::write(&path, md)
-            .with_context(|| format!("Failed to write markdown file: {path:?}"))?;
+        fs::write(&path, md).with_context(|| format!("Failed to write markdown file: {path:?}"))?;
         Ok(())
     }
 

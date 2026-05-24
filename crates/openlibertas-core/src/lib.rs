@@ -30,7 +30,9 @@ pub mod tool_format;
 pub mod voice;
 
 // Re-exports for backward compatibility — these moved from `tool_registry` to `agent_tools`.
-pub use agent_tools::{extract_key_argument, tool_needs_approval, MessageAssembler, ToolExecutor, ToolRegistry};
+pub use agent_tools::{
+    extract_key_argument, tool_needs_approval, MessageAssembler, ToolExecutor, ToolRegistry,
+};
 
 #[cfg(test)]
 pub mod test_utils;
@@ -42,4 +44,5 @@ pub use config::{Config, ProviderConfig, SecretString};
 pub use domain::{
     BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
 };
+pub use session::SessionManager;
 pub use tool_format::ToolFormat;

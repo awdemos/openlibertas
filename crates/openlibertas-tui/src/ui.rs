@@ -246,14 +246,20 @@ fn draw_models(frame: &mut Frame, app: &App) {
                     .fg(app.theme.primary())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Clear filter  ", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                " Clear filter  ",
+                Style::default().fg(app.theme.system_color()),
+            ),
             Span::styled(
                 "Backspace",
                 Style::default()
                     .fg(app.theme.secondary())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Delete char", Style::default().fg(app.theme.system_color())),
+            Span::styled(
+                " Delete char",
+                Style::default().fg(app.theme.system_color()),
+            ),
         ]
     };
     let help = Paragraph::new(Line::from(footer_spans))
@@ -321,7 +327,12 @@ fn draw_chat(frame: &mut Frame, app: &App) {
 fn draw_error_banner(frame: &mut Frame, app: &App, area: Rect) {
     if let Some((ref msg, _)) = app.error_banner {
         let banner = Paragraph::new(Line::from(vec![
-            Span::styled(" ✗ ", Style::default().fg(app.theme.error_color()).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " ✗ ",
+                Style::default()
+                    .fg(app.theme.error_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(msg.clone(), Style::default().fg(app.theme.error_color())),
         ]))
         .style(Style::default().bg(app.theme.panel_bg()))
@@ -427,11 +438,15 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         (String::new(), String::new())
     };
 
-    let branch_indicator = if app.current_session_parent_id.is_some() {
-        let parent_name = app
-            .current_session_parent_id
-            .as_deref()
-            .unwrap_or("unknown");
+    let ctx = app
+        .session_manager
+        .as_ref()
+        .map(|sm| sm.context())
+        .cloned()
+        .unwrap_or_default();
+
+    let branch_indicator = if ctx.parent_id.is_some() {
+        let parent_name = ctx.parent_id.as_deref().unwrap_or("unknown");
         let truncated = if parent_name.len() > 20 {
             format!("{}...", &parent_name[..17])
         } else {
@@ -442,11 +457,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
-    let branches_indicator = if app.current_session_has_branches {
-        " ⎇"
-    } else {
-        ""
-    };
+    let branches_indicator = if ctx.has_branches { " ⎇" } else { "" };
 
     let rlm_indicator = if app.rlm_mode { " [RLM]" } else { "" };
 
@@ -706,7 +717,11 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
                         ),
                     ]));
                 }
-                if app.current_session_branch_point == Some(msg_idx) {
+                let branch_point = app
+                    .session_manager
+                    .as_ref()
+                    .and_then(|sm| sm.context().branch_point);
+                if branch_point == Some(msg_idx) {
                     let sep = "─".repeat(viewport_width.min(80));
                     lines.push(Line::from(vec![Span::styled(
                         sep.clone(),
@@ -1172,10 +1187,8 @@ fn draw_tools_panel(frame: &mut Frame, app: &App) {
             .alignment(Alignment::Center);
         frame.render_widget(content, content_area);
     } else {
-        let tool_lines: Vec<Line> = app
-            .engine
-            .tools()
-            .available_tools()
+        let available_tools = app.engine.tools().available_tools();
+        let tool_lines: Vec<Line> = available_tools
             .iter()
             .flat_map(|tool| {
                 vec![

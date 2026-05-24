@@ -20,6 +20,7 @@ use openlibertas_core::env_context::EnvContext;
 use openlibertas_core::export::{self, ExportFormat};
 use openlibertas_core::prompt::PromptManager;
 use openlibertas_core::search;
+use openlibertas_core::session::SessionManager;
 use openlibertas_core::store::SessionStore;
 use openlibertas_core::voice::VoiceManager;
 use std::collections::HashMap;
@@ -76,7 +77,7 @@ pub struct App {
     pub models: ModelState,
     pub overlay: Overlay,
     pub(crate) search: SearchState,
-    pub store: Option<SessionStore>,
+    pub session_manager: Option<SessionManager>,
     pub(crate) engine: ChatEngine,
     prompt_manager: PromptManager,
     pub palette_commands: Vec<(String, String)>,
@@ -99,10 +100,6 @@ pub struct App {
     pub temperature: Option<f32>,
     pub session_selected: usize,
     pub session_search: String,
-    pub current_session_id: Option<String>,
-    pub current_session_parent_id: Option<String>,
-    pub current_session_branch_point: Option<usize>,
-    pub current_session_has_branches: bool,
     pub rlm_mode: bool,
     pub error_banner: Option<(String, Instant)>,
     pub mcp_selected_server: usize,
@@ -117,7 +114,9 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> Self {
-        let store = Config::data_dir().and_then(|d| SessionStore::new(d).ok());
+        let session_manager = Config::data_dir()
+            .and_then(|d| SessionStore::new(d).ok())
+            .map(SessionManager::new);
         let voice_api_key = config.elevenlabs_api_key.clone();
         let voice_id = config.elevenlabs_voice_id.clone();
         let voice_input_device = config.input_device.clone();
@@ -151,7 +150,7 @@ impl App {
                 index: 0,
                 active: false,
             },
-            store,
+            session_manager,
             engine: {
                 let mut engine = ChatEngine::new()
                     .with_context_window(context_window)
@@ -191,10 +190,6 @@ impl App {
             temperature: None,
             session_selected: 0,
             session_search: String::new(),
-            current_session_id: None,
-            current_session_parent_id: None,
-            current_session_branch_point: None,
-            current_session_has_branches: false,
             rlm_mode: false,
             error_banner: None,
             mcp_selected_server: 0,
@@ -218,17 +213,6 @@ impl App {
                 self.error_banner = None;
             }
         }
-    }
-
-    pub fn session_has_branches(&self) -> bool {
-        if let Some(ref id) = self.current_session_id {
-            if let Some(ref store) = self.store {
-                if let Ok(sessions) = store.list_with_meta() {
-                    return sessions.iter().any(|s| s.id == *id && !s.branches.is_empty());
-                }
-            }
-        }
-        false
     }
 
     pub fn voice_key_debounce(&self) -> bool {
@@ -272,7 +256,10 @@ impl App {
                     } else {
                         match openlibertas_core::commands::command_detailed_help(cmd_name) {
                             Some(help) => Some(help),
-                            None => Some(format!("No detailed help for '/{}'. Use /help to see all commands.", cmd_name)),
+                            None => Some(format!(
+                                "No detailed help for '/{}'. Use /help to see all commands.",
+                                cmd_name
+                            )),
                         }
                     }
                 } else {
@@ -347,9 +334,9 @@ impl App {
             }
             SlashCommand::Clear => {
                 self.engine.clear_messages();
-                self.current_session_id = None;
-                self.current_session_parent_id = None;
-                self.current_session_branch_point = None;
+                if let Some(ref mut sm) = self.session_manager {
+                    sm.clear();
+                }
                 Some("Session cleared".to_string())
             }
             SlashCommand::Quit => None,
@@ -510,23 +497,19 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 }
             }
             SlashCommand::Save(name) => {
-                if let Some(ref store) = self.store {
+                if let Some(ref mut sm) = self.session_manager {
                     let id = if name.is_empty() {
                         let model = self.models.current.as_deref().unwrap_or("unknown");
                         SessionStore::generate_name(model)
                     } else {
                         name
                     };
-                    match store.save(
+                    match sm.save_with_id(
                         &id,
-                        self.models.current.as_deref(),
                         &self.engine.chat().messages,
+                        self.models.current.as_deref(),
                     ) {
-                        Ok(_) => {
-                            self.current_session_id = Some(id.clone());
-                            self.current_session_has_branches = self.session_has_branches();
-                            Some(format!("Session '{}' saved", id))
-                        }
+                        Ok(_) => Some(format!("Session '{}' saved", id)),
                         Err(e) => Some(format!("Failed to save: {}", e)),
                     }
                 } else {
@@ -537,8 +520,8 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 if name.is_empty() {
                     self.overlay = Overlay::Sessions;
                     Some("Session manager opened".to_string())
-                } else if let Some(ref store) = self.store {
-                    match openlibertas_core::commands::load_session(store, &name) {
+                } else if let Some(ref mut sm) = self.session_manager {
+                    match sm.load(&name) {
                         Ok(session) => {
                             self.engine.chat_mut().messages = session.messages;
                             self.engine.chat_mut().scroll = 0;
@@ -551,10 +534,6 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                                     }
                                 }
                             }
-                            self.current_session_id = Some(name.clone());
-                            self.current_session_parent_id = session.parent_id;
-                            self.current_session_branch_point = session.branch_point;
-                            self.current_session_has_branches = self.session_has_branches();
                             Some(format!("Session '{}' loaded", name))
                         }
                         Err(e) => Some(format!("Failed to load: {}", e)),
@@ -579,8 +558,8 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 if name.is_empty() {
                     self.overlay = Overlay::Sessions;
                     Some("Session manager opened. Select a session to delete.".to_string())
-                } else if let Some(ref store) = self.store {
-                    match store.delete(&name) {
+                } else if let Some(ref mut sm) = self.session_manager {
+                    match sm.delete(&name) {
                         Ok(_) => Some(format!("Session '{}' deleted", name)),
                         Err(e) => Some(format!("Failed to delete: {}", e)),
                     }
@@ -608,8 +587,9 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                         ExportFormat::Markdown => "md",
                     };
                     let session_name = self
-                        .current_session_id
-                        .as_deref()
+                        .session_manager
+                        .as_ref()
+                        .and_then(|sm| sm.context().current_id.as_deref())
                         .unwrap_or("untitled");
                     let exports_dir = Config::data_dir()
                         .map(|d| d.join("exports"))
@@ -667,9 +647,9 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 self.engine.input_mut().buffer.clear();
                 self.engine.tool_executor_mut().clear_pending_tool_calls();
                 self.engine.tool_executor_mut().clear_tool_results();
-                self.current_session_id = None;
-                self.current_session_parent_id = None;
-                self.current_session_branch_point = None;
+                if let Some(ref mut sm) = self.session_manager {
+                    sm.clear();
+                }
                 let loaded = self.load_context_files();
                 if loaded.is_empty() {
                     Some("New session started".to_string())
@@ -700,56 +680,14 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 }
             }
             SlashCommand::Branch(msg_idx) => {
-                if let Some(ref store) = self.store {
-                    let mut parent_id = self.current_session_id.clone().unwrap_or_default();
-                    if parent_id.is_empty() {
-                        let model = self.models.current.as_deref().unwrap_or("unknown");
-                        let auto_id = SessionStore::generate_name(model);
-                        if let Err(e) = store.save(
-                            &auto_id,
-                            self.models.current.as_deref(),
-                            &self.engine.chat().messages,
-                        ) {
-                            return Some(format!("Failed to auto-save before branch: {}", e));
-                        }
-                        self.current_session_id = Some(auto_id.clone());
-                        parent_id = auto_id;
-                    }
-
+                if let Some(ref mut sm) = self.session_manager {
                     let messages = self.engine.chat().messages.clone();
-                    let branch_point = msg_idx.unwrap_or_else(|| messages.len().saturating_sub(1));
-
-                    if branch_point >= messages.len() {
-                        return Some(format!(
-                            "Invalid branch point. There are {} messages (0..{})",
-                            messages.len(),
-                            messages.len().saturating_sub(1)
-                        ));
-                    }
-
-                    let branch_messages: Vec<_> = messages[..=branch_point].to_vec();
-                    let model = self.models.current.as_deref().unwrap_or("unknown");
-                    let branch_id = format!("{}-branch", SessionStore::generate_name(model));
-
-                    match store.save_branch(
-                        &branch_id,
-                        self.models.current.as_deref(),
-                        &branch_messages,
-                        Some(&parent_id),
-                        Some(branch_point),
-                    ) {
-                        Ok(_) => {
-                            if let Err(e) = store.add_branch(&parent_id, &branch_id) {
-                                return Some(format!(
-                                    "Branch created but failed to update parent: {}",
-                                    e
-                                ));
-                            }
-                            self.engine.chat_mut().messages = branch_messages;
+                    match sm.branch(&messages, msg_idx, self.models.current.as_deref()) {
+                        Ok(branch_id) => {
+                            let branch_point = sm.context().branch_point.unwrap_or(0);
+                            let parent_id = sm.context().parent_id.clone().unwrap_or_default();
+                            self.engine.chat_mut().messages = messages[..=branch_point].to_vec();
                             self.engine.chat_mut().scroll = 0;
-                            self.current_session_id = Some(branch_id.clone());
-                            self.current_session_parent_id = Some(parent_id.clone());
-                            self.current_session_branch_point = Some(branch_point);
                             Some(format!(
                                 "Created branch '{}' from message {}. Parent: '{}'",
                                 branch_id, branch_point, parent_id
@@ -826,12 +764,22 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                 if provider.is_empty() || key.is_empty() {
                     Some("Usage: /set-key <provider> <key>".to_string())
                 } else {
-                    match openlibertas_core::credentials::CredentialManager::set_api_key(&provider, &key) {
+                    match openlibertas_core::credentials::CredentialManager::set_api_key(
+                        &provider, &key,
+                    ) {
                         Ok(()) => {
-                            if let Some(p) = self.config.providers.iter_mut().find(|p| p.name == provider) {
+                            if let Some(p) = self
+                                .config
+                                .providers
+                                .iter_mut()
+                                .find(|p| p.name == provider)
+                            {
                                 p.api_key = openlibertas_core::config::SecretString::new(key);
                             }
-                            Some(format!("API key stored in keyring for provider '{}'", provider))
+                            Some(format!(
+                                "API key stored in keyring for provider '{}'",
+                                provider
+                            ))
                         }
                         Err(e) => Some(format!("Failed to store API key: {}", e)),
                     }
@@ -895,7 +843,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
         if !self.config.auto_save {
             return None;
         }
-        if let Some(ref store) = self.store {
+        if let Some(ref mut sm) = self.session_manager {
             let model = self.models.current.as_deref().unwrap_or("unknown");
             let id = format!(
                 "autosave-{}",
@@ -903,15 +851,12 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
                     .replace("--", "-")
             );
-            match store.save(
+            match sm.save_with_id(
                 &id,
-                self.models.current.as_deref(),
                 &self.engine.chat().messages,
+                self.models.current.as_deref(),
             ) {
-                Ok(_) => {
-                    self.current_session_id = Some(id);
-                    None
-                }
+                Ok(_) => None,
                 Err(e) => Some(format!("Auto-save failed: {}", e)),
             }
         } else {
@@ -1198,7 +1143,7 @@ available tools to refine and polish your work."
 
     pub fn filtered_sessions(&self) -> Vec<openlibertas_core::store::SessionMeta> {
         let all = self
-            .store
+            .session_manager
             .as_ref()
             .and_then(|s| s.list_with_meta().ok())
             .unwrap_or_default();
@@ -1236,8 +1181,8 @@ available tools to refine and polish your work."
         let selected = sessions.get(self.session_selected)?;
         let id = selected.id.clone();
 
-        if let Some(ref store) = self.store {
-            match openlibertas_core::commands::load_session(store, &id) {
+        if let Some(ref mut sm) = self.session_manager {
+            match sm.load(&id) {
                 Ok(session) => {
                     self.engine.chat_mut().messages = session.messages;
                     self.engine.chat_mut().scroll = 0;
@@ -1250,10 +1195,6 @@ available tools to refine and polish your work."
                             }
                         }
                     }
-                    self.current_session_id = Some(id.clone());
-                    self.current_session_parent_id = session.parent_id;
-                    self.current_session_branch_point = session.branch_point;
-                    self.current_session_has_branches = self.session_has_branches();
                     self.overlay = Overlay::None;
                     self.session_search.clear();
                     self.session_selected = 0;
@@ -1271,8 +1212,8 @@ available tools to refine and polish your work."
         let selected = sessions.get(self.session_selected)?;
         let id = selected.id.clone();
 
-        if let Some(ref store) = self.store {
-            match store.delete(&id) {
+        if let Some(ref mut sm) = self.session_manager {
+            match sm.delete(&id) {
                 Ok(_) => {
                     if self.session_selected > 0
                         && self.session_selected >= sessions.len().saturating_sub(1)
