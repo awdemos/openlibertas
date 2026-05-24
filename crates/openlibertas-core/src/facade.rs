@@ -146,9 +146,7 @@ impl AppFacade {
 
     pub fn set_provider(&mut self, provider: impl Into<ProviderId>) {
         let provider = provider.into();
-        let prompt = self
-            .prompt_manager
-            .get_prompt(provider.as_str());
+        let prompt = self.prompt_manager.get_prompt(provider.as_str());
         self.engine.set_system_prompt(prompt.to_string());
         let tool_format = self
             .config

@@ -1,8 +1,8 @@
 use crate::agent_tools::ToolExecutor;
+use crate::agent_tools::ToolRegistry;
 use crate::domain::{now_timestamp, FunctionCall, Message, Role, ToolCall};
 use crate::session::parse_file_context;
 use crate::tool_format::ToolFormat;
-use crate::agent_tools::ToolRegistry;
 use tracing::info;
 
 use super::ChatEngine;
@@ -33,7 +33,10 @@ impl ChatEngine {
         } else {
             self.tool_registry.tool_instructions(self.tool_format)
         };
-        let env_section = self.env_context.as_ref().map(super::super::env_context::EnvContext::to_prompt_section);
+        let env_section = self
+            .env_context
+            .as_ref()
+            .map(super::super::env_context::EnvContext::to_prompt_section);
 
         if let Some(prompt) = &self.system_prompt {
             let mut full_prompt = if let Some(tool_text) = &tool_instructions {

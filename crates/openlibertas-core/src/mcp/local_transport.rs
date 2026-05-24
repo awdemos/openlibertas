@@ -49,12 +49,14 @@ impl McpTransport for LocalTransport {
                 McpTransportError::RequestFailed(format!("Failed to spawn MCP server: {e}"))
             })?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            McpTransportError::NotConnected("Failed to get stdin".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            McpTransportError::NotConnected("Failed to get stdout".to_string())
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| McpTransportError::NotConnected("Failed to get stdin".to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| McpTransportError::NotConnected("Failed to get stdout".to_string()))?;
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -114,9 +116,9 @@ impl McpTransport for LocalTransport {
     ) -> Result<ToolResult, McpTransportError> {
         let mut stdin_lock = self.stdin.lock().await;
         let mut stdout_lock = self.stdout.lock().await;
-        let stdin = stdin_lock.as_mut().ok_or_else(|| {
-            McpTransportError::NotConnected("MCP server not running".to_string())
-        })?;
+        let stdin = stdin_lock
+            .as_mut()
+            .ok_or_else(|| McpTransportError::NotConnected("MCP server not running".to_string()))?;
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -140,9 +142,9 @@ impl McpTransport for LocalTransport {
             .await
             .map_err(|e| McpTransportError::RequestFailed(e.to_string()))?;
 
-        let stdout = stdout_lock.as_mut().ok_or_else(|| {
-            McpTransportError::NotConnected("Failed to get stdout".to_string())
-        })?;
+        let stdout = stdout_lock
+            .as_mut()
+            .ok_or_else(|| McpTransportError::NotConnected("Failed to get stdout".to_string()))?;
         let reader = BufReader::new(stdout);
         let mut lines = AsyncBufReadExt::lines(reader);
 

@@ -1,6 +1,6 @@
 use crate::commands::{find_model, get_model_suggestions, SlashCommand};
 use crate::config::Config;
-use crate::domain::{BackendError, Message, Model, ProviderId, Role};
+use crate::domain::{Message, Model, ProviderId, Role};
 use crate::engine::{AgentMode, AgentModeStatus, ChatEngine};
 use crate::export::{self, ExportFormat};
 use crate::prompt::PromptManager;
@@ -92,24 +92,6 @@ impl<'a> CommandExecutor<'a> {
                 *self.temperature = Some(temp);
                 CommandResult::Message(format!("Temperature set to: {}", temp))
             }
-            SlashCommand::SetKey(provider, key) => self.cmd_set_key(provider, key),
-            SlashCommand::Mouse => {
-                *self.mouse_enabled = !*self.mouse_enabled;
-                if *self.mouse_enabled {
-                    CommandResult::Message(
-                        "Mouse capture enabled — wheel scroll, click to focus, right-click to copy. Native text selection disabled. Disable with /mouse.".to_string(),
-                    )
-                } else {
-                    CommandResult::Message(
-                        "Mouse capture disabled — native terminal text selection and copy work. Enable with /mouse for wheel scrolling and clicking.".to_string(),
-                    )
-                }
-            }
-            SlashCommand::Unknown(cmd) => {
-                CommandResult::Error(format!("Unknown command: {}", cmd))
-            }
-        }
-    }
             SlashCommand::SetKey(provider, key) => self.cmd_set_key(provider, key),
             SlashCommand::Mouse => {
                 *self.mouse_enabled = !*self.mouse_enabled;

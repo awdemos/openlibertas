@@ -260,10 +260,8 @@ impl Config {
         }
 
         for provider in &mut config.providers {
-            let resolved = CredentialManager::get_api_key(
-                provider.api_key.expose_secret(),
-                &provider.name,
-            );
+            let resolved =
+                CredentialManager::get_api_key(provider.api_key.expose_secret(), &provider.name);
             provider.api_key = SecretString::new(resolved);
         }
 

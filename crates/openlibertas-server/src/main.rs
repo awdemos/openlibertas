@@ -37,8 +37,6 @@ struct ApiResponse<T> {
     error: Option<String>,
 }
 
-
-
 #[derive(Deserialize)]
 struct ChatRequest {
     message: String,
@@ -232,10 +230,7 @@ async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
     }
     .to_string();
 
-    ok(HealthResponse {
-        status,
-        providers,
-    })
+    ok(HealthResponse { status, providers })
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,7 +1142,12 @@ mod tests {
     async fn health_check_returns_ok() {
         let app = test_router();
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -1157,7 +1157,12 @@ mod tests {
     async fn health_check_returns_provider_status() {
         let app = test_router();
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -1173,7 +1178,12 @@ mod tests {
     async fn models_endpoint_returns_list() {
         let app = test_router();
         let response = app
-            .oneshot(Request::builder().uri("/v1/models").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -1189,7 +1199,12 @@ mod tests {
     async fn api_status_returns_running() {
         let app = test_router();
         let response = app
-            .oneshot(Request::builder().uri("/api/status").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -1199,7 +1214,12 @@ mod tests {
     async fn api_history_returns_empty() {
         let app = test_router();
         let response = app
-            .oneshot(Request::builder().uri("/api/history").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/history")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -1252,7 +1272,12 @@ mod tests {
             .with_state(state);
 
         let response = app
-            .oneshot(Request::builder().uri("/api/status").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

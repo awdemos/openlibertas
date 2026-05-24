@@ -111,8 +111,8 @@ pub fn grep(args: Value) -> Result<String> {
     let output_mode = args.output_mode.as_deref().unwrap_or("content");
     let head_limit = args.head_limit.unwrap_or(250);
 
-    let regex = regex::Regex::new(&pattern)
-        .with_context(|| format!("Invalid regex pattern: {pattern}"))?;
+    let regex =
+        regex::Regex::new(&pattern).with_context(|| format!("Invalid regex pattern: {pattern}"))?;
 
     let mut results = Vec::new();
     let base_path = Path::new(base);

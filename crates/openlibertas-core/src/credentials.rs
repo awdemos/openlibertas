@@ -50,7 +50,10 @@ impl CredentialManager {
                 }
                 Err(keyring::Error::NoEntry) => None,
                 Err(e) => {
-                    warn!("Keyring lookup failed for provider '{}': {}", provider_name, e);
+                    warn!(
+                        "Keyring lookup failed for provider '{}': {}",
+                        provider_name, e
+                    );
                     None
                 }
             },
@@ -66,7 +69,10 @@ impl CredentialManager {
 }
 
 fn resolve_env_value(value: &str) -> Option<String> {
-    if let Some(inner) = value.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
+    if let Some(inner) = value
+        .strip_prefix("{env:")
+        .and_then(|s| s.strip_suffix('}'))
+    {
         let var_name = inner.trim();
         if var_name.is_empty() {
             warn!("Empty environment variable name in '{}'", value);
@@ -94,7 +100,8 @@ mod tests {
     #[test]
     fn get_api_key_resolves_env_var() {
         std::env::set_var("OPENLIBERTAS_CRED_TEST", "sk-from-env");
-        let result = CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_TEST}", "test-provider");
+        let result =
+            CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_TEST}", "test-provider");
         assert_eq!(result, "sk-from-env");
         std::env::remove_var("OPENLIBERTAS_CRED_TEST");
     }
@@ -108,7 +115,8 @@ mod tests {
     #[test]
     fn get_api_key_returns_empty_on_unresolved_env_ref() {
         std::env::remove_var("OPENLIBERTAS_CRED_MISSING");
-        let result = CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_MISSING}", "test-provider");
+        let result =
+            CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_MISSING}", "test-provider");
         assert_eq!(result, "");
     }
 
@@ -121,7 +129,8 @@ mod tests {
     #[test]
     fn get_api_key_env_takes_priority_over_keyring_and_plaintext() {
         std::env::set_var("OPENLIBERTAS_CRED_PRIORITY", "sk-env-wins");
-        let result = CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_PRIORITY}", "test-provider");
+        let result =
+            CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_PRIORITY}", "test-provider");
         assert_eq!(result, "sk-env-wins");
         std::env::remove_var("OPENLIBERTAS_CRED_PRIORITY");
     }
@@ -188,7 +197,8 @@ mod tests {
         CredentialManager::set_api_key(provider, keyring_key).expect("Failed to set API key");
         std::env::set_var("OPENLIBERTAS_CRED_ENV_PRIORITY", "sk-env-wins");
 
-        let result = CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_ENV_PRIORITY}", provider);
+        let result =
+            CredentialManager::get_api_key("{env:OPENLIBERTAS_CRED_ENV_PRIORITY}", provider);
         assert_eq!(result, "sk-env-wins");
 
         std::env::remove_var("OPENLIBERTAS_CRED_ENV_PRIORITY");

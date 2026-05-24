@@ -238,7 +238,10 @@ impl CompletionEngine {
     /// Uses `git ls-files` if inside a git repo, otherwise walks the directory.
     /// Results are cached for 2 seconds.
     fn list_files(&self) -> Vec<String> {
-        let mut cache = self.file_cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut cache = self
+            .file_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())

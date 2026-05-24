@@ -177,10 +177,7 @@ impl Recording {
     }
 
     pub fn max_amplitude(&self) -> f32 {
-        self.samples
-            .iter()
-            .map(|s| s.abs())
-            .fold(0.0f32, f32::max)
+        self.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max)
     }
 }
 
@@ -433,10 +430,7 @@ pub fn is_silence(samples: &[f32], threshold: f32) -> bool {
     if samples.is_empty() {
         return true;
     }
-    let max_amplitude = samples
-        .iter()
-        .map(|s| s.abs())
-        .fold(0.0f32, f32::max);
+    let max_amplitude = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
     max_amplitude < threshold
 }
 
@@ -461,10 +455,7 @@ pub fn normalize_audio(samples: &mut [f32], target_peak: f32) {
     if samples.is_empty() || target_peak <= 0.0 {
         return;
     }
-    let max_amp = samples
-        .iter()
-        .map(|s| s.abs())
-        .fold(0.0f32, f32::max);
+    let max_amp = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
     if max_amp > 0.0 && max_amp < target_peak {
         let gain = target_peak / max_amp;
         for sample in samples.iter_mut() {

@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 /// Validates that `value` is in the `allowed` list (case-insensitive).
 /// Returns an error with `error_template` if not found.
@@ -16,9 +16,9 @@ pub fn forbidden(value: &str, patterns: &[&str], error_template: &str) -> Result
     let normalized = value.trim().to_lowercase();
     for pattern in patterns {
         if normalized.contains(pattern) {
-            return Err(anyhow!(
-                error_template.replace("{pattern}", pattern).replace("{value}", value)
-            ));
+            return Err(anyhow!(error_template
+                .replace("{pattern}", pattern)
+                .replace("{value}", value)));
         }
     }
     Ok(())
