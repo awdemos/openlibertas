@@ -19,6 +19,7 @@ mod avatar;
 mod event;
 mod layout;
 mod markdown;
+mod panels;
 mod terminal;
 mod theme;
 mod ui;
