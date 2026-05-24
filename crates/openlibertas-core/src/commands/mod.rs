@@ -368,7 +368,11 @@ pub fn get_model_suggestions(models: &[Model], query: &str) -> Vec<String> {
 
 /// Detailed help for a specific command
 pub fn command_detailed_help(cmd: &str) -> Option<String> {
-    let cmd = if cmd.starts_with('/') { cmd } else { &format!("/{cmd}") };
+    let cmd = if cmd.starts_with('/') {
+        cmd
+    } else {
+        &format!("/{cmd}")
+    };
     let desc = command_description(cmd);
     if desc.is_empty() {
         return None;
@@ -407,7 +411,13 @@ pub fn command_detailed_help(cmd: &str) -> Option<String> {
         "/avatar-menu" => "Usage: /avatar-menu\nOpen avatar configuration menu.",
         _ => "",
     };
-    Some(format!("{}\n\n{}\n\n{}\n\nCategory: {}", cmd, desc, usage, command_category(cmd)))
+    Some(format!(
+        "{}\n\n{}\n\n{}\n\nCategory: {}",
+        cmd,
+        desc,
+        usage,
+        command_category(cmd)
+    ))
 }
 
 /// Build the help message with categorized commands
@@ -417,7 +427,10 @@ pub fn build_help_message() -> String {
 
     let categories = [
         ("Info", &["/help"][..]),
-        ("Config", &["/model", "/avatar", "/theme", "/temp", "/set-key"][..]),
+        (
+            "Config",
+            &["/model", "/avatar", "/theme", "/temp", "/set-key"][..],
+        ),
         (
             "Session",
             &[
@@ -477,6 +490,8 @@ pub fn load_session(store: &SessionStore, name: &str) -> anyhow::Result<LoadedSe
         branch_point: session.branch_point,
     })
 }
+
+pub mod executor;
 
 #[cfg(test)]
 mod tests {
@@ -718,7 +733,10 @@ mod tests {
     #[test]
     fn parse_export_command_with_path() {
         let cmd = SlashCommand::parse("/export /path/to/chat.md");
-        assert_eq!(cmd, Some(SlashCommand::Export("/path/to/chat.md".to_string())));
+        assert_eq!(
+            cmd,
+            Some(SlashCommand::Export("/path/to/chat.md".to_string()))
+        );
     }
 
     #[test]
