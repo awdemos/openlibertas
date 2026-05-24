@@ -1,28 +1,66 @@
 use crate::agent_tools;
+use crate::agent_tools::backend::{ApprovalPolicy, ToolBackend, ToolBackendError};
 use crate::domain::{now_timestamp, Message, Role, ToolCall, ToolExecutionResult};
 use crate::mcp::McpClient;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-#[derive(Debug, Default)]
 pub struct ToolExecutor {
-    client: Option<Arc<McpClient>>,
+    backends: Vec<Box<dyn ToolBackend>>,
     pending_tool_calls: Vec<ToolCall>,
     tool_results: Vec<String>,
 }
 
+impl Default for ToolExecutor {
+    fn default() -> Self {
+        Self {
+            backends: vec![Box::new(
+                crate::agent_tools::builtin_backend::BuiltinBackend::new(),
+            )],
+            pending_tool_calls: Vec::new(),
+            tool_results: Vec::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ToolExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolExecutor")
+            .field("backends", &self.backends.len())
+            .field("pending_tool_calls", &self.pending_tool_calls)
+            .field("tool_results", &self.tool_results)
+            .finish()
+    }
+}
+
 impl ToolExecutor {
+    pub fn add_backend(&mut self, backend: Box<dyn ToolBackend>) {
+        self.backends.push(backend);
+    }
+
     pub fn with_client(mut self, client: McpClient) -> Self {
-        self.client = Some(Arc::new(client));
+        self.add_backend(Box::new(crate::agent_tools::mcp_backend::McpBackend::new(
+            Arc::new(client),
+        )));
         self
     }
 
     pub fn client(&self) -> Option<Arc<McpClient>> {
-        self.client.clone()
+        for backend in &self.backends {
+            if let Some(client) = backend.mcp_client() {
+                return Some(client);
+            }
+        }
+        None
     }
 
     pub fn set_client(&mut self, client: Option<Arc<McpClient>>) {
-        self.client = client;
+        self.backends.retain(|b| b.mcp_client().is_none());
+        if let Some(client) = client {
+            self.add_backend(Box::new(crate::agent_tools::mcp_backend::McpBackend::new(
+                client,
+            )));
+        }
     }
 
     pub fn pending_tool_calls(&self) -> &[ToolCall] {
@@ -65,6 +103,8 @@ impl ToolExecutor {
             yolo_mode
         );
 
+        let policy = ApprovalPolicy::new(yolo_mode);
+
         for tool_call in &self.pending_tool_calls {
             info!(
                 "Tool call: {}({})",
@@ -72,11 +112,11 @@ impl ToolExecutor {
             );
             let key_arg =
                 extract_key_argument(&tool_call.function.name, &tool_call.function.arguments);
+            let is_builtin = agent_tools::is_builtin(&tool_call.function.name);
+            let is_destructive = tool_needs_approval(&tool_call.function.name);
+            let requires_approval = !is_builtin || is_destructive;
 
-            if !yolo_mode
-                && (!agent_tools::is_builtin(&tool_call.function.name)
-                    || tool_needs_approval(&tool_call.function.name))
-            {
+            if policy.needs_approval(&tool_call.function.name, requires_approval) {
                 results.push(ToolExecutionResult::Skipped {
                     tool_name: tool_call.function.name.clone(),
                     reason: format!(
@@ -87,69 +127,58 @@ impl ToolExecutor {
                 continue;
             }
 
-            let result =
+            let args =
                 match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
-                    Ok(args) => {
-                        if agent_tools::is_builtin(&tool_call.function.name) {
-                            let tool_name = tool_call.function.name.clone();
-                            let key_arg = key_arg.clone();
-                            let builtin_result = tokio::task::spawn_blocking(move || {
-                                agent_tools::execute_builtin(&tool_name, args)
-                            })
-                            .await;
-                            match builtin_result {
-                                Ok(Ok(output)) => ToolExecutionResult::Success {
-                                    tool_name: tool_call.function.name.clone(),
-                                    key_arg,
-                                    output,
-                                },
-                                Ok(Err(e)) => ToolExecutionResult::Error {
-                                    tool_name: tool_call.function.name.clone(),
-                                    key_arg,
-                                    error: e.to_string(),
-                                },
-                                Err(e) => ToolExecutionResult::Error {
-                                    tool_name: tool_call.function.name.clone(),
-                                    key_arg,
-                                    error: format!("Tool execution panicked: {e}"),
-                                },
-                            }
-                        } else if let Some(client) = &self.client {
-                            match client.call_tool(&tool_call.function.name, args).await {
-                                Ok(output) => {
-                                    let text = output
-                                        .content
-                                        .into_iter()
-                                        .map(|c| c.text)
-                                        .collect::<Vec<_>>()
-                                        .join("\n");
-                                    ToolExecutionResult::Success {
-                                        tool_name: tool_call.function.name.clone(),
-                                        key_arg: key_arg.clone(),
-                                        output: text,
-                                    }
-                                }
-                                Err(e) => ToolExecutionResult::Error {
-                                    tool_name: tool_call.function.name.clone(),
-                                    key_arg: key_arg.clone(),
-                                    error: e.to_string(),
-                                },
-                            }
-                        } else {
-                            ToolExecutionResult::Error {
+                    Ok(args) => args,
+                    Err(e) => {
+                        results.push(ToolExecutionResult::Error {
+                            tool_name: tool_call.function.name.clone(),
+                            key_arg,
+                            error: format!("Parse error: {e}"),
+                        });
+                        continue;
+                    }
+                };
+
+            let mut executed = false;
+            for backend in &self.backends {
+                if backend.can_execute(&tool_call.function.name) {
+                    match backend
+                        .execute(&tool_call.function.name, args.clone())
+                        .await
+                    {
+                        Ok(output) => {
+                            results.push(ToolExecutionResult::Success {
                                 tool_name: tool_call.function.name.clone(),
                                 key_arg: key_arg.clone(),
-                                error: "MCP client not available".to_string(),
-                            }
+                                output,
+                            });
+                        }
+                        Err(ToolBackendError::NotFound(_)) => continue,
+                        Err(e) => {
+                            results.push(ToolExecutionResult::Error {
+                                tool_name: tool_call.function.name.clone(),
+                                key_arg: key_arg.clone(),
+                                error: e.to_string(),
+                            });
                         }
                     }
-                    Err(e) => ToolExecutionResult::Error {
-                        tool_name: tool_call.function.name.clone(),
-                        key_arg: key_arg.clone(),
-                        error: format!("Parse error: {e}"),
-                    },
-                };
-            match &result {
+                    executed = true;
+                    break;
+                }
+            }
+
+            if !executed {
+                results.push(ToolExecutionResult::Error {
+                    tool_name: tool_call.function.name.clone(),
+                    key_arg,
+                    error: "No backend found for tool".to_string(),
+                });
+            }
+        }
+
+        for result in &results {
+            match result {
                 ToolExecutionResult::Success {
                     tool_name, output, ..
                 } => {
@@ -171,10 +200,12 @@ impl ToolExecutor {
                     info!("Tool {} skipped: {}", tool_name, reason);
                 }
             }
-            results.push(result);
         }
 
-        self.tool_results = results.iter().map(super::super::domain::ToolExecutionResult::content_for_message).collect();
+        self.tool_results = results
+            .iter()
+            .map(super::super::domain::ToolExecutionResult::content_for_message)
+            .collect();
         results
     }
 
@@ -253,6 +284,48 @@ pub fn extract_key_argument(tool_name: &str, arguments: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_tools::backend::ToolBackend;
+    use crate::domain::{FunctionDefinition, ToolDefinition};
+    use async_trait::async_trait;
+    use serde_json::Value;
+
+    #[derive(Debug)]
+    struct MockBackend {
+        tools: Vec<String>,
+    }
+
+    #[async_trait]
+    impl ToolBackend for MockBackend {
+        fn can_execute(&self, tool_name: &str) -> bool {
+            self.tools.contains(&tool_name.to_string())
+        }
+
+        async fn execute(
+            &self,
+            _tool_name: &str,
+            _args: Value,
+        ) -> Result<String, ToolBackendError> {
+            Ok("mock result".to_string())
+        }
+
+        fn tool_definitions(&self) -> Vec<ToolDefinition> {
+            self.tools
+                .iter()
+                .map(|name| ToolDefinition {
+                    tool_type: "function".to_string(),
+                    function: FunctionDefinition {
+                        name: name.clone(),
+                        description: "mock".to_string(),
+                        parameters: serde_json::json!({}),
+                    },
+                })
+                .collect()
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
 
     #[test]
     fn tool_needs_approval_detects_destructive() {
@@ -323,5 +396,44 @@ mod tests {
         assert!(tool_needs_approval("Delete_File"));
         assert!(!tool_needs_approval("read_file"));
         assert!(!tool_needs_approval("search"));
+    }
+
+    #[tokio::test]
+    async fn mock_backend_executes_tool() {
+        let mut executor = ToolExecutor::default();
+        executor.add_backend(Box::new(MockBackend {
+            tools: vec!["mock_tool".to_string()],
+        }));
+        executor.add_tool_call(ToolCall {
+            id: "t1".to_string(),
+            call_type: "function".to_string(),
+            function: crate::domain::FunctionCall {
+                name: "mock_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        });
+        let results = executor.execute_pending_tools(true).await;
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0], ToolExecutionResult::Success { ref output, .. } if output == "mock result")
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_returns_error() {
+        let mut executor = ToolExecutor::default();
+        executor.add_tool_call(ToolCall {
+            id: "t1".to_string(),
+            call_type: "function".to_string(),
+            function: crate::domain::FunctionCall {
+                name: "unknown_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        });
+        let results = executor.execute_pending_tools(true).await;
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0], ToolExecutionResult::Error { ref error, .. } if error == "No backend found for tool")
+        );
     }
 }

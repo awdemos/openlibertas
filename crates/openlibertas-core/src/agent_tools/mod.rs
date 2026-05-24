@@ -1,8 +1,11 @@
 pub mod agent;
 pub mod assembler;
+pub mod backend;
+pub mod builtin_backend;
 pub mod executor;
 pub mod filesystem;
 pub mod git;
+pub mod mcp_backend;
 pub mod meta;
 pub mod registry;
 pub mod rlm;

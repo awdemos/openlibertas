@@ -1,26 +1,33 @@
 use crate::agent_tools;
+use crate::agent_tools::backend::ToolBackend;
 use crate::domain::ToolDefinition;
 use crate::mcp::{McpClient, McpServerDiagnostics, McpTool};
 use crate::tool_format::ToolFormat;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug)]
 pub struct ToolRegistry {
-    client: Option<Arc<McpClient>>,
-    available_tools: Vec<McpTool>,
-    builtin_tools: Vec<agent_tools::BuiltinTool>,
+    backends: Vec<Box<dyn ToolBackend>>,
     server_statuses: HashMap<String, crate::domain::McpServerStatus>,
     diagnostics: HashMap<String, McpServerDiagnostics>,
     tool_server_map: HashMap<String, String>,
 }
 
+impl std::fmt::Debug for ToolRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolRegistry")
+            .field("backends", &self.backends.len())
+            .field("server_statuses", &self.server_statuses)
+            .field("diagnostics", &self.diagnostics)
+            .field("tool_server_map", &self.tool_server_map)
+            .finish()
+    }
+}
+
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self {
-            client: None,
-            available_tools: Vec::new(),
-            builtin_tools: agent_tools::builtin_tools(),
+            backends: vec![Box::new(agent_tools::builtin_backend::BuiltinBackend::new())],
             server_statuses: HashMap::new(),
             diagnostics: HashMap::new(),
             tool_server_map: HashMap::new(),
@@ -30,28 +37,54 @@ impl Default for ToolRegistry {
 
 impl ToolRegistry {
     pub fn with_client(mut self, client: McpClient) -> Self {
-        self.client = Some(Arc::new(client));
+        self.add_backend(Box::new(agent_tools::mcp_backend::McpBackend::new(
+            Arc::new(client),
+        )));
         self
     }
 
     pub fn client(&self) -> Option<Arc<McpClient>> {
-        self.client.clone()
+        for backend in &self.backends {
+            if let Some(client) = backend.mcp_client() {
+                return Some(client);
+            }
+        }
+        None
     }
 
     pub fn set_client(&mut self, client: Option<Arc<McpClient>>) {
-        self.client = client;
+        self.backends.retain(|b| b.mcp_client().is_none());
+        if let Some(client) = client {
+            self.add_backend(Box::new(agent_tools::mcp_backend::McpBackend::new(client)));
+        }
     }
 
-    pub fn available_tools(&self) -> &[McpTool] {
-        &self.available_tools
+    pub fn add_backend(&mut self, backend: Box<dyn ToolBackend>) {
+        self.backends.push(backend);
     }
 
-    pub fn set_available_tools(&mut self, tools: Vec<McpTool>) {
-        self.available_tools = tools;
+    pub fn available_tools(&self) -> Vec<McpTool> {
+        for backend in &self.backends {
+            if let Some(mcp) = backend
+                .as_any()
+                .downcast_ref::<agent_tools::mcp_backend::McpBackend>()
+            {
+                return mcp.available_tools();
+            }
+        }
+        Vec::new()
     }
 
-    pub fn builtin_tools(&self) -> &[agent_tools::BuiltinTool] {
-        &self.builtin_tools
+    pub fn set_available_tools(&self, tools: Vec<McpTool>) {
+        for backend in &self.backends {
+            if let Some(mcp) = backend
+                .as_any()
+                .downcast_ref::<agent_tools::mcp_backend::McpBackend>()
+            {
+                mcp.set_available_tools(tools);
+                return;
+            }
+        }
     }
 
     pub fn server_statuses(&self) -> &HashMap<String, crate::domain::McpServerStatus> {
@@ -82,39 +115,34 @@ impl ToolRegistry {
     }
 
     pub fn has_tool(&self, name: &str) -> bool {
-        self.available_tools.iter().any(|t| t.name == name)
-            || self.builtin_tools.iter().any(|t| t.name == name)
+        self.backends.iter().any(|b| b.can_execute(name))
     }
 
     pub fn definitions_for_api(&self, plan_mode: bool) -> Option<Vec<ToolDefinition>> {
         let mut all_tools = Vec::new();
-        if !plan_mode {
-            for tool in &self.available_tools {
-                all_tools.push(ToolDefinition {
-                    tool_type: "function".to_string(),
-                    function: crate::domain::FunctionDefinition {
-                        name: tool.name.clone(),
-                        description: tool.description.clone(),
-                        parameters: tool.input_schema.clone(),
-                    },
-                });
-            }
-        }
-        let read_only_builtins: &[&str] = &[
-            "read_file",
-            "glob",
-            "grep",
-            "web_search",
-            "fetch_url",
-            "think",
-            "git",
-            "rlm_repl",
-        ];
-        for tool in &self.builtin_tools {
-            if plan_mode && !read_only_builtins.contains(&tool.name.as_str()) {
+        for backend in &self.backends {
+            if plan_mode && backend.mcp_client().is_some() {
                 continue;
             }
-            all_tools.push(tool.to_tool_definition());
+            let defs = backend.tool_definitions();
+            if plan_mode && backend.mcp_client().is_none() {
+                let read_only_builtins: &[&str] = &[
+                    "read_file",
+                    "glob",
+                    "grep",
+                    "web_search",
+                    "fetch_url",
+                    "think",
+                    "git",
+                    "rlm_repl",
+                ];
+                all_tools.extend(
+                    defs.into_iter()
+                        .filter(|d| read_only_builtins.contains(&d.function.name.as_str())),
+                );
+            } else {
+                all_tools.extend(defs);
+            }
         }
         if all_tools.is_empty() {
             None
@@ -125,19 +153,14 @@ impl ToolRegistry {
 
     pub fn tool_instructions(&self, tool_format: ToolFormat) -> Option<String> {
         let mut tool_lines = Vec::new();
-        for tool in &self.builtin_tools {
-            let params = serde_json::to_string(&tool.parameters).unwrap_or_default();
-            tool_lines.push(format!(
-                "  - {}: {}\n    Parameters: {}",
-                tool.name, tool.description, params
-            ));
-        }
-        for tool in &self.available_tools {
-            let schema = serde_json::to_string(&tool.input_schema).unwrap_or_default();
-            tool_lines.push(format!(
-                "  - {}: {}\n    Parameters: {}",
-                tool.name, tool.description, schema
-            ));
+        for backend in &self.backends {
+            for tool in backend.tool_definitions() {
+                let params = serde_json::to_string(&tool.function.parameters).unwrap_or_default();
+                tool_lines.push(format!(
+                    "  - {}: {}\n    Parameters: {}",
+                    tool.function.name, tool.function.description, params
+                ));
+            }
         }
         if tool_lines.is_empty() {
             None
@@ -167,7 +190,7 @@ mod tests {
     #[test]
     fn registry_starts_empty() {
         let registry = ToolRegistry::default();
-        assert!(registry.available_tools.is_empty());
+        assert!(registry.available_tools().is_empty());
     }
 
     #[test]
@@ -179,13 +202,18 @@ mod tests {
 
     #[test]
     fn definitions_for_api_converts_available_tools() {
-        let mut registry = ToolRegistry::default();
+        let tmp = std::env::temp_dir().join("test_registry_api.json");
+        std::fs::write(&tmp, r#"{"mcp": {}}"#).unwrap();
+        let client = crate::mcp::McpClient::from_config_file(&tmp).unwrap();
+        std::fs::remove_file(&tmp).unwrap();
+
+        let registry = ToolRegistry::with_client(ToolRegistry::default(), client);
         let builtin_count = registry.definitions_for_api(false).unwrap().len();
-        registry.available_tools.push(crate::mcp::McpTool {
+        registry.set_available_tools(vec![crate::mcp::McpTool {
             name: "test_tool".to_string(),
             description: "A test tool".to_string(),
             input_schema: serde_json::json!({}),
-        });
+        }]);
         let result = registry.definitions_for_api(false).unwrap();
         assert_eq!(result.len(), builtin_count + 1);
         assert!(result.iter().any(|t| t.function.name == "test_tool"));

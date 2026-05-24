@@ -6,15 +6,15 @@
 //! - `InputState` — buffer, cursor, history, autocomplete, selection
 //! - `AgentState` — status, iteration count, persona, yolo mode
 
+use crate::agent_tools::ToolRegistry;
 use crate::agent_tools::{MessageAssembler, ToolExecutor};
-use crate::completion::{CompletionEngine, CompletionItem};
-use crate::domain::{Message, ToolDefinition};
+use crate::completion::{CompletionEngine, CompletionItem, CompletionType};
+use crate::domain::{Message, Model, ToolDefinition};
 use crate::env_context::EnvContext;
 use crate::history::HistoryStore;
 use crate::mcp::McpClient;
 use crate::session::ContextCompactor;
 use crate::tool_format::ToolFormat;
-use crate::agent_tools::ToolRegistry;
 use std::sync::Arc;
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -120,6 +120,7 @@ pub struct ChatEngine {
     tool_format: ToolFormat,
     completion_engine: CompletionEngine,
     history_store: Option<HistoryStore>,
+    mcp_client: Option<Arc<McpClient>>,
 }
 
 impl Default for ChatEngine {
@@ -137,6 +138,7 @@ impl Default for ChatEngine {
             tool_format: ToolFormat::Native,
             completion_engine: CompletionEngine::new(),
             history_store: None,
+            mcp_client: None,
         }
     }
 }
@@ -172,8 +174,15 @@ impl ChatEngine {
     }
 
     pub fn with_mcp_client(mut self, client: Arc<McpClient>) -> Self {
-        self.tool_executor.set_client(Some(client.clone()));
-        self.tool_registry.set_client(Some(client));
+        self.mcp_client = Some(client.clone());
+        self.tool_executor
+            .add_backend(Box::new(crate::agent_tools::mcp_backend::McpBackend::new(
+                client.clone(),
+            )));
+        self.tool_registry
+            .add_backend(Box::new(crate::agent_tools::mcp_backend::McpBackend::new(
+                client,
+            )));
         self
     }
 
@@ -222,6 +231,10 @@ impl ChatEngine {
 
     pub fn tool_executor_mut(&mut self) -> &mut ToolExecutor {
         &mut self.tool_executor
+    }
+
+    pub fn mcp_client(&self) -> Option<Arc<McpClient>> {
+        self.mcp_client.clone()
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -290,10 +303,112 @@ impl ChatEngine {
             self.chat.spinner_frame = (self.chat.spinner_frame + 1) % SPINNER_FRAMES.len();
         }
     }
+
+    pub fn start_agent_loop(&mut self) {
+        if self.agents.status == AgentModeStatus::Idle {
+            self.agents.status = AgentModeStatus::Active;
+            self.agents.current_iteration = 0;
+        }
+    }
+
+    pub fn finish_agent_loop(&mut self) {
+        if self.agents.status == AgentModeStatus::Active {
+            self.agents.status = AgentModeStatus::Idle;
+            self.agents.current_iteration = 0;
+        }
+    }
+
+    pub fn agent_iteration_exceeded(&self) -> bool {
+        self.agents.status == AgentModeStatus::Active
+            && self.agents.current_iteration >= self.agents.max_iterations
+    }
+
+    pub fn increment_agent_iteration(&mut self) {
+        self.agents.current_iteration += 1;
+    }
+
+    pub fn isolate_session(&mut self) {
+        self.chat
+            .messages
+            .retain(|m| m.role == crate::domain::Role::System);
+        self.chat.scroll = 0;
+        self.chat.streaming = false;
+    }
+
+    pub fn switch_persona(&mut self, persona: impl Into<String>, prompt: impl Into<String>) {
+        let persona = persona.into();
+        let prompt = prompt.into();
+        self.agents.persona = persona.clone();
+        self.agent_prompt = Some(prompt);
+        self.agents.current_iteration = 0;
+    }
+
+    pub fn set_plan_mode(&mut self, mode: AgentMode) {
+        self.agents.mode = mode;
+    }
+
+    pub fn plan_mode(&self) -> AgentMode {
+        self.agents.mode
+    }
+
+    pub fn refresh_completions(&mut self, models: &[Model]) {
+        let buffer = self.input.buffer.clone();
+        let cursor = self.input.cursor_pos;
+        self.input.completion_items = self.completion_engine.complete(&buffer, cursor, models);
+        self.input.completion_active = !self.input.completion_items.is_empty();
+        self.input.autocomplete_index = 0;
+    }
+
+    pub fn clear_completions(&mut self) {
+        self.input.completion_active = false;
+        self.input.completion_items.clear();
+        self.input.autocomplete_index = 0;
+    }
+
+    pub fn cycle_completion_next(&mut self) {
+        if !self.input.completion_items.is_empty() {
+            self.input.autocomplete_index =
+                (self.input.autocomplete_index + 1) % self.input.completion_items.len();
+        }
+    }
+
+    pub fn cycle_completion_prev(&mut self) {
+        if !self.input.completion_items.is_empty() {
+            if self.input.autocomplete_index == 0 {
+                self.input.autocomplete_index = self.input.completion_items.len() - 1;
+            } else {
+                self.input.autocomplete_index -= 1;
+            }
+        }
+    }
+
+    pub fn apply_completion(&mut self) -> bool {
+        if !self.input.completion_active || self.input.completion_items.is_empty() {
+            return false;
+        }
+        let idx = self.input.autocomplete_index;
+        if let Some(item) = self.input.completion_items.get(idx).cloned() {
+            crate::completion::accept_completion(
+                &mut self.input.buffer,
+                &mut self.input.cursor_pos,
+                &item,
+            );
+            // For file paths, keep input mode active but clear completions
+            // For slash commands and models, also clear
+            self.input.completion_active = false;
+            self.input.completion_items.clear();
+            self.input.autocomplete_index = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn completion_type(&self) -> Option<CompletionType> {
+        CompletionEngine::detect_completion_type(&self.input.buffer, self.input.cursor_pos)
+    }
 }
 
-mod agent;
-mod completion;
 mod input;
 mod session;
 
@@ -313,9 +428,7 @@ mod tests {
         assert!(!crate::agent_tools::tool_needs_approval("write_file"));
         assert!(crate::agent_tools::tool_needs_approval("shell"));
         assert!(!crate::agent_tools::tool_needs_approval("read_file"));
-        assert!(crate::agent_tools::tool_needs_approval(
-            "str_replace_file"
-        ));
+        assert!(crate::agent_tools::tool_needs_approval("str_replace_file"));
     }
 
     #[test]
@@ -387,4 +500,35 @@ mod tests {
         assert_eq!(engine.chat.spinner_frame, 3);
     }
 
+    #[test]
+    fn agent_loop_transitions() {
+        let mut engine = ChatEngine::new();
+        engine.agents.status = AgentModeStatus::Idle;
+        engine.start_agent_loop();
+        assert_eq!(engine.agents.status, AgentModeStatus::Active);
+        engine.finish_agent_loop();
+        assert_eq!(engine.agents.status, AgentModeStatus::Idle);
+    }
+
+    #[test]
+    fn agent_loop_exceeded_check() {
+        let mut engine = ChatEngine::new();
+        engine.agents.status = AgentModeStatus::Active;
+        engine.agents.max_iterations = 3;
+        engine.agents.current_iteration = 3;
+        assert!(engine.agent_iteration_exceeded());
+        engine.agents.current_iteration = 2;
+        assert!(!engine.agent_iteration_exceeded());
+    }
+
+    #[test]
+    fn switch_persona_updates_state() {
+        let mut engine = ChatEngine::new();
+        engine.switch_persona("Research", "You are a researcher");
+        assert_eq!(engine.agents.persona, "Research");
+        assert_eq!(
+            engine.agent_prompt,
+            Some("You are a researcher".to_string())
+        );
+    }
 }
