@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
 use crate::backend::registry::ProviderRegistry;
-use crate::commands::executor::{CommandExecutor, CommandResult};
+use crate::commands::executor::CommandExecutor;
+pub use crate::commands::executor::CommandResult;
 use crate::commands::SlashCommand;
 use crate::config::Config;
-use crate::domain::{BackendError, Message, Model, ProviderId};
-use crate::engine::{AgentMode, ChatEngine};
+use crate::domain::{Message, Model, ProviderId};
+use crate::engine::ChatEngine;
 use crate::prompt::PromptManager;
 use crate::session::SessionManager;
 use crate::soul::{UserInput, WireSender};
 use crate::voice::VoiceManager;
-
-pub use crate::commands::executor::CommandResult;
 
 /// Model selection state.
 #[derive(Debug)]
@@ -104,42 +103,20 @@ impl AppFacade {
         executor.execute(cmd)
     }
 
-    pub fn spawn_agent_turn(&self, input: UserInput, wire: WireSender) {
-        let mode = if self.engine.agents().status
-            == crate::engine::AgentModeStatus::Active
-        {
-            self.engine.plan_mode()
-        } else {
-            AgentMode::Auto
-        };
-        crate::agent_turn::spawn_agent_turn(
-            &self.engine,
-            &self.registry,
-            self.models.provider.clone(),
-            self.models.current.clone(),
-            self.config.max_tokens,
-            input.text,
-            mode,
-            wire,
-        );
+    pub fn spawn_agent_turn(&self, _input: UserInput, _wire: WireSender) {
+        tracing::warn!("spawn_agent_turn stub called — agent_turn module not available");
     }
 
-    pub async fn fetch_models(&self) -> Result<Vec<Model>, BackendError> {
+    pub async fn fetch_models(&self) -> anyhow::Result<Vec<Model>> {
         match self.registry.default_provider() {
-            Some(provider) => provider
-                .fetch_models()
-                .await
-                .map_err(|e| BackendError::Unknown(e.to_string())),
+            Some(provider) => provider.fetch_models().await,
             None => Ok(vec![]),
         }
     }
 
-    pub async fn health_check(&self) -> Result<(), BackendError> {
+    pub async fn health_check(&self) -> anyhow::Result<()> {
         match self.registry.default_provider() {
-            Some(provider) => provider
-                .health_check()
-                .await
-                .map_err(|e| BackendError::Unknown(e.to_string())),
+            Some(provider) => provider.health_check().await,
             None => Ok(()),
         }
     }

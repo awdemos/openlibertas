@@ -6,6 +6,7 @@
 
 pub mod agent_loop;
 pub mod agent_tools;
+pub mod agent_turn;
 pub mod backend;
 pub mod capability;
 pub mod commands;
@@ -16,6 +17,7 @@ pub mod domain;
 pub mod engine;
 pub mod env_context;
 pub mod export;
+pub mod facade;
 pub mod history;
 pub mod mcp;
 pub mod model_scanner;
@@ -42,7 +44,8 @@ pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
 pub use config::{Config, ProviderConfig, SecretString};
 pub use domain::{
-    BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall, ToolDefinition,
+    now_timestamp, BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall,
+    ToolDefinition,
 };
 pub use session::SessionManager;
 pub use tool_format::ToolFormat;

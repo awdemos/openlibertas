@@ -253,6 +253,10 @@ impl ChatEngine {
         self.agent_prompt = Some(prompt.into());
     }
 
+    pub fn tool_format(&self) -> ToolFormat {
+        self.tool_format
+    }
+
     pub fn set_tool_format(&mut self, tool_format: ToolFormat) {
         self.tool_format = tool_format;
     }

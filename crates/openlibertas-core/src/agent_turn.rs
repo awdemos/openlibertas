@@ -3,16 +3,12 @@ use std::sync::Arc;
 use crate::backend::registry::ProviderRegistry;
 use crate::backend::runtime::{CancellableBackend, RegistryBackend};
 use crate::backend::Provider;
-use crate::domain::{BackendError, Message, Model, ProviderId};
-use crate::engine::{AgentMode, AgentModeStatus, ChatEngine};
+use crate::domain::ProviderId;
+use crate::engine::{AgentMode, ChatEngine};
 use crate::env_context::EnvContext;
-use crate::session::SessionManager;
-use crate::soul::{ChatAgent, UserInput, WireSender};
+use crate::soul::{Agent, ChatAgent, UserInput, WireSender};
 
 /// Spawn an agent turn in a background tokio task.
-///
-/// This constructs a [`ChatAgent`] from the current engine state and
-/// runs a single turn against the given user input.
 pub fn spawn_agent_turn(
     engine: &ChatEngine,
     registry: &ProviderRegistry,
@@ -22,16 +18,12 @@ pub fn spawn_agent_turn(
     input_text: String,
     mode: AgentMode,
     wire: WireSender,
+    cancel_token: tokio_util::sync::CancellationToken,
 ) {
     let ui_messages_before = engine.chat().messages.clone();
 
     let mut agent_engine = ChatEngine::new()
-        .with_context_window(
-            engine
-                .chat()
-                .compactor
-                .context_window,
-        )
+        .with_context_window(engine.chat().compactor.context_window)
         .with_env_context(EnvContext::detect());
 
     if let Some(prompt) = engine.system_prompt() {
@@ -41,7 +33,7 @@ pub fn spawn_agent_turn(
         agent_engine = agent_engine.with_agent_prompt(prompt);
     }
 
-    agent_engine.set_tool_format(engine.plan_mode().into());
+    agent_engine.set_tool_format(engine.tool_format());
     agent_engine.chat_mut().messages = ui_messages_before;
 
     if let Some(client) = engine.tools().client() {
@@ -62,8 +54,6 @@ pub fn spawn_agent_turn(
             .tools_mut()
             .set_diagnostics(engine.tools().diagnostics().clone());
     }
-
-    let cancel_token = tokio_util::sync::CancellationToken::new();
 
     let registry_backend = RegistryBackend::new(registry.clone(), provider_id);
     let provider: Arc<dyn Provider> = Arc::new(CancellableBackend::new(

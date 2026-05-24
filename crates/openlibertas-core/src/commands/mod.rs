@@ -300,17 +300,6 @@ impl SlashCommand {
     }
 }
 
-/// Result of executing a slash command
-#[derive(Debug, Clone)]
-pub enum CommandResult {
-    /// Show a message to the user
-    Message(String),
-    /// Quit the application
-    Quit,
-    /// No response needed
-    Silent,
-}
-
 /// Model switch result
 #[derive(Debug, Clone)]
 pub enum ModelSwitchResult {
@@ -492,6 +481,7 @@ pub fn load_session(store: &SessionStore, name: &str) -> anyhow::Result<LoadedSe
 }
 
 pub mod executor;
+pub use executor::CommandResult;
 
 #[cfg(test)]
 mod tests {
