@@ -197,6 +197,10 @@ pub struct Config {
     pub filter_require_voice_and_tools: bool,
     #[serde(default)]
     pub input_device: Option<String>,
+    #[serde(default)]
+    pub auto_approve_tools: Vec<String>,
+    #[serde(default = "default_permission_policy")]
+    pub permission_policy: PermissionPolicy,
 }
 
 fn default_models_dir() -> PathBuf {
@@ -219,6 +223,8 @@ impl Default for Config {
             auto_save: default_auto_save(),
             filter_require_voice_and_tools: default_filter_voice_tools(),
             input_device: None,
+            auto_approve_tools: Vec::new(),
+            permission_policy: default_permission_policy(),
         }
     }
 }
@@ -233,6 +239,24 @@ fn default_auto_save() -> bool {
 
 fn default_filter_voice_tools() -> bool {
     false
+}
+
+fn default_permission_policy() -> PermissionPolicy {
+    PermissionPolicy::Ask
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionPolicy {
+    Ask,
+    AutoApprove,
+    Deny,
+}
+
+impl Default for PermissionPolicy {
+    fn default() -> Self {
+        PermissionPolicy::Ask
+    }
 }
 
 impl Config {
@@ -515,6 +539,8 @@ mod tests {
             auto_save: default_auto_save(),
             filter_require_voice_and_tools: default_filter_voice_tools(),
             input_device: None,
+            auto_approve_tools: Vec::new(),
+            permission_policy: default_permission_policy(),
         };
         let toml_str = toml::to_string(&config).unwrap();
         let deserialized: Config = toml::from_str(&toml_str).unwrap();

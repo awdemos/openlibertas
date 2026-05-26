@@ -1,5 +1,5 @@
 use crate::agent_tools;
-use crate::agent_tools::backend::{ApprovalPolicy, ToolBackend, ToolBackendError};
+use crate::agent_tools::backend::{ToolBackend, ToolBackendError};
 use crate::domain::{now_timestamp, Message, Role, ToolCall, ToolExecutionResult};
 use crate::mcp::McpClient;
 use std::sync::Arc;
@@ -95,15 +95,16 @@ impl ToolExecutor {
         self.pending_tool_calls.clear();
     }
 
-    pub async fn execute_pending_tools(&mut self, yolo_mode: bool) -> Vec<ToolExecutionResult> {
+    pub async fn execute_pending_tools(
+        &mut self,
+        permission_service: &crate::permission::PermissionService,
+        session_id: &str,
+    ) -> Vec<ToolExecutionResult> {
         let mut results = Vec::new();
         info!(
-            "Executing {} pending tool calls (yolo={})",
+            "Executing {} pending tool calls",
             self.pending_tool_calls.len(),
-            yolo_mode
         );
-
-        let policy = ApprovalPolicy::new(yolo_mode);
 
         for tool_call in &self.pending_tool_calls {
             info!(
@@ -116,15 +117,53 @@ impl ToolExecutor {
             let is_destructive = tool_needs_approval(&tool_call.function.name);
             let requires_approval = !is_builtin || is_destructive;
 
-            if policy.needs_approval(&tool_call.function.name, requires_approval) {
-                results.push(ToolExecutionResult::Skipped {
-                    tool_name: tool_call.function.name.clone(),
-                    reason: format!(
-                        "Approval required for '{}'. Enable YOLO mode to skip confirmations.",
-                        tool_call.function.name
-                    ),
-                });
-                continue;
+            if requires_approval {
+                let args =
+                    match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
+                        Ok(args) => args,
+                        Err(e) => {
+                            results.push(ToolExecutionResult::Error {
+                                tool_name: tool_call.function.name.clone(),
+                                key_arg,
+                                error: format!("Parse error: {e}"),
+                            });
+                            continue;
+                        }
+                    };
+
+                let command = args
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                if crate::permission::tool_requires_permission(&tool_call.function.name)
+                    && !crate::permission::is_safe_readonly_command(&command)
+                {
+                    let request = crate::permission::PermissionRequest::new(
+                        session_id,
+                        &tool_call.function.name,
+                        format!("Execute: {}", command),
+                        "execute",
+                        args.clone(),
+                        std::env::current_dir()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default(),
+                    );
+
+                    let approved = permission_service.request(request).await;
+
+                    if !approved {
+                        results.push(ToolExecutionResult::Skipped {
+                            tool_name: tool_call.function.name.clone(),
+                            reason: format!(
+                                "Permission denied for '{}'",
+                                tool_call.function.name
+                            ),
+                        });
+                        continue;
+                    }
+                }
             }
 
             let args =
@@ -412,7 +451,8 @@ mod tests {
                 arguments: "{}".to_string(),
             },
         });
-        let results = executor.execute_pending_tools(true).await;
+        let perm_service = crate::permission::PermissionService::new();
+        let results = executor.execute_pending_tools(&perm_service, "test-session").await;
         assert_eq!(results.len(), 1);
         assert!(
             matches!(results[0], ToolExecutionResult::Success { ref output, .. } if output == "mock result")
@@ -430,7 +470,8 @@ mod tests {
                 arguments: "{}".to_string(),
             },
         });
-        let results = executor.execute_pending_tools(true).await;
+        let perm_service = crate::permission::PermissionService::new();
+        let results = executor.execute_pending_tools(&perm_service, "test-session").await;
         assert_eq!(results.len(), 1);
         assert!(
             matches!(results[0], ToolExecutionResult::Error { ref error, .. } if error == "No backend found for tool")

@@ -35,6 +35,7 @@ pub mod completions;
 pub mod help;
 pub mod mcp;
 pub mod palette;
+pub mod permission;
 pub mod sessions;
 pub mod themes;
 pub mod tools;

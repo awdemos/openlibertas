@@ -31,6 +31,7 @@ pub enum Event {
     VoicePlaybackComplete,
     VoiceError(String, u64),
     BackendHealthCheck(Result<(), String>),
+    PermissionRequest(openlibertas_core::permission::PermissionRequest),
 }
 
 pub struct EventStream {

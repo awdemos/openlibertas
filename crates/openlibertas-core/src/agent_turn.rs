@@ -55,6 +55,9 @@ pub fn spawn_agent_turn(
             .set_diagnostics(engine.tools().diagnostics().clone());
     }
 
+    agent_engine.set_permission_service(engine.permission_service().clone());
+    agent_engine.set_session_id(engine.session_id().to_string());
+
     let registry_backend = RegistryBackend::new(registry.clone(), provider_id);
     let provider: Arc<dyn Provider> = Arc::new(CancellableBackend::new(
         Arc::new(registry_backend),

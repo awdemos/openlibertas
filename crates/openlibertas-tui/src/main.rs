@@ -7,7 +7,7 @@
 use anyhow::Result;
 use base64::Engine;
 use crossterm::event::{Event as CEvent, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+
 use crossterm::ExecutableCommand;
 use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
 use std::io::{stdout, Write};
@@ -93,6 +93,19 @@ async fn main() -> Result<()> {
     if let Some(client) = runtime.mcp_client.as_ref() {
         app.engine.tools_mut().set_client(Some(client.clone()));
         app.mcp_server_names_cache = client.server_names().await;
+    }
+
+    {
+        let (perm_tx, mut perm_rx) = tokio::sync::mpsc::unbounded_channel::<openlibertas_core::permission::PermissionRequest>();
+        app.engine.permission_service_mut().set_notifier(perm_tx);
+        let event_sender = event_stream.sender();
+        tokio::spawn(async move {
+            while let Some(request) = perm_rx.recv().await {
+                if event_sender.send(Event::PermissionRequest(request)).is_err() {
+                    break;
+                }
+            }
+        });
     }
 
     for provider in runtime.config.providers.iter() {
@@ -414,15 +427,11 @@ async fn main() -> Result<()> {
                             KeyCode::Char('z') => {
                                 #[cfg(unix)]
                                 {
-                                    let _ = crossterm::terminal::disable_raw_mode();
-                                    let _ = std::io::stdout().execute(LeaveAlternateScreen);
-                                    {
-                                        let _ = nix::sys::signal::raise(
-                                            nix::sys::signal::Signal::SIGTSTP,
-                                        );
-                                    }
-                                    let _ = crossterm::terminal::enable_raw_mode();
-                                    let _ = std::io::stdout().execute(EnterAlternateScreen);
+                                    let _ = terminal::restore_normal_terminal();
+                                    let _ = nix::sys::signal::raise(
+                                        nix::sys::signal::Signal::SIGTSTP,
+                                    );
+                                    let _ = terminal::init_terminal(app.mouse_enabled);
                                 }
                                 continue;
                             }
@@ -503,7 +512,17 @@ async fn main() -> Result<()> {
                         },
                         Screen::Chat => match key.code {
                             KeyCode::Esc => {
-                                if app.engine.chat_mut().streaming {
+                                if app.overlay == Overlay::Permission {
+                                    if let Some(ref req) = app.pending_permission_request {
+                                        let request_id = req.id.clone();
+                                    app.engine.permission_service_mut().respond(
+                                        request_id,
+                                        openlibertas_core::permission::PermissionResponse::Deny,
+                                    );
+                                        app.pending_permission_request = None;
+                                    }
+                                    app.overlay = Overlay::None;
+                                } else if app.engine.chat_mut().streaming {
                                     if let Some(token) = app.cancel_token.take() {
                                         token.cancel();
                                     }
@@ -709,6 +728,23 @@ async fn main() -> Result<()> {
                             KeyCode::Char('n') if app.search.active => app.search_next(),
                             KeyCode::Char('N') if app.search.active => app.search_prev(),
                             KeyCode::Char(c) => {
+                                if app.overlay == Overlay::Permission {
+                                    let response = match c {
+                                        'a' | 'A' => Some(openlibertas_core::permission::PermissionResponse::Allow),
+                                        's' | 'S' => Some(openlibertas_core::permission::PermissionResponse::AllowForSession),
+                                        'd' | 'D' => Some(openlibertas_core::permission::PermissionResponse::Deny),
+                                        _ => None,
+                                    };
+                                    if let Some(response) = response {
+                                        if let Some(ref req) = app.pending_permission_request {
+                                            let request_id = req.id.clone();
+                                            app.engine.permission_service_mut().respond(request_id, response);
+                                            app.pending_permission_request = None;
+                                            app.overlay = Overlay::None;
+                                        }
+                                    }
+                                    continue;
+                                }
                                 if app.overlay == Overlay::Mcp {
                                     match c {
                                         'r' | 'R' => {
@@ -1079,6 +1115,10 @@ async fn main() -> Result<()> {
                             }
                         });
                     }
+                }
+                Event::PermissionRequest(request) => {
+                    app.pending_permission_request = Some(request);
+                    app.overlay = Overlay::Permission;
                 }
                 Event::VoicePlaybackComplete => {
                     app.voice_status = None;

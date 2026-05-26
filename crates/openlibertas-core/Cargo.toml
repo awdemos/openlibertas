@@ -30,6 +30,7 @@ glob = "0.3"
 tiktoken-rs = "0.11"
 async-trait = "0.1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+uuid = { version = "1", features = ["v4"] }
 
 
 [dev-dependencies]

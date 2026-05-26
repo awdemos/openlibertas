@@ -21,6 +21,7 @@ pub mod facade;
 pub mod history;
 pub mod mcp;
 pub mod model_scanner;
+pub mod permission;
 pub mod prompt;
 pub mod runtime;
 pub mod search;
@@ -42,10 +43,14 @@ pub use agent_loop::{run_agent_loop, LoopAction, PersonaResolver};
 pub use backend::Provider;
 pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
-pub use config::{Config, ProviderConfig, SecretString};
+pub use config::{Config, PermissionPolicy, ProviderConfig, SecretString};
 pub use domain::{
     now_timestamp, BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall,
     ToolDefinition,
+};
+pub use permission::{
+    is_safe_readonly_command, tool_requires_permission, PermissionRequest, PermissionResponse,
+    PermissionService,
 };
 pub use session::SessionManager;
 pub use tool_format::ToolFormat;

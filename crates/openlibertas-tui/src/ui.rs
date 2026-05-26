@@ -346,6 +346,11 @@ fn draw_chat(frame: &mut Frame, app: &App) {
                 &app.theme,
             );
         }
+        Overlay::Permission => {
+            if let Some(panel) = crate::panels::permission::PermissionPanelData::from_app(app) {
+                panel.draw(frame, frame.area(), &app.theme);
+            }
+        }
         Overlay::None => {}
     }
 

@@ -121,6 +121,8 @@ pub struct ChatEngine {
     completion_engine: CompletionEngine,
     history_store: Option<HistoryStore>,
     mcp_client: Option<Arc<McpClient>>,
+    permission_service: crate::permission::PermissionService,
+    session_id: String,
 }
 
 impl Default for ChatEngine {
@@ -139,6 +141,8 @@ impl Default for ChatEngine {
             completion_engine: CompletionEngine::new(),
             history_store: None,
             mcp_client: None,
+            permission_service: crate::permission::PermissionService::new(),
+            session_id: uuid::Uuid::new_v4().to_string(),
         }
     }
 }
@@ -237,6 +241,26 @@ impl ChatEngine {
         self.mcp_client.clone()
     }
 
+    pub fn permission_service(&self) -> &crate::permission::PermissionService {
+        &self.permission_service
+    }
+
+    pub fn permission_service_mut(&mut self) -> &mut crate::permission::PermissionService {
+        &mut self.permission_service
+    }
+
+    pub fn set_permission_service(&mut self, service: crate::permission::PermissionService) {
+        self.permission_service = service;
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub fn set_session_id(&mut self, id: impl Into<String>) {
+        self.session_id = id.into();
+    }
+
     pub fn system_prompt(&self) -> Option<&str> {
         self.system_prompt.as_deref()
     }
@@ -292,7 +316,7 @@ impl ChatEngine {
     pub async fn execute_pending_tools(&mut self) -> Vec<crate::domain::ToolExecutionResult> {
         let results = self
             .tool_executor
-            .execute_pending_tools(self.agents.yolo_mode)
+            .execute_pending_tools(&self.permission_service, &self.session_id)
             .await;
 
         for msg in self.tool_executor.create_tool_result_messages() {

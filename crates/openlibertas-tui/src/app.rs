@@ -52,6 +52,7 @@ pub enum Overlay {
     Help,
     Agents,
     AvatarMenu,
+    Permission,
 }
 
 pub struct SearchState {
@@ -110,6 +111,7 @@ pub struct App {
     pub mcp_scroll: usize,
     pub mcp_server_names_cache: Vec<String>,
     pub cancel_token: Option<tokio_util::sync::CancellationToken>,
+    pub pending_permission_request: Option<openlibertas_core::permission::PermissionRequest>,
 }
 
 impl App {
@@ -121,6 +123,8 @@ impl App {
         let voice_id = config.elevenlabs_voice_id.clone();
         let voice_input_device = config.input_device.clone();
         let context_window = config.effective_context_window() as usize;
+        let auto_approve_tools = config.auto_approve_tools.clone();
+        let permission_policy = config.permission_policy.clone();
         let local_models = openlibertas_core::model_scanner::scan_local_models(&config.models_dir);
         let filtered_local: Vec<Model> = if config.filter_require_voice_and_tools {
             local_models
@@ -163,6 +167,8 @@ impl App {
                     engine = engine.with_history_store(history_store);
                     engine.load_history();
                 }
+                engine.permission_service_mut().set_auto_approve_tools(auto_approve_tools);
+                engine.permission_service_mut().set_permission_policy(permission_policy);
                 engine
             },
             prompt_manager: PromptManager::new(),
@@ -200,6 +206,7 @@ impl App {
             mcp_scroll: 0,
             mcp_server_names_cache: Vec::new(),
             cancel_token: None,
+            pending_permission_request: None,
         }
     }
 

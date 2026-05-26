@@ -4,7 +4,7 @@ use crossterm::event::{
 };
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
-use std::io::{self, stdout};
+use std::io::{self, stdout, Write};
 
 pub struct TerminalGuard {
     mouse_enabled: bool,
@@ -47,4 +47,27 @@ impl Drop for TerminalGuard {
 
 fn enable_raw_mode() -> io::Result<()> {
     crossterm::terminal::enable_raw_mode()
+}
+
+pub fn restore_normal_terminal() -> io::Result<()> {
+    let _ = stdout().execute(PopKeyboardEnhancementFlags);
+    let _ = stdout().execute(DisableMouseCapture);
+    disable_raw_mode()?;
+    stdout().execute(LeaveAlternateScreen)?;
+    stdout().flush()?;
+    Ok(())
+}
+
+pub fn init_terminal(mouse_enabled: bool) -> io::Result<()> {
+    enable_raw_mode()?;
+    stdout().execute(EnterAlternateScreen)?;
+    let _ = stdout().execute(PushKeyboardEnhancementFlags(
+        KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
+    ));
+    if mouse_enabled {
+        let _ = stdout().execute(EnableMouseCapture);
+    }
+    stdout().flush()?;
+    Ok(())
 }
