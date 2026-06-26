@@ -26,48 +26,16 @@ use openlibertas_core::voice::VoiceManager;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Screen {
-    Models,
-    Chat,
-}
+pub use openlibertas_core::commands::SlashCommand;
+pub use state::{ConnectionStatus, ModelState, Overlay, Screen, SearchState};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ConnectionStatus {
-    Connected,
-    Disconnected,
-    Checking,
-}
-
-pub use openlibertas_core::commands::{SlashCommand, SLASH_COMMANDS};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Overlay {
-    None,
-    Tools,
-    Mcp,
-    Sessions,
-    Palette,
-    Themes,
-    Help,
-    Agents,
-    AvatarMenu,
-    Permission,
-}
-
-pub struct SearchState {
-    pub matches: Vec<search::SearchMatch>,
-    pub index: usize,
-    pub active: bool,
-}
-
-pub struct ModelState {
-    pub models: Vec<Model>,
-    pub selected: usize,
-    pub current: Option<String>,
-    pub provider: ProviderId,
-    pub search: String,
-}
+mod completion;
+mod mcp;
+mod models;
+mod search_nav;
+mod sessions;
+mod state;
+mod ui_state;
 
 pub struct App {
     pub screen: Screen,
@@ -167,8 +135,12 @@ impl App {
                     engine = engine.with_history_store(history_store);
                     engine.load_history();
                 }
-                engine.permission_service_mut().set_auto_approve_tools(auto_approve_tools);
-                engine.permission_service_mut().set_permission_policy(permission_policy);
+                engine
+                    .permission_service_mut()
+                    .set_auto_approve_tools(auto_approve_tools);
+                engine
+                    .permission_service_mut()
+                    .set_permission_policy(permission_policy);
                 engine
             },
             prompt_manager: PromptManager::new(),
@@ -804,26 +776,6 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
         }
     }
 
-    pub fn select_next_model(&mut self) {
-        if !self.models.models.is_empty() {
-            self.models.selected = (self.models.selected + 1).min(self.models.models.len() - 1);
-        }
-    }
-    pub fn select_prev_model(&mut self) {
-        if !self.models.models.is_empty() {
-            self.models.selected = self.models.selected.saturating_sub(1);
-        }
-    }
-
-    pub fn select_current_model(&mut self) {
-        if let Some(model) = self.models.models.get(self.models.selected) {
-            let provider = model.provider.clone();
-            self.models.current = Some(model.id.clone());
-            self.set_provider(provider);
-            self.screen = Screen::Chat;
-        }
-    }
-
     pub fn load_context_files(&mut self) -> Vec<String> {
         let loaded = openlibertas_core::session::read_context_files();
         for (filename, content) in &loaded {
@@ -956,376 +908,13 @@ available tools to refine and polish your work."
         )
     }
 
-    pub fn search_next(&mut self) {
-        if self.search.matches.is_empty() {
-            return;
-        }
-        self.search.index = (self.search.index + 1) % self.search.matches.len();
-        self.scroll_to_match();
-    }
-
-    pub fn search_prev(&mut self) {
-        if self.search.matches.is_empty() {
-            return;
-        }
-        if self.search.index == 0 {
-            self.search.index = self.search.matches.len() - 1;
-        } else {
-            self.search.index -= 1;
-        }
-        self.scroll_to_match();
-    }
-
-    fn scroll_to_match(&mut self) {
-        if let Some(m) = self.search.matches.get(self.search.index) {
-            let target = m.message_index;
-            let mut line_count = 0;
-            for (i, msg) in self.engine.chat_mut().messages.iter().enumerate() {
-                if i == target {
-                    self.engine.chat_mut().scroll = line_count;
-                    self.engine.chat_mut().auto_scroll = false;
-                    break;
-                }
-                if msg.role == Role::System && msg.is_prompt {
-                    continue;
-                }
-                line_count += 3;
-                if msg.tool_calls.is_some() {
-                    line_count += 2;
-                }
-                let content_lines = msg.content.lines().count();
-                line_count += content_lines.max(1);
-            }
-        }
-    }
-
-    pub fn theme_next(&mut self) {
-        let themes = Theme::all();
-        if !themes.is_empty() {
-            self.theme_selected = (self.theme_selected + 1).min(themes.len() - 1);
-        }
-    }
-
-    pub fn theme_prev(&mut self) {
-        self.theme_selected = self.theme_selected.saturating_sub(1);
-    }
-
-    pub fn select_theme(&mut self) {
-        let themes = Theme::all();
-        if let Some((_, theme)) = themes.get(self.theme_selected) {
-            self.theme = *theme;
-        }
-        self.overlay = Overlay::None;
-    }
-
-    pub fn open_themes_panel(&mut self) {
-        let themes = Theme::all();
-        self.theme_selected = themes
-            .iter()
-            .position(|(_, t)| *t == self.theme)
-            .unwrap_or(0);
-        self.overlay = Overlay::Themes;
-    }
-
-    pub fn agent_prev(&mut self) {
-        self.agent_selected = self.agent_selected.saturating_sub(1);
-    }
-
-    pub fn agent_next(&mut self) {
-        let count = self.agent_personas().len().saturating_add(3);
-        self.agent_selected = (self.agent_selected + 1) % count.max(1);
-    }
-
-    pub fn avatar_menu_prev(&mut self) {
-        self.avatar_menu_selected = self.avatar_menu_selected.saturating_sub(1);
-    }
-
-    pub fn avatar_menu_next(&mut self) {
-        self.avatar_menu_selected = (self.avatar_menu_selected + 1) % 4;
-    }
-
-    pub fn avatar_menu_select(&mut self) {
-        match self.avatar_menu_selected {
-            0 => {
-                self.avatar_enabled = !self.avatar_enabled;
-            }
-            1 => {
-                if let Some(avatar) = self.avatars.first_mut() {
-                    avatar.anim_speed = match avatar.anim_speed as u32 {
-                        120 => 240.0,
-                        240 => 480.0,
-                        480 => 960.0,
-                        _ => 120.0,
-                    };
-                }
-            }
-            2 => {
-                if let Some(avatar) = self.avatars.first_mut() {
-                    avatar.velocity.0 = match (avatar.velocity.0 * 100.0) as i32 {
-                        0 => 0.3,
-                        30 => 0.6,
-                        60 => 1.2,
-                        _ => 0.0,
-                    };
-                }
-            }
-            3 => {
-                if let Some(avatar) = self.avatars.first_mut() {
-                    avatar.velocity.1 = match (avatar.velocity.1 * 100.0) as i32 {
-                        0 => 0.15,
-                        15 => 0.3,
-                        30 => 0.6,
-                        _ => 0.0,
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn select_agent_option(&mut self) {
-        match self.agent_selected {
-            0 => {
-                self.engine.agents_mut().status =
-                    if self.engine.agents_mut().status == AgentModeStatus::Disabled {
-                        AgentModeStatus::Idle
-                    } else {
-                        AgentModeStatus::Disabled
-                    };
-            }
-            1 => {
-                self.cycle_agent_persona();
-            }
-            2 => {
-                self.engine.agents_mut().max_iterations =
-                    if self.engine.agents_mut().max_iterations >= 50 {
-                        5
-                    } else {
-                        (self.engine.agents_mut().max_iterations + 5).min(50)
-                    };
-            }
-            _ => {}
-        }
-    }
-
-    pub fn update_command_palette(&mut self) {
-        let prefix = self.engine.input_mut().buffer.to_lowercase();
-        self.palette_commands = SLASH_COMMANDS
-            .iter()
-            .filter(|cmd| cmd.starts_with(&prefix))
-            .map(|cmd| {
-                (
-                    cmd.to_string(),
-                    openlibertas_core::commands::command_description(cmd).to_string(),
-                )
-            })
-            .collect();
-        self.palette_selected = 0;
-    }
-
-    pub fn palette_prev(&mut self) {
-        if !self.palette_commands.is_empty() {
-            self.palette_selected = self.palette_selected.saturating_sub(1);
-        }
-    }
-
-    pub fn palette_next(&mut self) {
-        if !self.palette_commands.is_empty() {
-            self.palette_selected =
-                (self.palette_selected + 1).min(self.palette_commands.len() - 1);
-        }
-    }
-
-    pub fn select_palette_command(&mut self) -> Option<String> {
-        self.palette_commands
-            .get(self.palette_selected)
-            .map(|(cmd, _)| cmd.clone())
-    }
-
     pub fn go_to_models(&mut self) {
         self.screen = Screen::Models;
         self.engine.chat_mut().streaming = false;
         self.overlay = Overlay::None;
     }
 
-    pub fn filtered_sessions(&self) -> Vec<openlibertas_core::store::SessionMeta> {
-        let all = self
-            .session_manager
-            .as_ref()
-            .and_then(|s| s.list_with_meta().ok())
-            .unwrap_or_default();
-
-        if self.session_search.is_empty() {
-            all
-        } else {
-            let search = self.session_search.to_lowercase();
-            all.into_iter()
-                .filter(|meta| {
-                    meta.id.to_lowercase().contains(&search)
-                        || meta
-                            .title
-                            .as_ref()
-                            .map(|t| t.to_lowercase().contains(&search))
-                            .unwrap_or(false)
-                        || meta.preview.to_lowercase().contains(&search)
-                })
-                .collect()
-        }
-    }
-
-    pub fn session_prev(&mut self) {
-        self.session_selected = self.session_selected.saturating_sub(1);
-    }
-
-    pub fn session_next(&mut self, count: usize) {
-        if count > 0 {
-            self.session_selected = (self.session_selected + 1).min(count - 1);
-        }
-    }
-
-    pub fn load_selected_session(&mut self) -> Option<String> {
-        let sessions = self.filtered_sessions();
-        let selected = sessions.get(self.session_selected)?;
-        let id = selected.id.clone();
-
-        if let Some(ref mut sm) = self.session_manager {
-            match sm.load(&id) {
-                Ok(session) => {
-                    self.engine.chat_mut().messages = session.messages;
-                    self.engine.chat_mut().scroll = 0;
-                    if let Some(ref model) = session.model {
-                        self.models.current = Some(model.clone());
-                        if let Some((idx, _matched_name)) = find_model(&self.models.models, model) {
-                            self.models.selected = idx;
-                            if let Some(m) = self.models.models.get(idx) {
-                                self.set_provider(m.provider.clone());
-                            }
-                        }
-                    }
-                    self.overlay = Overlay::None;
-                    self.session_search.clear();
-                    self.session_selected = 0;
-                    Some(format!("Session '{}' loaded", id))
-                }
-                Err(e) => Some(format!("Failed to load: {}", e)),
-            }
-        } else {
-            Some("Store not available".to_string())
-        }
-    }
-
-    pub fn delete_selected_session(&mut self) -> Option<String> {
-        let sessions = self.filtered_sessions();
-        let selected = sessions.get(self.session_selected)?;
-        let id = selected.id.clone();
-
-        if let Some(ref mut sm) = self.session_manager {
-            match sm.delete(&id) {
-                Ok(_) => {
-                    if self.session_selected > 0
-                        && self.session_selected >= sessions.len().saturating_sub(1)
-                    {
-                        self.session_selected -= 1;
-                    }
-                    Some(format!("Session '{}' deleted", id))
-                }
-                Err(e) => Some(format!("Failed to delete: {}", e)),
-            }
-        } else {
-            Some("Store not available".to_string())
-        }
-    }
-
     // -- Completion helpers --
-
-    pub fn refresh_completions(&mut self) {
-        self.engine.refresh_completions(&self.models.models);
-    }
-
-    pub fn clear_completions(&mut self) {
-        self.engine.clear_completions();
-    }
-
-    pub fn cycle_completion_next(&mut self) {
-        self.engine.cycle_completion_next();
-    }
-
-    pub fn cycle_completion_prev(&mut self) {
-        self.engine.cycle_completion_prev();
-    }
-
-    pub fn apply_completion(&mut self) -> bool {
-        self.engine.apply_completion()
-    }
-
-    pub fn completion_active(&self) -> bool {
-        self.engine.input().completion_active
-    }
-
-    pub fn completion_items(&self) -> &[openlibertas_core::completion::CompletionItem] {
-        &self.engine.input().completion_items
-    }
-
-    pub fn completion_selected(&self) -> usize {
-        self.engine.input().autocomplete_index
-    }
-
-    pub fn mcp_server_names(&self) -> Vec<String> {
-        self.mcp_server_names_cache.clone()
-    }
-
-    pub fn mcp_server_count(&self) -> usize {
-        self.mcp_server_names().len()
-    }
-
-    pub fn mcp_selected_server_name(&self) -> Option<String> {
-        let names = self.mcp_server_names();
-        names.get(self.mcp_selected_server).cloned()
-    }
-
-    pub fn mcp_tools_for_server(&self, server_name: &str) -> Vec<openlibertas_core::mcp::McpTool> {
-        let tool_map = self.engine.tools().tool_server_map();
-        self.engine
-            .tools()
-            .available_tools()
-            .iter()
-            .filter(|t| {
-                tool_map
-                    .get(&t.name)
-                    .map(|s| s == server_name)
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect()
-    }
-
-    pub fn mcp_server_prev(&mut self) {
-        self.mcp_selected_server = self.mcp_selected_server.saturating_sub(1);
-        self.mcp_selected_tool = 0;
-        self.mcp_scroll = 0;
-    }
-
-    pub fn mcp_server_next(&mut self) {
-        let count = self.mcp_server_count();
-        if count > 0 {
-            self.mcp_selected_server = (self.mcp_selected_server + 1).min(count - 1);
-            self.mcp_selected_tool = 0;
-            self.mcp_scroll = 0;
-        }
-    }
-
-    pub fn toggle_mcp_detail(&mut self) {
-        self.mcp_show_detail = !self.mcp_show_detail;
-    }
-
-    pub fn selected_tool_name(&self) -> Option<String> {
-        if let Some(server_name) = self.mcp_selected_server_name() {
-            let tools = self.mcp_tools_for_server(&server_name);
-            tools.get(self.mcp_selected_tool).map(|t| t.name.clone())
-        } else {
-            None
-        }
-    }
 
     pub fn handle_wire_message(&mut self, msg: &openlibertas_core::soul::WireMessage) {
         use openlibertas_core::domain::{now_timestamp, Message, Role};

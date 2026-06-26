@@ -16,7 +16,9 @@ pub struct PermissionPanelData {
 
 impl PermissionPanelData {
     pub fn from_app(app: &crate::app::App) -> Option<Self> {
-        app.pending_permission_request.clone().map(|request| Self { request })
+        app.pending_permission_request
+            .clone()
+            .map(|request| Self { request })
     }
 }
 
@@ -45,7 +47,10 @@ impl Panel for PermissionPanelData {
                     .fg(theme.secondary())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(&self.request.tool_name, Style::default().fg(theme.foreground())),
+            Span::styled(
+                &self.request.tool_name,
+                Style::default().fg(theme.foreground()),
+            ),
         ]));
 
         lines.push(Line::from(""));
@@ -57,7 +62,10 @@ impl Panel for PermissionPanelData {
                     .fg(theme.secondary())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(&self.request.action, Style::default().fg(theme.foreground())),
+            Span::styled(
+                &self.request.action,
+                Style::default().fg(theme.foreground()),
+            ),
         ]));
 
         lines.push(Line::from(""));
@@ -88,9 +96,7 @@ impl Panel for PermissionPanelData {
         }
 
         if let Some(params) = self.request.params.as_object() {
-            let has_displayable = params
-                .iter()
-                .any(|(k, v)| k != "command" && !v.is_null());
+            let has_displayable = params.iter().any(|(k, v)| k != "command" && !v.is_null());
             if has_displayable {
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![Span::styled(
@@ -131,6 +137,30 @@ impl Panel for PermissionPanelData {
             ]));
         }
 
+        if let Some(ref diff) = self.request.diff {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "Diff Preview:",
+                Style::default()
+                    .fg(theme.secondary())
+                    .add_modifier(Modifier::BOLD),
+            )]));
+            for line in diff.lines() {
+                let style = if line.starts_with('+') {
+                    Style::default().fg(theme.primary())
+                } else if line.starts_with('-') {
+                    Style::default().fg(theme.error_color())
+                } else if line.starts_with("@@") {
+                    Style::default()
+                        .fg(theme.secondary())
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.foreground())
+                };
+                lines.push(Line::from(Span::styled(line.to_string(), style)));
+            }
+        }
+
         lines.push(Line::from(""));
         lines.push(Line::from(vec![Span::styled(
             "─".repeat(popup_area.width.saturating_sub(4) as usize),
@@ -154,7 +184,10 @@ impl Panel for PermissionPanelData {
                     .fg(theme.primary())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("] Allow session  ", Style::default().fg(theme.system_color())),
+            Span::styled(
+                "] Allow session  ",
+                Style::default().fg(theme.system_color()),
+            ),
             Span::styled("[", Style::default().fg(theme.system_color())),
             Span::styled(
                 "d",

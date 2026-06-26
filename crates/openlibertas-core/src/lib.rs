@@ -43,7 +43,7 @@ pub use agent_loop::{run_agent_loop, LoopAction, PersonaResolver};
 pub use backend::Provider;
 pub use capability::{ProviderCapabilities, ProviderKind};
 pub use commands::{CommandResult, ModelSwitchResult, SlashCommand};
-pub use config::{Config, PermissionPolicy, ProviderConfig, SecretString};
+pub use config::{Config, PermissionPolicy, PermissionState, ProviderConfig, SecretString};
 pub use domain::{
     now_timestamp, BackendEvent, FunctionDefinition, Message, Model, ProviderId, Role, ToolCall,
     ToolDefinition,

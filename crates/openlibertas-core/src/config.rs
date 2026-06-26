@@ -259,6 +259,77 @@ impl Default for PermissionPolicy {
     }
 }
 
+/// Persistent permission state, stored separately from config.
+/// This includes session-level grants that survive app restarts.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PermissionState {
+    /// Tools that have been granted permanent auto-approval by the user.
+    #[serde(default)]
+    pub auto_approve_tools: Vec<String>,
+    /// Map of session_id to list of granted tool names.
+    #[serde(default)]
+    pub granted_sessions: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl PermissionState {
+    pub fn load() -> Self {
+        if let Some(path) = Self::state_path() {
+            if path.exists() {
+                match std::fs::read_to_string(&path) {
+                    Ok(contents) => match toml::from_str(&contents) {
+                        Ok(state) => return state,
+                        Err(e) => warn!("Failed to parse permission state: {}", e),
+                    },
+                    Err(e) => warn!("Failed to read permission state: {}", e),
+                }
+            }
+        }
+        Self::default()
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::state_path().context("Could not determine permission state path")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {parent:?}"))?;
+        }
+        let contents =
+            toml::to_string_pretty(self).context("Failed to serialize permission state")?;
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write permission state to {path:?}"))?;
+        Ok(())
+    }
+
+    pub fn state_path() -> Option<PathBuf> {
+        directories::ProjectDirs::from("com", "openlibertas", "openlibertas")
+            .map(|p| p.data_dir().join("permissions.toml"))
+    }
+
+    pub fn grant_session(&mut self, session_id: &str, tool_name: &str) {
+        self.granted_sessions
+            .entry(session_id.to_string())
+            .or_default()
+            .push(tool_name.to_string());
+    }
+
+    pub fn is_session_granted(&self, session_id: &str, tool_name: &str) -> bool {
+        self.granted_sessions
+            .get(session_id)
+            .map(|tools| tools.iter().any(|t| t.eq_ignore_ascii_case(tool_name)))
+            .unwrap_or(false)
+    }
+
+    pub fn add_auto_approve_tool(&mut self, tool_name: &str) {
+        if !self
+            .auto_approve_tools
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case(tool_name))
+        {
+            self.auto_approve_tools.push(tool_name.to_string());
+        }
+    }
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
         let mut config = Self::default();

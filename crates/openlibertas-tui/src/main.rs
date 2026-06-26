@@ -96,12 +96,17 @@ async fn main() -> Result<()> {
     }
 
     {
-        let (perm_tx, mut perm_rx) = tokio::sync::mpsc::unbounded_channel::<openlibertas_core::permission::PermissionRequest>();
+        let (perm_tx, mut perm_rx) = tokio::sync::mpsc::unbounded_channel::<
+            openlibertas_core::permission::PermissionRequest,
+        >();
         app.engine.permission_service_mut().set_notifier(perm_tx);
         let event_sender = event_stream.sender();
         tokio::spawn(async move {
             while let Some(request) = perm_rx.recv().await {
-                if event_sender.send(Event::PermissionRequest(request)).is_err() {
+                if event_sender
+                    .send(Event::PermissionRequest(request))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -428,9 +433,8 @@ async fn main() -> Result<()> {
                                 #[cfg(unix)]
                                 {
                                     let _ = terminal::restore_normal_terminal();
-                                    let _ = nix::sys::signal::raise(
-                                        nix::sys::signal::Signal::SIGTSTP,
-                                    );
+                                    let _ =
+                                        nix::sys::signal::raise(nix::sys::signal::Signal::SIGTSTP);
                                     let _ = terminal::init_terminal(app.mouse_enabled);
                                 }
                                 continue;
@@ -515,10 +519,10 @@ async fn main() -> Result<()> {
                                 if app.overlay == Overlay::Permission {
                                     if let Some(ref req) = app.pending_permission_request {
                                         let request_id = req.id.clone();
-                                    app.engine.permission_service_mut().respond(
-                                        request_id,
-                                        openlibertas_core::permission::PermissionResponse::Deny,
-                                    );
+                                        app.engine.permission_service_mut().respond(
+                                            request_id,
+                                            openlibertas_core::permission::PermissionResponse::Deny,
+                                        );
                                         app.pending_permission_request = None;
                                     }
                                     app.overlay = Overlay::None;
@@ -738,7 +742,9 @@ async fn main() -> Result<()> {
                                     if let Some(response) = response {
                                         if let Some(ref req) = app.pending_permission_request {
                                             let request_id = req.id.clone();
-                                            app.engine.permission_service_mut().respond(request_id, response);
+                                            app.engine
+                                                .permission_service_mut()
+                                                .respond(request_id, response);
                                             app.pending_permission_request = None;
                                             app.overlay = Overlay::None;
                                         }

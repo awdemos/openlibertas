@@ -5,6 +5,8 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, warn};
 
+const DEFAULT_PERMISSION_TIMEOUT_SECONDS: u64 = 120;
+
 /// A request for user permission to execute a dangerous tool operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionRequest {
@@ -17,6 +19,8 @@ pub struct PermissionRequest {
     pub params: serde_json::Value,
     /// Working directory or file path relevant to the operation.
     pub path: String,
+    /// Optional diff preview for write/edit file operations.
+    pub diff: Option<String>,
 }
 
 impl PermissionRequest {
@@ -36,7 +40,13 @@ impl PermissionRequest {
             action: action.into(),
             params,
             path: path.into(),
+            diff: None,
         }
+    }
+
+    pub fn with_diff(mut self, diff: impl Into<String>) -> Self {
+        self.diff = Some(diff.into());
+        self
     }
 }
 
@@ -84,6 +94,7 @@ pub struct PermissionService {
     tx: Option<mpsc::UnboundedSender<PermissionMessage>>,
     auto_approve_tools: Arc<RwLock<Vec<String>>>,
     permission_policy: Arc<RwLock<PermissionPolicy>>,
+    timeout_seconds: Arc<RwLock<u64>>,
 }
 
 impl Default for PermissionService {
@@ -98,12 +109,15 @@ impl PermissionService {
 
         let tx = if tokio::runtime::Handle::try_current().is_ok() {
             tokio::spawn(async move {
+                let mut state = crate::config::PermissionState::load();
                 let mut session_permissions: HashSet<(String, String, String)> = HashSet::new();
                 let mut auto_approve_sessions: HashSet<String> = HashSet::new();
                 let mut pending_requests: std::collections::HashMap<String, PermissionRequest> =
                     std::collections::HashMap::new();
-                let mut pending_responders: std::collections::HashMap<String, oneshot::Sender<bool>> =
-                    std::collections::HashMap::new();
+                let mut pending_responders: std::collections::HashMap<
+                    String,
+                    oneshot::Sender<bool>,
+                > = std::collections::HashMap::new();
                 let mut notify_tx: Option<mpsc::UnboundedSender<PermissionRequest>> = None;
 
                 while let Some(msg) = rx.recv().await {
@@ -111,9 +125,21 @@ impl PermissionService {
                         PermissionMessage::SetNotifier { tx } => {
                             notify_tx = Some(tx);
                         }
-                        PermissionMessage::Request { request, respond_to } => {
+                        PermissionMessage::Request {
+                            request,
+                            respond_to,
+                        } => {
                             if auto_approve_sessions.contains(&request.session_id) {
                                 debug!("Auto-approving for session {}", request.session_id);
+                                let _ = respond_to.send(true);
+                                continue;
+                            }
+
+                            if state.is_session_granted(&request.session_id, &request.tool_name) {
+                                debug!(
+                                    "Session permission found for {} from state",
+                                    request.tool_name
+                                );
                                 let _ = respond_to.send(true);
                                 continue;
                             }
@@ -154,11 +180,14 @@ impl PermissionService {
                                 if response == PermissionResponse::AllowForSession {
                                     if let Some(request) = pending_requests.remove(&request_id) {
                                         let key = (
-                                            request.session_id,
-                                            request.tool_name,
-                                            request.action,
+                                            request.session_id.clone(),
+                                            request.tool_name.clone(),
+                                            request.action.clone(),
                                         );
-                                        session_permissions.insert(key);
+                                        session_permissions.insert(key.clone());
+                                        state
+                                            .grant_session(&request.session_id, &request.tool_name);
+                                        let _ = state.save();
                                     }
                                 } else {
                                     pending_requests.remove(&request_id);
@@ -176,8 +205,10 @@ impl PermissionService {
                             tool_name,
                             action,
                         } => {
-                            let key = (session_id, tool_name, action);
+                            let key = (session_id.clone(), tool_name.clone(), action.clone());
                             session_permissions.insert(key);
+                            state.grant_session(&session_id, &tool_name);
+                            let _ = state.save();
                         }
                     }
                 }
@@ -187,10 +218,18 @@ impl PermissionService {
             None
         };
 
+        let state = crate::config::PermissionState::load();
         Self {
             tx,
-            auto_approve_tools: Arc::new(RwLock::new(Vec::new())),
+            auto_approve_tools: Arc::new(RwLock::new(state.auto_approve_tools)),
             permission_policy: Arc::new(RwLock::new(PermissionPolicy::Ask)),
+            timeout_seconds: Arc::new(RwLock::new(DEFAULT_PERMISSION_TIMEOUT_SECONDS)),
+        }
+    }
+
+    pub fn set_timeout_seconds(&self, seconds: u64) {
+        if let Ok(mut guard) = self.timeout_seconds.write() {
+            *guard = seconds;
         }
     }
 
@@ -222,7 +261,10 @@ impl PermissionService {
         }
 
         if let Ok(tools) = self.auto_approve_tools.read() {
-            if tools.iter().any(|t| t.eq_ignore_ascii_case(&request.tool_name)) {
+            if tools
+                .iter()
+                .any(|t| t.eq_ignore_ascii_case(&request.tool_name))
+            {
                 debug!("Auto-approving tool {} from config", request.tool_name);
                 return true;
             }
@@ -243,10 +285,23 @@ impl PermissionService {
             return false;
         }
 
-        match rx.await {
-            Ok(approved) => approved,
-            Err(_) => {
+        let timeout_secs = self
+            .timeout_seconds
+            .read()
+            .map(|t| *t)
+            .unwrap_or(DEFAULT_PERMISSION_TIMEOUT_SECONDS);
+
+        match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), rx).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => {
                 warn!("Permission response channel dropped");
+                false
+            }
+            Err(_) => {
+                warn!(
+                    "Permission request timed out after {} seconds, auto-denying",
+                    timeout_secs
+                );
                 false
             }
         }
@@ -262,12 +317,7 @@ impl PermissionService {
         }
     }
 
-    pub fn grant_session_permission(
-        &self,
-        session_id: String,
-        tool_name: String,
-        action: String,
-    ) {
+    pub fn grant_session_permission(&self, session_id: String, tool_name: String, action: String) {
         if let Some(ref sender) = self.tx {
             let msg = PermissionMessage::GrantSessionPermission {
                 session_id,
@@ -309,29 +359,79 @@ pub fn tool_requires_permission(tool_name: &str) -> bool {
         "patch",
         "apply_patch",
         "applyPatch",
-        "git", // git can be destructive
+        "git",  // git can be destructive
         "tmux", // tmux can execute arbitrary commands
     ];
-    dangerous
-        .iter()
-        .any(|&d| tool_name.eq_ignore_ascii_case(d))
+    dangerous.iter().any(|&d| tool_name.eq_ignore_ascii_case(d))
 }
 
 /// Check if a shell command is safe read-only (doesn't need permission).
 /// Based on opencode's safeReadOnlyCommands list.
 pub fn is_safe_readonly_command(command: &str) -> bool {
     let safe_prefixes = [
-        "ls", "echo", "pwd", "date", "cal", "uptime", "whoami", "id", "groups",
-        "env", "printenv", "which", "type", "whereis", "whatis", "uname", "hostname",
-        "df", "du", "free", "top", "ps", "kill", "killall", "nice", "nohup", "time",
-        "git status", "git log", "git diff", "git show", "git branch", "git tag",
-        "git remote", "git ls-files", "git ls-remote", "git rev-parse",
-        "git config --get", "git config --list", "git describe", "git blame",
-        "git grep", "git shortlog",
-        "go version", "go help", "go list", "go env", "go doc", "go vet", "go fmt",
-        "go mod", "go test", "go build", "go run", "go install", "go clean",
-        "cargo --version", "cargo check", "cargo test", "cargo build", "cargo run",
-        "cargo clippy", "cargo fmt",
+        "ls",
+        "echo",
+        "pwd",
+        "date",
+        "cal",
+        "uptime",
+        "whoami",
+        "id",
+        "groups",
+        "env",
+        "printenv",
+        "which",
+        "type",
+        "whereis",
+        "whatis",
+        "uname",
+        "hostname",
+        "df",
+        "du",
+        "free",
+        "top",
+        "ps",
+        "kill",
+        "killall",
+        "nice",
+        "nohup",
+        "time",
+        "git status",
+        "git log",
+        "git diff",
+        "git show",
+        "git branch",
+        "git tag",
+        "git remote",
+        "git ls-files",
+        "git ls-remote",
+        "git rev-parse",
+        "git config --get",
+        "git config --list",
+        "git describe",
+        "git blame",
+        "git grep",
+        "git shortlog",
+        "go version",
+        "go help",
+        "go list",
+        "go env",
+        "go doc",
+        "go vet",
+        "go fmt",
+        "go mod",
+        "go test",
+        "go build",
+        "go run",
+        "go install",
+        "go clean",
+        "cargo --version",
+        "cargo check",
+        "cargo test",
+        "cargo build",
+        "cargo run",
+        "cargo clippy",
+        "cargo fmt",
     ];
 
     let cmd_lower = command.trim().to_lowercase();

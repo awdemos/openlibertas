@@ -118,18 +118,19 @@ impl ToolExecutor {
             let requires_approval = !is_builtin || is_destructive;
 
             if requires_approval {
-                let args =
-                    match serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments) {
-                        Ok(args) => args,
-                        Err(e) => {
-                            results.push(ToolExecutionResult::Error {
-                                tool_name: tool_call.function.name.clone(),
-                                key_arg,
-                                error: format!("Parse error: {e}"),
-                            });
-                            continue;
-                        }
-                    };
+                let args = match serde_json::from_str::<serde_json::Value>(
+                    &tool_call.function.arguments,
+                ) {
+                    Ok(args) => args,
+                    Err(e) => {
+                        results.push(ToolExecutionResult::Error {
+                            tool_name: tool_call.function.name.clone(),
+                            key_arg,
+                            error: format!("Parse error: {e}"),
+                        });
+                        continue;
+                    }
+                };
 
                 let command = args
                     .get("command")
@@ -140,26 +141,41 @@ impl ToolExecutor {
                 if crate::permission::tool_requires_permission(&tool_call.function.name)
                     && !crate::permission::is_safe_readonly_command(&command)
                 {
-                    let request = crate::permission::PermissionRequest::new(
+                    let path = args
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let description = if tool_call.function.name.eq_ignore_ascii_case("write_file")
+                        || tool_call
+                            .function
+                            .name
+                            .eq_ignore_ascii_case("str_replace_file")
+                    {
+                        format!("Write to {}", path)
+                    } else {
+                        format!("Execute: {}", command)
+                    };
+
+                    let mut request = crate::permission::PermissionRequest::new(
                         session_id,
                         &tool_call.function.name,
-                        format!("Execute: {}", command),
+                        description,
                         "execute",
                         args.clone(),
-                        std::env::current_dir()
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_default(),
+                        path.clone(),
                     );
+
+                    if let Some(diff) = generate_file_diff(&tool_call.function.name, &args) {
+                        request = request.with_diff(diff);
+                    }
 
                     let approved = permission_service.request(request).await;
 
                     if !approved {
                         results.push(ToolExecutionResult::Skipped {
                             tool_name: tool_call.function.name.clone(),
-                            reason: format!(
-                                "Permission denied for '{}'",
-                                tool_call.function.name
-                            ),
+                            reason: format!("Permission denied for '{}'", tool_call.function.name),
                         });
                         continue;
                     }
@@ -320,6 +336,87 @@ pub fn extract_key_argument(tool_name: &str, arguments: &str) -> String {
     String::new()
 }
 
+/// Generate a unified diff preview for a write or edit operation.
+/// Returns `None` if no diff can be generated (e.g., file doesn't exist yet).
+pub fn generate_file_diff(tool_name: &str, args: &serde_json::Value) -> Option<String> {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .or_else(|| args.get("file").and_then(|v| v.as_str()))?;
+
+    let new_content = if tool_name.eq_ignore_ascii_case("write_file") {
+        args.get("content")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())?
+    } else if tool_name.eq_ignore_ascii_case("str_replace_file") {
+        let old_str = args.get("old_str").and_then(|v| v.as_str())?;
+        let new_str = args.get("new_str").and_then(|v| v.as_str())?;
+        let existing = std::fs::read_to_string(path).unwrap_or_default();
+        existing.replace(old_str, new_str)
+    } else {
+        return None;
+    };
+
+    let old_content = std::fs::read_to_string(path).unwrap_or_default();
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+
+    let mut diff = String::new();
+    diff.push_str(&format!("--- a/{}\n", path));
+    diff.push_str(&format!("+++ b/{}\n", path));
+
+    let max_lines = old_lines.len().max(new_lines.len());
+    let context = 3usize;
+
+    let mut i = 0;
+    while i < max_lines {
+        let old_line = old_lines.get(i);
+        let new_line = new_lines.get(i);
+
+        if old_line != new_line {
+            // Find the block of changed lines
+            let start = i.saturating_sub(context);
+            let mut end = i;
+            while end < max_lines && old_lines.get(end) != new_lines.get(end) {
+                end += 1;
+            }
+            end = (end + context).min(max_lines);
+
+            diff.push_str(&format!(
+                "@@ -{},{} +{},{} @@\n",
+                start + 1,
+                (end - start).min(old_lines.len().saturating_sub(start)),
+                start + 1,
+                (end - start).min(new_lines.len().saturating_sub(start))
+            ));
+
+            for j in start..end {
+                if let Some(line) = old_lines.get(j) {
+                    if new_lines.get(j) != Some(line) {
+                        diff.push_str(&format!("-{}\n", line));
+                    } else {
+                        diff.push_str(&format!(" {}\n", line));
+                    }
+                }
+                if old_lines.get(j).is_none() || old_lines.get(j) != new_lines.get(j) {
+                    if let Some(line) = new_lines.get(j) {
+                        diff.push_str(&format!("+{}\n", line));
+                    }
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+
+    if diff.lines().count() <= 2 {
+        return None;
+    }
+
+    Some(diff)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,7 +549,9 @@ mod tests {
             },
         });
         let perm_service = crate::permission::PermissionService::new();
-        let results = executor.execute_pending_tools(&perm_service, "test-session").await;
+        let results = executor
+            .execute_pending_tools(&perm_service, "test-session")
+            .await;
         assert_eq!(results.len(), 1);
         assert!(
             matches!(results[0], ToolExecutionResult::Success { ref output, .. } if output == "mock result")
@@ -471,7 +570,9 @@ mod tests {
             },
         });
         let perm_service = crate::permission::PermissionService::new();
-        let results = executor.execute_pending_tools(&perm_service, "test-session").await;
+        let results = executor
+            .execute_pending_tools(&perm_service, "test-session")
+            .await;
         assert_eq!(results.len(), 1);
         assert!(
             matches!(results[0], ToolExecutionResult::Error { ref error, .. } if error == "No backend found for tool")
