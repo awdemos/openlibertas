@@ -338,6 +338,7 @@ Startup skips the model menu if you have a previous session. Goes straight to ch
 | `/sessions` | Open session manager popup |
 | `/delete <name>` | Delete saved session |
 | `/export <file>` | Export chat to markdown |
+| `/copy [n]` | Copy message n (or last assistant message) to clipboard |
 | `/mcp` | Toggle MCP servers panel |
 | `/agents` | Open agent configuration panel |
 | `/poke` | Toggle poke mode (send [POKE] on click) |

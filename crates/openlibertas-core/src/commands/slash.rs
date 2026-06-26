@@ -21,6 +21,7 @@ pub enum SlashCommand {
     Search(String),
     Edit(usize),
     Remove(usize),
+    Copy(Option<usize>),
     Agents,
     Avatar(Option<String>),
     AvatarMenu,
@@ -140,6 +141,16 @@ impl SlashCommand {
                     Some(SlashCommand::Remove(0))
                 }
             }
+            "/copy" => {
+                if parts.len() > 1 {
+                    parts[1]
+                        .parse::<usize>()
+                        .ok()
+                        .map(|n| SlashCommand::Copy(Some(n)))
+                } else {
+                    Some(SlashCommand::Copy(None))
+                }
+            }
             "/delete" => {
                 if parts.len() > 1 {
                     Some(SlashCommand::Delete(parts[1..].join(" ")))
@@ -240,6 +251,18 @@ mod tests {
     fn parse_remove_command() {
         let cmd = SlashCommand::parse("/remove 3");
         assert_eq!(cmd, Some(SlashCommand::Remove(3)));
+    }
+
+    #[test]
+    fn parse_copy_command_defaults_to_none() {
+        let cmd = SlashCommand::parse("/copy");
+        assert_eq!(cmd, Some(SlashCommand::Copy(None)));
+    }
+
+    #[test]
+    fn parse_copy_command_with_index() {
+        let cmd = SlashCommand::parse("/copy 2");
+        assert_eq!(cmd, Some(SlashCommand::Copy(Some(2))));
     }
 
     #[test]

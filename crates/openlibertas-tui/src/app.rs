@@ -10,6 +10,7 @@
 use crate::avatar::{AnimatedAvatar, IDLE_FRAMES};
 use crate::markdown::MarkdownRenderer;
 use crate::theme::Theme;
+use base64::Engine;
 use openlibertas_core::commands::{find_model, get_model_suggestions};
 use openlibertas_core::config::Config;
 use openlibertas_core::domain::ProviderId;
@@ -24,6 +25,7 @@ use openlibertas_core::session::SessionManager;
 use openlibertas_core::store::SessionStore;
 use openlibertas_core::voice::VoiceManager;
 use std::collections::HashMap;
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 pub use openlibertas_core::commands::SlashCommand;
@@ -457,6 +459,7 @@ When you have your final answer, output 'FINAL(answer)' on its own line."
                     ))
                 }
             }
+            SlashCommand::Copy(n) => self.copy_message_to_clipboard(n),
             SlashCommand::Mcp => {
                 self.overlay = if self.overlay == Overlay::Mcp {
                     Overlay::None
@@ -906,6 +909,39 @@ available tools to refine and polish your work."
             self.models.current.as_deref(),
             format,
         )
+    }
+
+    fn copy_message_to_clipboard(&self, n: Option<usize>) -> Option<String> {
+        let messages = &self.engine.chat().messages;
+        let idx = match n {
+            Some(n) if n > 0 && n <= messages.len() => n - 1,
+            Some(_) => {
+                return Some(format!(
+                    "Invalid message number. There are {} messages. Use /copy 1..{}",
+                    messages.len(),
+                    messages.len()
+                ))
+            }
+            None => {
+                // Default to the last assistant message.
+                match messages.iter().rposition(|m| m.role == Role::Assistant) {
+                    Some(idx) => idx,
+                    None => return Some("No assistant message to copy".to_string()),
+                }
+            }
+        };
+
+        let msg = &messages[idx];
+        let text = msg.content.clone();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&text);
+        print!("\x1b]52;c;{}\x07", encoded);
+        let _ = std::io::stdout().flush();
+        Some(format!(
+            "Copied message {} [{}] ({} chars) to clipboard",
+            idx + 1,
+            msg.role,
+            text.len()
+        ))
     }
 
     pub fn go_to_models(&mut self) {

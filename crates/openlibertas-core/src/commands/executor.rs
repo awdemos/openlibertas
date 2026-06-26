@@ -74,6 +74,9 @@ impl<'a> CommandExecutor<'a> {
             SlashCommand::Rlm => self.cmd_rlm(),
             SlashCommand::Edit(n) => self.cmd_edit(n),
             SlashCommand::Remove(n) => self.cmd_remove(n),
+            SlashCommand::Copy(_) => {
+                CommandResult::Error("/copy is only available in the TUI.".to_string())
+            }
             SlashCommand::Mcp => CommandResult::ToggleOverlay("mcp".to_string()),
             SlashCommand::Save(name) => self.cmd_save(name),
             SlashCommand::Load(name) => self.cmd_load(name),
