@@ -187,7 +187,9 @@ impl PermissionService {
                                         session_permissions.insert(key.clone());
                                         state
                                             .grant_session(&request.session_id, &request.tool_name);
-                                        let _ = state.save();
+                                        if let Err(e) = state.save() {
+                                            warn!("Failed to save permission state: {}", e);
+                                        }
                                     }
                                 } else {
                                     pending_requests.remove(&request_id);
@@ -208,7 +210,9 @@ impl PermissionService {
                             let key = (session_id.clone(), tool_name.clone(), action.clone());
                             session_permissions.insert(key);
                             state.grant_session(&session_id, &tool_name);
-                            let _ = state.save();
+                            if let Err(e) = state.save() {
+                                warn!("Failed to save permission state: {}", e);
+                            }
                         }
                     }
                 }
