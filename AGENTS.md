@@ -8,7 +8,7 @@ A terminal-based AI chat client in Rust. Multi-provider, MCP tools, session mana
 crates/
   openlibertas-core/    # Shared: backend, config, commands, domain, store, search, export, mcp
   openlibertas-tui/     # Binary: ratatui frontend, event loop (main entrypoint)
-  openlibertas-server/  # HTTP server variant (WIP)
+  openlibertas-server/  # HTTP server variant
 personas/               # Agent persona markdown files (*.md)
 ```
 

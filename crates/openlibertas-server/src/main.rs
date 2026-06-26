@@ -88,6 +88,18 @@ struct SessionListResponse {
     sessions: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct ExportRequest {
+    format: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ExportResponse {
+    content: String,
+    path: Option<String>,
+}
+
 #[derive(Serialize)]
 struct StatusResponse {
     status: String,
@@ -825,6 +837,45 @@ async fn delete_session(
     }
 }
 
+async fn export_session(
+    State(state): State<AppState>,
+    Json(req): Json<ExportRequest>,
+) -> impl IntoResponse {
+    let session = state.session.read().await;
+    let model = state.current_model.read().await.clone();
+    let format = match req.format.as_deref() {
+        Some("json") => openlibertas_core::export::ExportFormat::Json,
+        Some("txt") | Some("text") => openlibertas_core::export::ExportFormat::PlainText,
+        _ => {
+            if let Some(ref path) = req.path {
+                openlibertas_core::export::ExportFormat::from_extension(path)
+            } else {
+                openlibertas_core::export::ExportFormat::Markdown
+            }
+        }
+    };
+
+    let content = openlibertas_core::export::export_messages(&session, model.as_deref(), format);
+
+    if let Some(ref path) = req.path {
+        match std::fs::write(path, &content) {
+            Ok(_) => ok(ExportResponse {
+                content,
+                path: Some(path.clone()),
+            }),
+            Err(e) => err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to write export: {}", e),
+            ),
+        }
+    } else {
+        ok(ExportResponse {
+            content,
+            path: None,
+        })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Voice endpoints
 // ---------------------------------------------------------------------------
@@ -1011,6 +1062,7 @@ async fn main() -> Result<()> {
         .route("/session/save", post(save_session))
         .route("/session/load", post(load_session))
         .route("/session/delete", post(delete_session))
+        .route("/export", post(export_session))
         .route("/voice/stt", post(voice_stt))
         .route("/voice/tts", post(voice_tts));
 
@@ -1021,7 +1073,8 @@ async fn main() -> Result<()> {
         .route("/sessions", get(list_sessions))
         .route("/session/save", post(save_session))
         .route("/session/load", post(load_session))
-        .route("/session/delete", post(delete_session));
+        .route("/session/delete", post(delete_session))
+        .route("/export", post(export_session));
 
     let app = Router::new()
         .route("/health", get(health_check))
@@ -1102,7 +1155,8 @@ mod tests {
             .route("/sessions", get(list_sessions))
             .route("/session/save", post(save_session))
             .route("/session/load", post(load_session))
-            .route("/session/delete", post(delete_session));
+            .route("/session/delete", post(delete_session))
+            .route("/export", post(export_session));
 
         let v1_routes = Router::new()
             .route("/chat", post(chat_completion))
@@ -1111,7 +1165,8 @@ mod tests {
             .route("/sessions", get(list_sessions))
             .route("/session/save", post(save_session))
             .route("/session/load", post(load_session))
-            .route("/session/delete", post(delete_session));
+            .route("/session/delete", post(delete_session))
+            .route("/export", post(export_session));
 
         Router::new()
             .route("/health", get(health_check))
@@ -1218,6 +1273,26 @@ mod tests {
                 Request::builder()
                     .uri("/api/history")
                     .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_export_returns_markdown() {
+        let app = test_router();
+        let body = serde_json::json!({
+            "format": "markdown"
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/export")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
                     .unwrap(),
             )
             .await

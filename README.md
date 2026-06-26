@@ -133,6 +133,47 @@ Environment variables override config values:
 - `OPENLIBERTAS_MODEL` - Default model
 - `OPENLIBERTAS_MAX_TOKENS` - Max tokens per request
 
+## HTTP Server
+
+Run the headless HTTP server with:
+
+```bash
+cargo run -p openlibertas-server
+# or
+PORT=8080 cargo run -p openlibertas-server
+```
+
+Set `OPENLIBERTAS_API_KEY` to require Bearer-token authentication on all endpoints.
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Server and provider health status |
+| `/api/status` | GET | Current model, provider, and message count |
+| `/api/history` | GET | Current session messages |
+| `/api/clear` | POST | Clear the current session |
+| `/api/chat` | POST | Send a message and receive a response |
+| `/api/chat/stream` | POST | Stream a response as SSE |
+| `/api/sessions` | GET | List saved sessions |
+| `/api/session/save` | POST | Save current session |
+| `/api/session/load` | POST | Load a saved session |
+| `/api/session/delete` | POST | Delete a saved session |
+| `/api/export` | POST | Export current session to markdown/json/txt |
+| `/api/voice/stt` | POST | Speech-to-text |
+| `/api/voice/tts` | POST | Text-to-speech |
+| `/v1/chat` | POST | OpenAI-compatible chat completion |
+| `/v1/chat/stream` | POST | OpenAI-compatible streaming completion |
+| `/v1/models` | GET | List available models |
+
+### Export Example
+
+```bash
+curl -X POST http://localhost:3000/api/export \
+  -H "Content-Type: application/json" \
+  -d '{"format": "markdown"}'
+```
+
 ## Local Models with llama.cpp
 
 OpenLibertas works with any OpenAI-compatible API, including [llama.cpp server](https://github.com/ggml-org/llama.cpp/blob/master/examples/server/README.md).
@@ -407,7 +448,7 @@ openlibertas/
 │   │       ├── terminal.rs       # TerminalGuard RAII, panic hook
 │   │       ├── theme.rs          # Color theme system
 │   │       └── ui.rs             # Ratatui rendering, panels, help
-│   └── openlibertas-server/      # HTTP server (WIP)
+│   └── openlibertas-server/      # HTTP server
 │       └── src/
 │           └── main.rs           # Axum server for remote access
 ├── personas/                     # Agent persona markdown files
