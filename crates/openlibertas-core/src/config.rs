@@ -245,18 +245,13 @@ fn default_permission_policy() -> PermissionPolicy {
     PermissionPolicy::Ask
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PermissionPolicy {
+    #[default]
     Ask,
     AutoApprove,
     Deny,
-}
-
-impl Default for PermissionPolicy {
-    fn default() -> Self {
-        PermissionPolicy::Ask
-    }
 }
 
 /// Persistent permission state, stored separately from config.

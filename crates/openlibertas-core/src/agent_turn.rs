@@ -9,6 +9,7 @@ use crate::env_context::EnvContext;
 use crate::soul::{Agent, ChatAgent, UserInput, WireSender};
 
 /// Spawn an agent turn in a background tokio task.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_agent_turn(
     engine: &ChatEngine,
     registry: &ProviderRegistry,

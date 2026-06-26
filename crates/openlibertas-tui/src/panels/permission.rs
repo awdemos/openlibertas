@@ -38,37 +38,34 @@ impl Panel for PermissionPanelData {
             )
             .border_style(Style::default().fg(theme.error_color()));
 
-        let mut lines: Vec<Line> = Vec::new();
-
-        lines.push(Line::from(vec![
-            Span::styled(
-                "Tool: ",
-                Style::default()
-                    .fg(theme.secondary())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                &self.request.tool_name,
-                Style::default().fg(theme.foreground()),
-            ),
-        ]));
-
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(vec![
-            Span::styled(
-                "Action: ",
-                Style::default()
-                    .fg(theme.secondary())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                &self.request.action,
-                Style::default().fg(theme.foreground()),
-            ),
-        ]));
-
-        lines.push(Line::from(""));
+        let mut lines: Vec<Line> = vec![
+            Line::from(vec![
+                Span::styled(
+                    "Tool: ",
+                    Style::default()
+                        .fg(theme.secondary())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &self.request.tool_name,
+                    Style::default().fg(theme.foreground()),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    "Action: ",
+                    Style::default()
+                        .fg(theme.secondary())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &self.request.action,
+                    Style::default().fg(theme.foreground()),
+                ),
+            ]),
+            Line::from(""),
+        ];
 
         if let Some(desc) = self.request.description.strip_prefix("Execute: ") {
             lines.push(Line::from(vec![
