@@ -54,6 +54,20 @@ supports_tools = true   # set false for models that don't support function calli
 
 The `supports_tools` flag is critical — when `false`, the backend strips the `tools` array from requests, avoiding errors from basic GGUFs.
 
+### Permission Configuration
+
+Two top-level config fields control the permission system:
+
+```toml
+permission_policy = "ask"        # "ask", "auto_approve", or "deny"
+auto_approve_tools = ["read_file", "search"]
+```
+
+- `permission_policy` — `"ask"` opens the interactive panel for dangerous tools (shell, file writes/edits/deletes). `"auto_approve"` allows all dangerous tools. `"deny"` blocks them.
+- `auto_approve_tools` — tool names that never require approval, even in `"ask"` mode.
+
+Session-level approvals granted with `s` in the permission panel are persisted to the data directory and survive app restarts.
+
 ### Event Loop
 
 `main.rs` runs a tokio async loop:

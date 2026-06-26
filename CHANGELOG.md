@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Permission system for dangerous tools (shell, file writes, edits, deletes) with interactive TUI panel
+- Session-level permission grants persisted to `permissions.toml`
+- Diff preview in permission panel for `write_file` and `str_replace_file` operations
+- Configurable permission policy: `ask`, `auto_approve`, `deny`
+- Configurable `auto_approve_tools` list for trusted tools
 - Real-time audio level meter during voice recording (peak amplitude visualization)
 - Push-to-talk vs toggle mode separation for voice (Ctrl+Space vs Space)
 - Input device enumeration and selection (`/voice_device` slash command)
