@@ -546,4 +546,55 @@ mod tests {
         let approved = service.request(request).await;
         assert!(approved);
     }
+
+    #[tokio::test]
+    async fn test_permission_service_timeout_denies() {
+        let service = PermissionService::new();
+        service.set_timeout_seconds(1);
+        let request = PermissionRequest::new(
+            "session-timeout",
+            "shell",
+            "Execute: slow command",
+            "execute",
+            serde_json::json!({"command": "sleep 100"}),
+            "/",
+        );
+
+        let approved = service.request(request).await;
+        assert!(!approved);
+    }
+
+    #[tokio::test]
+    async fn test_permission_policy_auto_approve() {
+        let service = PermissionService::new();
+        service.set_permission_policy(crate::config::PermissionPolicy::AutoApprove);
+        let request = PermissionRequest::new(
+            "session-auto",
+            "shell",
+            "Execute: anything",
+            "execute",
+            serde_json::json!({}),
+            "/",
+        );
+
+        let approved = service.request(request).await;
+        assert!(approved);
+    }
+
+    #[tokio::test]
+    async fn test_permission_policy_deny() {
+        let service = PermissionService::new();
+        service.set_permission_policy(crate::config::PermissionPolicy::Deny);
+        let request = PermissionRequest::new(
+            "session-deny-policy",
+            "shell",
+            "Execute: anything",
+            "execute",
+            serde_json::json!({}),
+            "/",
+        );
+
+        let approved = service.request(request).await;
+        assert!(!approved);
+    }
 }
