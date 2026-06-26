@@ -126,6 +126,17 @@ mod tests {
         assert_eq!(result, "");
     }
 
+    fn keyring_available() -> bool {
+        let test_provider = "openlibertas-test-keyring-availability";
+        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, test_provider) {
+            if entry.set_password("test").is_ok() {
+                let _ = entry.delete_credential();
+                return true;
+            }
+        }
+        false
+    }
+
     #[test]
     fn get_api_key_env_takes_priority_over_keyring_and_plaintext() {
         std::env::set_var("OPENLIBERTAS_CRED_PRIORITY", "sk-env-wins");
@@ -137,6 +148,9 @@ mod tests {
 
     #[test]
     fn set_and_get_api_key_roundtrip() {
+        if !keyring_available() {
+            return;
+        }
         let provider = "openlibertas-test-provider";
         let key = "sk-test-key-12345";
 
@@ -156,6 +170,9 @@ mod tests {
 
     #[test]
     fn get_api_key_keyring_takes_priority_over_plaintext() {
+        if !keyring_available() {
+            return;
+        }
         let provider = "openlibertas-test-priority";
         let keyring_key = "sk-keyring-wins";
 
@@ -187,6 +204,9 @@ mod tests {
 
     #[test]
     fn get_api_key_env_takes_priority_over_keyring() {
+        if !keyring_available() {
+            return;
+        }
         let provider = "openlibertas-test-env-priority";
         let keyring_key = "sk-keyring";
 

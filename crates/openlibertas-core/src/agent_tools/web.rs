@@ -95,6 +95,7 @@ pub fn fetch_url_tool() -> crate::agent_tools::BuiltinTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     #[test]
     fn web_search_returns_result() {
@@ -102,9 +103,28 @@ mod tests {
         assert!(result.contains("rust programming"));
     }
 
+    fn start_test_server() -> (std::thread::JoinHandle<()>, u16) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            // Read the request headers so the client has finished sending.
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = "HTTP/1.0 200 OK\r\nContent-Length: 13\r\n\r\nHello, world!";
+            std::io::Write::write_all(&mut stream, response.as_bytes()).unwrap();
+            // Keep the socket open briefly so the client can read the full response.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        });
+        (handle, port)
+    }
+
     #[test]
     fn fetch_url_stub_returns_message() {
-        let result = fetch_url(serde_json::json!({"url": "https://httpbin.org/get"})).unwrap();
-        assert!(!result.is_empty());
+        let (handle, port) = start_test_server();
+        let result =
+            fetch_url(serde_json::json!({"url": format!("http://127.0.0.1:{}/", port)})).unwrap();
+        assert!(result.contains("Hello, world!"));
+        handle.join().unwrap();
     }
 }
