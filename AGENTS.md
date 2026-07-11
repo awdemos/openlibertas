@@ -177,3 +177,13 @@ No code changes needed — loaded dynamically at runtime.
 - **Panel stacking**: Multiple panels can be open simultaneously (`show_tools && show_help`). Esc closes one at a time in priority order (help → themes → palette → tools/mcp/sessions → model screen).
 - **Tool call dedup**: `pending_tool_calls` is cleared before each new request and after `ChatEvent::Done`. If not cleared, the same tool gets executed multiple times.
 - **Persona loading fails silently**: If `personas/` dir is missing or unreadable, agents fall back to a hardcoded default prompt. Check directory permissions if personas don't appear in the agents panel.
+
+## Deployment
+
+No Dagger module or recognized deployment configuration was found.
+
+General redeploy process:
+
+1. Commit and push changes to the default branch.
+2. Trigger the relevant CI/CD pipeline or run the documented deploy command.
+3. If the project is served via GitHub Pages, the site redeploys automatically after the push.
