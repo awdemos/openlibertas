@@ -50,7 +50,7 @@ cargo install --path .
 Or build from source:
 
 ```bash
-git clone https://github.com/openlibertas/openlibertas
+git clone https://github.com/awdemos/openlibertas
 cd openlibertas
 cargo build --release
 ```
@@ -61,7 +61,7 @@ Binary will be at `target/release/openlibertas`.
 
 ```bash
 # Clone and build without prompts
-git clone https://github.com/openlibertas/openlibertas.git /tmp/openlibertas
+git clone https://github.com/awdemos/openlibertas.git /tmp/openlibertas
 cd /tmp/openlibertas
 cargo build --release 2>&1 | tail -5
 
