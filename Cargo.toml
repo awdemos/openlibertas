@@ -8,7 +8,7 @@ edition = "2021"
 authors = ["OpenLibertas Contributors"]
 description = "A terminal-based AI chat client with multi-provider support, MCP tools, and session management"
 license = "MIT"
-repository = "https://github.com/openlibertas/openlibertas"
+repository = "https://github.com/awdemos/openlibertas"
 
 [profile.release]
 opt-level = 3
